@@ -710,3 +710,81 @@ across variants prove the index frame is untouched (palette is a pure index→RG
 the palette compose orthogonally). *Candidate:*
 `two-palette-sets-one-build-selection-byte-at-boot-never-monitor-detect-one-entry-diff`.
 *Established:* RGB palette landing 2026-07-18 (`scene6_climb_crawl_driver.s`).
+
+---
+
+## 14. Disk-boot + natkeyboard: the five things that make DECB `LOADM` actually work
+*(Filed by Clyde under §2A.3 during P1.1 — the build→test loop stand-up, POP3_port.
+**PROVISIONAL, flagged for Jay's confirmation**: the §2A.3 authorship ruling is still open.
+Every item below was measured in this repo, not inferred.)*
+
+Getting a build from `imgtool` onto a running CoCo3 under automation failed five distinct
+ways before it worked. Each has a one-line fix. Tool: `POP3_port/harness/smoke/probe_test.lua`.
+
+- **14a. `-ext fdc` is MANDATORY.** A bare `mame coco3 -flop1 x.dsk` has **no disk
+  controller** — it boots to Extended Color BASIC, `LOADM` does nothing, and the program
+  silently never runs (observed: `status=0`, `PC=$CFFD`). §12's quick-command line omits
+  it; `karateka docs/project/disk-boot-decb-overlap.md:67` has the correct form. With the
+  FDC attached, DECB's prompt poll sits at `PC=$A7D7`/`$D7D5`. `disk11.rom` ships inside
+  `coco3.zip` — and note `mame coco3 -verifyroms` reporting **"bad" is benign**: the only
+  missing files are three *alternate* DOS ROMs (`rgbdos_mess`, `hdbdw3bck`, `hdbdw3bc3`).
+- **14b. `natkeyboard.in_use` defaults to FALSE, and arming it in the same frame as the
+  first post SCRAMBLES that post.** `PRINT 7*6` arrived as `PREPRINT` → `?SN ERROR`. Set
+  `manager.machine.natkeyboard.in_use = true` **at script load**, frames before any key.
+- **14c. Posting is ASYNCHRONOUS and slow — gate on `nk.empty`, never on a frame gap.** A
+  12-character `LOADM"PROBE"` took **~130 frames** to drain. A fixed gap races it and the
+  next post lands mid-string. Both `"\n"` and `"\r"` work as ENTER on this target.
+- **14d. `LOADM` itself takes ~400 frames (drive spin-up + seek) — POLL for the image,
+  don't settle-and-hope.** Watch the load address until the expected opcode appears, then
+  proceed. This also converts a load failure into a *reported load failure* rather than a
+  mystery crash downstream.
+- **14e. A DECB-`LOADM`'d binary MUST NOT contain a `$0100` segment** — this is §5's
+  overlap hit from the other direction, and it is the subtle one. karateka's scripted
+  drivers open with an 18-byte vector block at `$0100-$0111`; **do not copy that into
+  anything DECB loads.** Those drivers are *poked in* by Lua with the CPU already halted,
+  so nothing of DECB's is live. Under `LOADM`, `$010C` is DECB's **live IRQ dispatch
+  vector**: the load succeeds and the image is byte-correct (`$0200 = 7E 02 08` verified),
+  but DECB is left executing its own destroyed vector — `PC` observed wandering
+  `$010D → $FEF9 → $FE0B → $C60B`, never returning to the prompt. Omit the block; if the
+  program masks `CC.I/F` for its whole run it needs no vectors at all.
+
+*Candidates:* `ext-fdc-is-mandatory-a-bare-coco3-has-no-disk-controller`,
+`natkeyboard-in-use-must-be-armed-frames-before-the-first-post`,
+`gate-natkeyboard-posts-on-empty-not-on-a-frame-gap`,
+`poll-for-the-loaded-image-dont-settle-and-hope`,
+`never-ship-a-0100-vector-block-in-a-DECB-LOADM-binary`.
+*Established:* P1.1 build→test loop stand-up 2026-07-25 (POP3_port).
+
+### 14f. Scrape the DECB text screen at `$0400` to see what the guest ACTUALLY received
+The fastest way to debug a natkeyboard problem is to read the 32×16 VDG text screen
+directly instead of guessing from behaviour. **Screen codes are not ASCII:** space is
+**`$60`**, and ASCII `$20-$3F` (punctuation, including `"` → **`$62`**) is stored as
+**ASCII+`$40`**; ASCII `$40-$5F` (uppercase) is stored as-is. Decoding it wrongly makes a
+*correctly* typed command look mangled — `LOADM"PROBE"` reads as `LOADM.PROBE` under a
+naive ASCII map, which sends you hunting a quote-key bug that isn't there.
+```lua
+for row = 0, 15 do
+  local t = {}
+  for col = 0, 31 do
+    local b = mem:read_u8(0x0400 + row*32 + col)
+    t[#t+1] = (b == 0x60) and " "
+           or (b >= 0x40 and b <= 0x5F) and string.char(b)          -- uppercase, as-is
+           or (b >= 0x60 and b <= 0x7F) and string.char(b - 0x40)   -- punctuation, -$40
+           or "?"
+  end
+  log("|" .. table.concat(t) .. "|")
+end
+```
+*Candidate:* `scrape-the-vdg-text-screen-to-see-what-the-guest-received-screen-codes-are-not-ascii`.
+*Established:* P1.1 2026-07-25.
+
+### 14g. `.bat` files MUST be CRLF (build-side, not MAME — but it breaks the build contract)
+`cmd.exe` cannot parse an LF-only batch file: it mangles the whole file into truncated
+command names (`'wasm' is not recognized`, `'bat' is not recognized`) and "fails" in a way
+that looks like a missing toolchain rather than a line-ending problem. `build.bat` is the
+`CLAUDE.md §1` build contract, so this is load-bearing. Pin it in `.gitattributes`
+(`*.bat text eol=crlf`) rather than relying on any developer's `core.autocrlf`. Repair with
+`read_bytes`/`write_bytes` — **never** Python `write_text`, which silently rewrites every
+line ending in the file (the P1.2 `.gitignore` corruption).
+*Candidate:* `pin-bat-crlf-in-gitattributes-cmd-cannot-parse-lf-only-batch`.
+*Established:* P1.1 2026-07-25.
