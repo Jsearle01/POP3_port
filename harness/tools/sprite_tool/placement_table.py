@@ -60,6 +60,14 @@ class Table:
 
     def _parse(self):
         section, block = None, None
+        # PORT NOTE (P1.2): karateka always had a scene table, so a missing file was
+        # never a case. POP's table does not exist until its first scene is placed
+        # (CLAUDE.md §2F), and a hard FileNotFoundError here kills the authoring tool
+        # before it can open a single cel. An absent table is an EMPTY table: the
+        # registry/placement/animation maps stay empty and the tool falls back to the
+        # per-category cel list, which is exactly the right view pre-placement.
+        if not os.path.exists(self.path):
+            return
         with open(self.path, encoding="utf-8") as fh:
             for line in fh:
                 s = line.split("#", 1)[0].strip()

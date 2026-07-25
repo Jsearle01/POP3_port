@@ -3,7 +3,7 @@
 sprite_tool_app.py — hand-authoring sprite tool (M1-M5 wired).
 
   python harness/tools/sprite_tool/sprite_tool_app.py [block frame_index | placement_id]
-  default: climb_crawl 0
+  default: first animation block if a placement table exists, else the first cel on disk
 
 Load/assemble a frame from the §2F table (sub-byte), aspect-correct render (non-square 4x5
 cells, integer zoom, nearest), paint colour + opacity (white/blue/orange/black-opaque/trans),
@@ -33,7 +33,25 @@ def build_frame(table, args):
         return assemble_animation(table, args[0], int(args[1])), (args[0], int(args[1]))
     if len(args) == 1:
         return assemble_static(table, args[0]), (args[0],)
-    return assemble_animation(table, "climb_crawl", 0), ("climb_crawl", 0)
+    # PORT NOTE (P1.2): karateka defaulted to its own `climb_crawl 0` animation block.
+    # POP has no animation blocks yet — no placement table exists until POP's first
+    # scene is placed (CLAUDE.md §2F) — so an equivalent hardcode fails on every
+    # launch. Resolve the default from what is actually on disk instead. This value
+    # is only a PLACEHOLDER: main() immediately reselects via select_category(); it
+    # just has to load without raising. Prefers an animation block when one exists,
+    # so karateka-shaped content still behaves as before.
+    if table.anim:
+        block = sorted(table.anim)[0]
+        return assemble_animation(table, block, 0), (block, 0)
+    for cat in catalog.categories(table):
+        for label, kind, arg in catalog.entries_for(table, cat):
+            if kind == "cel":
+                return assemble_cel(arg), (label,)
+    raise SystemExit(
+        "sprite_tool: no animation blocks and no cels found under content/.\n"
+        "Convert some cels first, e.g.:\n"
+        "  python harness/tools/sprite_convert.py --table \"oracle/source/01 POP Source/Images/IMG.CHTAB1\" \\\n"
+        "      --index 64 --label kid_chtab1_064_thin --start-col 0 --content-layout --out content/kid")
 
 def main():
     table = Table()
@@ -82,7 +100,12 @@ def main():
     # category's flat list gets unwieldy (player alone is 77 entries); a group is one [animation]
     # block (its frames, in file order) or the standalone cels.
     cats = catalog.categories(table)
-    init_cat = "player"
+    # PORT NOTE (P1.2): was hardcoded "player" (a karateka category). POP's categories
+    # are kid/guard/... — prefer "kid" (POP's protagonist, the karateka-"player"
+    # equivalent) when present, else just take the first category that exists.
+    init_cat = "kid" if "kid" in cats else (cats[0] if cats else None)
+    if init_cat is None:
+        raise SystemExit("sprite_tool: content/ holds no categories with cels.")
     entry_by_label = {}                                  # label -> (kind, arg) for the current group
     entry_order = []                                     # labels in list order (playback walks this)
     tk.Label(selbar, text="category:").pack(side="left")

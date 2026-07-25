@@ -428,3 +428,64 @@ nobody was sampling. Directly relevant to §7.7 of this very report.
 ### 11 — Commit
 `5ed34ed` — P1.2: port sprite tooling to POP + verify (converter + authoring tool).
 Pushed to `origin/wip`. *(A report's §11 names the commit containing it; this line was filled in by the follow-up commit below — same convention as P1.1.)*
+
+
+---
+
+## ADDENDUM (post-report, same dispatch) — `sprite-tool.bat` and the GUI's Karateka defaults
+
+**Raised by Jay after the report was pushed: "did you update sprite-tool.bat in the repo root to point at
+the POP sprite tool". Answer: no, I had not.** It was carried into POP at P1.0 bootstrap (`635f986`)
+byte-identical to Karateka's and I never revisited it in P1.2. Checking it exposed that §7.3's "ported but
+NOT exercised" was understating the problem — the GUI could not have launched on POP at all. Three
+compounding faults, all now fixed:
+
+1. **The launcher's working-tree copy was LF** — precisely the §14g bug I filed in P1.1. It predates
+   `.gitattributes` (P1.1), so it had never been re-checked-out; `git check-attr` says `eol: crlf` and a
+   fresh `checkout-index` does yield CRLF, so **the repo was correct and only the stale working copy was
+   broken**. Rewritten as CRLF, and its help text no longer advertises Karateka's
+   `player / climb_crawl f0` defaults. *(The path it invokes,
+   `harness\tools\sprite_tool\sprite_tool_app.py`, was already correct — the ported tool sits exactly
+   there — so "point at the POP sprite tool" was satisfied by construction, but nothing else was.)*
+
+2. **`placement_table.Table.__init__` hard-failed with no placement file.** `_parse()` opens `self.path`
+   unconditionally; POP has no `content/placement.txt` (it does not exist until POP's first scene is
+   placed, `CLAUDE.md §2F`), so the tool raised `FileNotFoundError` before opening a single cel. An absent
+   table is now an **empty** table — registry/placement/anim stay empty and the tool falls back to the
+   per-category cel list, which is the correct pre-placement view.
+
+3. **The app hardcoded two Karateka content defaults.** `init_cat = "player"` and a `build_frame`
+   fallback of `assemble_animation(table, "climb_crawl", 0)` — neither exists in POP. Both now resolve
+   from what is on disk: prefer an animation block if a table supplies one (so Karateka-shaped content is
+   unaffected), else the first cel under `content/`; category prefers `kid`, else the first that exists.
+
+**Verified** by replaying `main()`'s pre-GUI sequence (lines 57-59 — everything that was Karateka-coupled)
+against POP's real content:
+```
+  DEFAULT table path : C:\Projects\POP3_port\content\placement.txt
+  exists?            : False  (POP has no scene yet)
+  Table() constructed: registry=0 placement=0 anim=0
+  categories         : ['guard', 'kid']
+  init_cat resolves  : 'kid'   (was hardcoded 'player')
+  build_frame([])   -> ('guard_gd_001_median',)
+  frame             -> label='guard_gd_001_median' 32x36px
+  FrameEdit         -> cels=['guard_gd_001_median'] selected='guard_gd_001_median'
+  sprite-tool.bat: CRLF=19 bare-LF=0 tabs=0 bytes=890  invoke line intact: True
+```
+Full suite re-run after the change: colour model **UNCHANGED**, compile round-trip **ALL PASS**, celio
+**ALL 9 BYTE-IDENTICAL**. Karateka unmodified.
+
+**The GUI itself is still not launched here** — tkinter and Pillow are both present, so `main()` would
+open a real window and block. §7.3's caveat stands, narrowed: everything *up to* the `tk` import is now
+exercised on POP content; the UI remains unverified until Jay runs it.
+
+**Two process notes, reported rather than buried.** I twice broke a file with Python string escapes while
+fixing this: `"harness\tools"` in a heredoc became `harness<TAB>ools`, corrupting the `.bat`'s invoke
+line — and Python's own `SyntaxWarning: invalid escape sequence '\t'` said so, which I did not act on the
+first time. Rewritten via a literal file write instead of string assembly. Separately, I invoked the
+`.bat` as a "test"; it ends in `pause`, so it hung for the full 2-minute timeout in a non-interactive
+shell. Both are the same lesson as §15b: **stop assembling file content out of escaped string literals,
+and do not execute a script containing `pause` from automation.** I hit the string-escape one **three times in this addendum alone** — including in the sentence describing it, which is the clearest possible argument for the rule.
+
+**Pre-existing, NOT fixed** (out of scope, and confirmed identical in Karateka): the tool has no argparse,
+so `sprite-tool.bat --help` is read as a placement id and dies with `KeyError: '--help'`.
