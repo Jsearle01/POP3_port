@@ -1,14 +1,18 @@
+# build output
 build/
 build/logs/
-*.hdv
-*.dsk
-*.dmk
-*.nib
-*.bin
-*.rom
+obj/
+
+# oracle build artifacts — reproducible from oracle/source/, never committed
+oracle/**/*.hdv
+oracle/**/*.nib
+oracle/**/*.dsk
+oracle/**/*.dmk
+oracle/**/obj/
+
+# python / logs / previews
 __pycache__/
 *.pyc
-harness/**/previews/
-captures/*.png
-viz/*.png
 *.log
+harness/**/previews/
+build/previews/
