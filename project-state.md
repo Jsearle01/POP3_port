@@ -9,7 +9,7 @@ comes next.
 doc under `CLAUDE.md §2D` (no decision records, post-mortems, or behavioural models here —
 those stay Orchestrator-owned). Clyde updates this file directly as build state changes.
 
-**Last updated:** 2026-07-25 (P1.1 — build→test→verify loop stood up)
+**Last updated:** 2026-07-25 (P1.2 — sprite tooling ported to POP and verified)
 **Phase:** BUILD (the feasibility investigation is CLOSED — see §1)
 
 ---
@@ -42,11 +42,31 @@ Feasibility is a translation choice. That is why §3 is a standard and not advic
 | Build script | `build.bat` | **WORKING** — lwasm → DECB `.bin` → imgtool `.dsk` |
 | Test harness | `harness/smoke/run_probe_test.sh` + `probe_test.lua` | **WORKING** — boots, verifies vs spec, PASS/FAIL, exit 0/1 |
 | Harness-proof target | `src/harness/loop_probe.s` | **WORKING** — 149 B; GIME 4-colour + VOFFSET swap + VBL count |
-| Line-ending policy | `.gitattributes` | **NEW** — `.bat` pinned CRLF (cmd.exe cannot parse LF-only batch) |
+| Line-ending policy | `.gitattributes` | `.bat` pinned CRLF (cmd.exe cannot parse LF-only batch) |
+| **Sprite converter** | `harness/tools/sprite_convert.py` | **WORKING** — POP `chtable` cel → CoCo3 4-colour `converted.s`. Colour model carried VERBATIM from karateka |
+| **Colour-model guard** | `harness/tools/verify_color_model.py` | **WORKING** — diffs the two colour fns vs karateka; exit 1 on drift |
+| **Authoring tool** | `harness/tools/sprite_tool/` | **PORTED** — 11 of 13 files byte-identical to karateka; `placement_table.py`/`catalog.py` retargeted |
+| **Compiler round-trip** | `harness/tools/compile_check.py` | **WORKING** — converted.s + opacity.s → PA.9 compiled-sprite pipeline, with soundness sim |
+| **Cel colour spot-check** | `harness/smoke/run_cel_test.sh` + `cel_test.lua` + `src/harness/cel_probe.s` | **WORKING** — displays a converted cel on the GIME, reads the framebuffer back |
+| Converted sample | `content/kid/`, `content/guard/` | 9 POP cels (kid CHTAB1/2/3 + guard CHTAB4.GD; large/median/thin) |
 
 **Engine: nothing built yet.** `src/{boot,engine,hal/coco3-dsk,opt/*}` are still empty
 `.gitkeep` skeletons. The loop exists *before* the engine, deliberately: every piece of
-engine code from here is built inside it.
+engine code from here is built inside it. P1.2 added *content tooling*, not engine code.
+
+### start_col — settled, and it is not what it looks like (P1.2)
+The converter's colour depends on `screen_col = start_col + local_col` PARITY. POP's source
+gives the mapping **exactly**: `ByteTable[x] == x//7` and `OffsetTable[x] == x%7`
+(TABLES.S:51-67, `lup 36` loops), so CVTX is a pure divmod-7 and `midX*7 + midOFF` **is** the
+pixel column; character cels carry sub-byte position via `ADDMID` (GRAFIX.S:341), unlike
+`bgX`/`fgX`, which have no offset field at all. What source cannot give is a *value*: `CharX`
+is live state and the character moves, so a cel has no single draw column — on the real
+Apple II a walking character's artifact colours oscillate. **Per Jay's ruling this is fine:**
+once converted, colour is frozen as CoCo3 palette indices, which carry no NTSC parity
+dependence. `start_col` is a conversion-time authoring input, consumed once. The sample was
+converted at `--start-col 0` (EVEN), which is also the source-defensible default: the draw
+path doubles a 140-res `CharX` into 280-res (`asl`/`rol`, CTRLSUBS.S:809-813), so a
+character's base column is always even.
 
 ### The loop, concretely
 ```
@@ -115,7 +135,11 @@ Ordered. Each item is built inside the loop from §2 and gets its own spec-check
 3. **The compiled-sprite compiler** — productionise `poc/compiled-sprite/popcc.py`
    (currently an explicitly throwaway measurement instrument, *not* engine tooling).
    Needs: real cel→token pipeline, the `opacity.s` sidecar contract, emitted-code
-   correctness harness (the POC's `simulate()` is the right shape).
+   correctness harness (the POC's `simulate()` is the right shape). **P1.2 unblocked this**:
+   `harness/tools/compile_check.py` already feeds real converter output into the POC core
+   through the canonical readers, and all 9 sample cels compile SOUND. But the POC's own
+   `load_kar` reader is DEFECTIVE (parses the decimal header as hex) — do not carry it
+   forward; `sprite_tool/celio.Cel` is the canonical `converted.s` reader.
 4. **Disk loader** — **BLOCKED on an undecided upstream question.** Karateka's
    `fdc-read-primitive.md` leaves two live branches: (b) DD+DRQ→HALT @0.89 MHz and
    (c) DD+polled @1.79 MHz (contested — fast-speed FDC access is unverified and

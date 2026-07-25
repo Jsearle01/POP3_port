@@ -788,3 +788,50 @@ that looks like a missing toolchain rather than a line-ending problem. `build.ba
 line ending in the file (the P1.2 `.gitignore` corruption).
 *Candidate:* `pin-bat-crlf-in-gitattributes-cmd-cannot-parse-lf-only-batch`.
 *Established:* P1.1 2026-07-25.
+
+
+---
+
+## 15. Build/tooling gotchas from the sprite-tooling port (P1.2)
+*(Filed by Clyde under §2A.3. Same class as §14g: not MAME itself, but each one
+breaks the build/verify loop and each cost real time here. **PROVISIONAL** — the
+§2A.3 authorship ruling is still open.)*
+
+- **15a. `lwasm` resolves `include` relative to the SOURCE FILE's directory, not
+  the CWD.** `include "build/cel_include.s"` inside `src/harness/cel_probe.s`
+  resolves to `src/harness/build/cel_include.s` and fails with
+  *"Cannot open include file"*. Pass **`-I .`** (or the needed root) so
+  repo-relative includes work. This is the same root cause as karateka
+  `build.bat`'s standing note that source args must use forward slashes — lwasm
+  derives the include base by splitting the source path. *Candidate:*
+  `lwasm-include-base-is-the-source-dir-not-the-cwd-pass-dash-I`.
+
+- **15b. Python `read_text()`/`write_text()` on Windows silently round-trips
+  UTF-8 through cp1252.** Copying a UTF-8 source file and rewriting it with the
+  default encoding turns every `—` (`â`) into a lone ``: the
+  file is no longer valid UTF-8, and nothing raises. Detected here only because a
+  `str.replace` on a line containing an em-dash silently found no anchor. **Use
+  `read_bytes().decode('utf-8')` / `write_bytes(t.encode('utf-8'))`**, and assert
+  every replace anchor was found. This is the *same failure class* as the P1.2
+  `.gitignore` LF→CRLF corruption — Python text I/O on Windows rewrites what it
+  round-trips. *Candidate:*
+  `python-text-io-on-windows-silently-transcodes-use-bytes-with-explicit-encoding`.
+
+- **15c. POP and karateka cel headers are BYTE-SWAPPED.** karateka:
+  `byte0 = HEIGHT, byte1 = WIDTH`. POP: `byte0 = WIDTH(bytes), byte1 = HEIGHT`
+  [ref: `HIRES.S:180-186`]. Reading POP cels with karateka's order produces a
+  transposed sprite that still "converts" without raising — a silent-garbage
+  failure, not a crash. Any tool ported between the two must have this checked,
+  not assumed. *Candidate:* `pop-and-karateka-cel-headers-are-byte-swapped`.
+
+- **15d. A decimal `fcb` header parsed as hex is a silent, sample-maskable bug.**
+  `converted.s` headers are DECIMAL (`fcb 24,2`). PA.9's throwaway POC reader
+  used `re.findall(r'\$?([0-9A-Fa-f]{1,2})')` + `int(v, 16)`, reading `24` as
+  `0x24` = 36. It never fired in PA.9 because all four karateka cels sampled
+  there have every header digit < 10, where hex and decimal coincide — so PA.9's
+  published numbers are unaffected. It fires immediately on POP cels (24-41 rows).
+  **Use `sprite_tool/celio.Cel`, the canonical reader, rather than a second
+  ad-hoc parser.** *Candidate:*
+  `a-validation-sample-that-doesnt-span-the-input-space-can-certify-a-broken-tool`.
+
+*Established:* P1.2 sprite-tooling port 2026-07-25 (POP3_port).

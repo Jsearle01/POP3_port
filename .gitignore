@@ -16,3 +16,10 @@ __pycache__/
 *.log
 harness/**/previews/
 /build/previews/
+
+# MAME writes cfg/ (coco3.cfg, default.cfg) into its CWD, which is the repo root
+# when harness/smoke/run_*_test.sh runs. Emulator state, not project state.
+/cfg/
+
+# git checkout-index --temp scratch (used by the .gitattributes CRLF round-trip check)
+.merge_file_*
