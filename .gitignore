@@ -1,0 +1,14 @@
+build/
+build/logs/
+*.hdv
+*.dsk
+*.dmk
+*.nib
+*.bin
+*.rom
+__pycache__/
+*.pyc
+harness/**/previews/
+captures/*.png
+viz/*.png
+*.log
