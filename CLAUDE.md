@@ -1,7 +1,13 @@
 # CLAUDE.md — POP → CoCo3 Port Project (Clyde standing rules)
-## Working Agreement v1.0 (adapted from Karateka CLAUDE.md v1.0)
-**Version:** 1.0
+## Working Agreement v1.1 (adapted from Karateka CLAUDE.md v1.0)
+**Version:** 1.1
 **Instantiates:** CODM v0.7. Where this doc and v0.7 overlap, v0.7 governs; this doc adds POP invariants.
+
+**Changelog v1.0 → v1.1 (2026-07-24, Orchestrator-authored per §2D):** resolved the five `<FILL>` markers
+(oracle MAME target + CFFA2 mount; candidate-pool local path; pool row schema; Karateka clone path; standing
+monitor mode). Corrected the §2 ground-truth hierarchy: the source of record is the **adamgreen `build`
+branch pinned at `ec78dbf`** — the tree the oracle is built from — not jmechner's separate archive. No other
+substantive rule changed; every v1.0 invariant is preserved.
 
 ---
 
@@ -23,14 +29,18 @@ authorization.
 
 ## 2. Ground Truth Hierarchy (POP — DIFFERS FROM KARATEKA: real source is trusted)
 
-POP is ported from **actual (or closely-related) Mechner source** — so, unlike Karateka's
-derived-from-memory oracle, **the source is a trusted, labeled default working basis.** The authority stack:
+POP is ported from **real, buildable Mechner assembly source — specifically the adamgreen `build` branch
+(`01 POP Source/Source/*.S`), pinned at commit `ec78dbf`, which is the exact tree the oracle `.hdv` is built
+from.** Unlike Karateka's derived-from-memory oracle, the source is a trusted, labeled default working basis;
+reading and building from ONE tree collapses source-vs-oracle drift. jmechner's archive is the upstream
+original, does not build on modern systems, and is NOT referenced. The authority stack:
 
 1. **Jay (the human)** — ultimate; visual/behavioral ground truth; overrides all below.
 2. **Execution trace / running game** — ultimate authority below Jay; **wins over source on matters of
    fact.** When trace and source disagree, the trace is right.
-3. **Mechner source** — the **trusted default** you plan and build from (much more trustworthy than
-   Karateka's oracle), ranked just below the trace.
+3. **adamgreen `build`-branch source** (`01 POP Source/Source/*.S` @ `ec78dbf`, vendored at `oracle/source/`)
+   — the **trusted default** you plan and build from (much more trustworthy than Karateka's oracle), ranked
+   just below the trace. This is the same tree the oracle is built from.
 4. Disassembly of the built port / memory dumps — evidence.
 5. Comments / labels — lowest; unverified hypothesis.
 
@@ -52,7 +62,13 @@ Standing reference files at the repo root capture every MAME instrumentation qui
 command/Lua syntax, and the harness tool that exercises each — so MAME idioms are **looked up, not
 rediscovered each dispatch**:
 
-- **`mame-idioms-<POP-oracle-target>.md`** — the POP Apple II oracle target. `<FILL: oracle MAME target>`
+- **`mame-idioms-apple2e-oracle.md`** — the POP Apple II oracle target: MAME **`apple2e`** (6502, ~1.023 MHz).
+  The oracle disk `PrinceOfPersia_3.5.hdv` is an 800K 3.5" ProDOS volume; `.hdv` is a **natively accepted**
+  MAME hard-disk extension (`chd,hd,hdv,2mg,hdi`), mounted via a **CFFA2 card** in a slot — **`cffa202`** (the
+  6502-firmware variant) is required for the 6502 `apple2e`; `cffa2` needs an enhanced //e or better. Expected
+  shape `mame apple2e -sl<n> cffa202 -hard1 PrinceOfPersia_3.5.hdv`; confirm the exact slot + `-hard1` media
+  instance via `-listslots`/`-listmedia`. NOT `-flop1` (that is 5.25"). This file carries the
+  inherited-unverified-for-POP banner until re-verified against POP's oracle.
 - **`mame-idioms-coco3-port.md`** — the `coco3` / 6809 port target. **Carry Karateka's file over** (§2G):
   the coco3 idioms transfer directly (same target, same video mode). Seed POP's from Karateka's, then
   extend.
@@ -97,13 +113,18 @@ silently no-op'd for several dispatches by searching the wrong repo and reroutin
 drift. Recorded here so it stays found.)
 
 - **Pool:** `github.com/Jsearle01/methodology-candidate-pool`, a **sibling of `POP3_port`**:
-  local path `<FILL: /c/Projects/methodology-candidate-pool or equiv>`. **POP candidates live in
+  local path `/c/Projects/methodology-candidate-pool` (sibling of `POP3_port`). **POP candidates live in
   `seeds/POP/live/`.** **Clyde creates `seeds/POP/` on first capture** (dispatch-#1 item).
 - **Capture at the FIRST instance** as a NEW row: `seeds/POP/live/<iso8601-date>-<slug>.md`. **New rows only
   — NEVER read or edit existing pool entries** (folding is the reconciler's read-time job).
 - **Row schema:** match an existing `seeds/karateka/live/*.md` exactly (`project: POP`, `source: live`,
-  `instance_history` with `initiator` set faithfully e.g. `clyde` — never guessed). `<FILL: confirm the
-  pool's current row schema from its onboarding; copy the shape from a live entry.>`
+  `instance_history` with `initiator` set faithfully e.g. `clyde` — never guessed). **Schema is frozen in the
+  pool's root `SCHEMA.md`**; two load-bearing constraints: `instance_count` MUST equal
+  `len(instance_history)`, and `live` rows are ALWAYS fresh single-instance rows (never find-and-edit — a
+  task-time pool read is the vetoed thrash). Row fields: `principle, slug, project: POP, source: live,
+  status: open, scope_judgment, parked_at_version, settled_in, settled_note, instance_count: 1,
+  instance_history:[{date, task, context, initiator}], why_might_generalize, proposed_disposition,
+  provenance_complete`.
 - **Commit + push fire-and-forget** — non-blocking; a failed push NEVER gates a task. Report the captured
   slug(s) in the report's "Candidate(s) captured" line.
 - **Credential note:** if the pool remote carries an embedded credential, NEVER copy the token into
@@ -177,7 +198,8 @@ scene placement table the build reads. Exactly ONE home for each.
 ## 2G. Karateka is a read-only SIBLING implementation reference
 
 POP reuses Karateka's proven, Jay-gated CoCo3 substrate. **Karateka's repo is READ-ONLY, alongside
-`POP3_port`** (`<FILL: local clone path>`).
+`POP3_port`** (local clone `/c/Projects/karateka_coco3` — NOTE: local dir uses an **underscore**, the GitHub
+remote is `Jsearle01/karateka-coco3` with a **hyphen**; not interchangeable).
 
 - **Reuse-and-reference (copy-and-adapt INTO `POP3_port`):** the **HAL** (`src/hal/coco3-dsk/gfx.s` — blit
   primitives, sub-byte 4-phase shifter, `$FFD9` double-speed init), **double-buffer page-flip**
@@ -219,8 +241,9 @@ to Jay for confirmation before executing a spatial correction.
 
 - §6 25.3 remains **"pending Jay"** until Jay confirms the gate was observed. Clyde screenshot analysis is
   never authoritative for 25.3; self-certifying it will be rejected.
-- **Monitor mode:** `<FILL: POP standing gate monitor mode — carry Karateka's RGB default (screen_config=1)
-  unless Jay sets otherwise>`. State which mode a given gate used. The exhaustive-enumeration rule (2A.4)
+- **Monitor mode:** **RGB default, `screen_config=1`** (Jay-confirmed 2026-07-24; carried from Karateka,
+  which ships `dist/mame-cfg/rgb/coco3.cfg` and `composite/coco3.cfg`). State which mode a given gate used.
+  The exhaustive-enumeration rule (2A.4)
   and "the fused 1:1 read is the colour gate" stay intact.
 
 ---
