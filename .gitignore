@@ -1,6 +1,6 @@
 # build output
-build/
-build/logs/
+/build/
+/build/logs/
 obj/
 
 # oracle build artifacts — reproducible from oracle/source/, never committed
@@ -15,4 +15,4 @@ __pycache__/
 *.pyc
 *.log
 harness/**/previews/
-build/previews/
+/build/previews/
