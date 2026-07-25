@@ -426,4 +426,5 @@ nobody was sampling. Directly relevant to §7.7 of this very report.
 ---
 
 ### 11 — Commit
-`<hash>` — pushed to `origin/wip` before this report.
+`5ed34ed` — P1.2: port sprite tooling to POP + verify (converter + authoring tool).
+Pushed to `origin/wip`. *(A report's §11 names the commit containing it; this line was filled in by the follow-up commit below — same convention as P1.1.)*
