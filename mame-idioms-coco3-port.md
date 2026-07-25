@@ -186,7 +186,8 @@ extremes ($00 black / $3F white) survive; indices 1/2 (orange, blue/cyan) come o
 absent. **Symptom:** a four-band palette test shows only 2 bands; Brøderbund logos render
 without orange/blue.
 
-**The required order** (addresses confirmed present in `src/`):
+**The required order** (addresses confirmed present in *Karateka's* `src/` — **POP: confirm each GIME address
+against POP's own display-init code on first use; POP's `src/` does not yet contain these**):
 1. **`$FF90`** (CoCo3 mode) **first** — the `$8000+` framebuffer needs CoCo3 mode for CPU
    access.
 2. clear buffers.
@@ -199,8 +200,10 @@ values are written"), **not** Sockmaster-documented. Cost of not knowing it: the
 display-init arc burned multiple followups (followup-2 NOT CONFIRMED, chasing palette
 *values* when the cause was *ordering*) before the reorder fixed it. *Candidate:*
 `gime-palette-writes-must-follow-video-mode-set`. *Established:* P2.3a.6 followup-3 (the
-reorder). Tool: `harness/tools/palette_derive.py` (index derivation),
-`harness/tools/decode_framebuffer.py` (framebuffer verify).
+reorder). Tool (Karateka's — **POP `harness/tools/` is an empty skeleton; these do not exist in POP yet**):
+`harness/tools/palette_derive.py` (index derivation), `harness/tools/decode_framebuffer.py` (framebuffer
+verify). The GIME write-order constraint itself is CoCo3 hardware behaviour and transfers to POP unchanged; it
+is only the tooling and the confirmed-addresses that are Karateka-specific.
 
 ---
 
@@ -267,8 +270,11 @@ A `wpset` PC-confirm shows *code ran*, not *what it looks like*.
 **Pixel-colour provenance (addendum D — applies to any capture file):** filename labels
 ("TRUE"/"reference"/"ground truth") establish nothing; **content + creation method +
 timestamp** do. MAME's rendered palette ≠ the conversion tool's constants (MAME blue ≈
-`(25,144,255)` vs tool `(0,0,255)`, the latter confirmed in `harness/tools/palette_derive.py`)
-— a "ground truth" file with `(0,0,255)` is a tool render. **Automated-check tautology:**
+`(25,144,255)` vs tool `(0,0,255)`). **These specific constants and the `palette_derive.py` they were
+confirmed in are Karateka-measured — POP must re-measure MAME's palette against POP's own tooling before
+relying on the exact values; POP's `harness/tools/` is empty.** The *principle* — a "ground truth" file whose
+pixels carry the tool constant rather than MAME's rendered colour is a tool render, not a capture — transfers
+to POP unchanged and reinforces CLAUDE.md §3 (visual authority is Jay's; never interpret PNG pixels). **Automated-check tautology:**
 "N/N pixels match the rule" is tautological if the rule generated the predictions — validate
 against independently-grounded pixels. *Candidates:*
 `tool-render-is-not-a-mame-capture-verify-by-pixel-colour`,
