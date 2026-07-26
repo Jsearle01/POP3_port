@@ -9,7 +9,7 @@ comes next.
 doc under `CLAUDE.md §2D` (no decision records, post-mortems, or behavioural models here —
 those stay Orchestrator-owned). Clyde updates this file directly as build state changes.
 
-**Last updated:** 2026-07-26 (P1.3 — production sprite compiler built and proven on hardware)
+**Last updated:** 2026-07-26 (PA.13 — playfield blackness measured; opaque-black lever declined)
 **Phase:** BUILD (the feasibility investigation is CLOSED — see §1)
 
 ---
@@ -95,7 +95,12 @@ Per footprint byte, 9-cel sample: **draw 5.77**, erase 4.52 (byte-set) / 7.32 (r
 so Glen's four optimizations bought **~3%** — `PSHU` fires in 0.4% of cycles because only 7%
 of opaque bytes sit in runs of 4+; 60% of drawn bytes are *mixed* and fragment every run.
 **Opaque-black is the real lever** (mixed 644→0, PSHU 7→348, draw −32%) but it is an
-AUTHORING decision. **Peel model is an open engine decision worth ~2.8 cy/byte**: POP's own
+AUTHORING decision — and **PA.13 DECLINED it**: measured at the game's own character
+placements the prince's body band is only **86.1% black (dungeon) / 84.3% (palace)**,
+below the ~90% near-free bar, and the lit fraction is floor-hugging (**25.3% lit at
+feet/shins** vs ~9% at head) — i.e. the departure would show exactly at the
+character-floor contact line. p90 fits without it, so: **interior-black only, keyed
+edge.** Tools: harness/tools/playfield_census.py, playfield_band.py. **Peel model is an open engine decision worth ~2.8 cy/byte**: POP's own
 peel is a rectangle (`LAYRSAVE` `inc WIDTH`+`CROP`, constant cost), but a compiled sprite can
 restore only the bytes it drew. p90 frame: PA.9's marginal 1.01× → **0.96–0.99× FEASIBLE**.
 
