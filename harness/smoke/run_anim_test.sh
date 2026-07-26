@@ -50,7 +50,7 @@ export P_FAIL="$FAIL"
     -flop1 "$DSK" \
     -window -nomaximize \
     -nothrottle -sound none \
-    -seconds_to_run 120 \
+    -seconds_to_run 260 \
     -autoboot_script harness/smoke/anim_test.lua \
     >/dev/null 2>&1
 

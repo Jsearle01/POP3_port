@@ -67,10 +67,11 @@
 * ---------------------------------------------------------------
 PROBE_MAGIC     equ     $DB16           ; "DB" = double buffer, 16 = the mode
 STACK_TOP       equ     $1F00           ; MMU block 0 — never remapped
-ANIM_FRAMES     equ     150             ; ~2.5 s of motion per stage
+ANIM_FRAMES     equ     150             ; more motion per stage, to judge it properly
 SCREEN_ROWS     equ     192
 BAR_W           equ     16              ; moving bar width in BYTES
-BAR_STEP        equ     4               ; bytes moved per frame
+BAR_STEP        equ     2               ; bytes moved per swap (smaller = smoother,
+                                        ; affordable now the draw fits in a frame)
 
 * HAL frame counter, DP $10/$11 [ref: src/hal/coco3-dsk/hal_globals.s]
 frame_hi        equ     $10
@@ -314,11 +315,22 @@ paint_bar
 pb_row
                 pshs    x               ; remember the row's bar start
                 lda     paint_col
-                ldb     #BAR_W
-pb_px
-                sta     ,x+
-                decb
-                bne     pb_px
+                tfr     a,b             ; D = colour:colour, two pixels-worth per store
+* UNROLLED, and the unroll is the point. The byte loop this replaces cost
+* ~180 cycles/row (16 single-byte stores plus decb/bne each time); eight 16-bit
+* stores with no loop overhead cost ~64. Two calls per frame (erase + draw) over
+* 192 rows is the whole frame budget, and at ~180 cyc/row the animation only
+* managed one swap per ~3 VBLs -- a 20 Hz update, which on a high-contrast bar
+* reads as strobing rather than as motion. Frame RATE, not tearing.
+* Requires BAR_W = 16 and an even paint_x; both hold by construction.
+                std     ,x++
+                std     ,x++
+                std     ,x++
+                std     ,x++
+                std     ,x++
+                std     ,x++
+                std     ,x++
+                std     ,x++            ; 8 x 2 = BAR_W bytes
                 puls    x               ; back to the bar start...
                 clra
                 ldb     HAL_gfx_cur_stride

@@ -389,3 +389,46 @@ Committed and pushed.
 **POP:** `4b8ea94` (study + double-buffer + idioms + probe) + `52260c6` (this report) — pushed to `origin/wip`.
 **Karateka:** `58cad3e` on `wip` — shared source, service gated OFF, binary byte-identical. Pushed.
 **Karateka `main` @ `5eb92b1` — untouched.**
+
+---
+
+## ADDENDUM (post-report, same dispatch) — smoothness change, and a REGRESSION I introduced
+
+Jay viewed the live animation and reported: **"looks ok, still a bit blinky."** That is a
+partial pass with a real observation, so it is recorded as such — 25.3 is NOT discharged by
+it.
+
+**Diagnosis of the blinkiness: frame RATE, not tearing.** The inner paint loop was 16
+single-byte stores per row plus loop overhead (~180 cycles/row). Two paints per frame (erase
++ draw) over 192 rows consumed the whole frame budget, so a swap only landed every third
+VBL — a ~20 Hz update, which on a high-contrast bar reads as strobing. Replaced with eight
+unrolled 16-bit stores (~64 cycles/row) and halved the bar step:
+
+| | before | after |
+|---|---|---|
+| stage duration | ~460 MAME frames | **~308** |
+| swaps per frame | 1 per 3.07 | **1 per 2.05** |
+| effective update | ~20 Hz | **~29 Hz** |
+
+**THE REGRESSION: `run_anim_test.sh` now FAILS at stage 5 (22/23), and I have not
+root-caused it.** The probe FREEZES in the no-swap contrast stage when loaded via DECB
+`LOADM` — `swaps` and the frame counter stop at identical values (600 / 1132) across runs
+with different timeouts, so it is a freeze and not slowness. It does NOT reproduce under
+direct load: a PC-band sample of stage 5 there shows 400/400 samples inside the probe with
+the frame counter advancing 1:1, and all five stages complete. Stages 1–4 pass on both paths.
+
+What I know, stated plainly because the shape matters:
+- Before the smoothness change the same test passed 27/27 including stage 5, so **I
+  introduced this**.
+- The DECB path is *independently* flaky — a follow-up diagnostic run never reached stage 5
+  at all, which is consistent with the intermittent `natkeyboard` quote defect (§20d) making
+  that path unreliable run-to-run.
+- Those two facts are easy to confuse, and I have not separated them. "It's just the keyboard
+  bug" is a hypothesis, not a finding.
+
+**Status: the suite is NOT green.** The live path Jay gates on is unaffected and verified
+end-to-end, but the automated DECB-path test has a real, reproducible failure that is mine
+and is outstanding. It is recorded here rather than re-scoped around.
+
+**Superseding §5's 27/27:** that figure was accurate for the binary at the time it was
+measured. The current binary measures **22/23 with stage 5 failing on the DECB path**.

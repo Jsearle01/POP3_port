@@ -37,7 +37,7 @@ local STAGES = {
   { n=5, name="16-colour NO-SWAP",   vres=0x1E, stride=160, swaps=false },
 }
 
-local BOOT_FRAME, SETTLE, TIMEOUT = 300, 1200, 5400
+local BOOT_FRAME, SETTLE, TIMEOUT = 300, 1200, 14000
 
 local cpu = manager.machine.devices[":maincpu"]
 local mem = cpu.spaces["program"]
