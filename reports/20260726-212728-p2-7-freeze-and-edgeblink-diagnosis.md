@@ -272,5 +272,5 @@ loud. Committed and pushed.
 ---
 
 ### 11 — Commit
-**POP:** `<hash>` (this report only — no fix). Pushed to POP `origin/wip`.
+**POP:** `b244177` (this report only — no fix). Pushed to POP `origin/wip`.
 **Karateka:** untouched at `58cad3e`; `main` `5eb92b1`.
