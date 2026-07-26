@@ -237,6 +237,59 @@ HAL_gfx_shutdown    equ *       ; STUB-P3 — not yet implemented
 ;   Same args/returns as HAL_gfx_blit_sprite. [ref: src/hal/coco3-dsk/gfx.s]
         import  HAL_gfx_blit_sprite_opaque
 
+; ---------------------------------------------------------------
+; The four blit entry points below were IMPLEMENTED and LIVE but never declared
+; here. P2.2 (POP) found them undeclared; P2.2-verify established they are called
+; from engine code -- blit_scroll from scene4_scroll.s, and the other three from
+; climb_controller.s, plus test drivers (25 call sites total), with
+; docs/project/memory-window-audit.md independently marking two of them LIVE and
+; dozens of authored content/*/opacity.s files naming them as their descriptor
+; format contract. Jay ruled: DECLARE. They are public contract, not internals.
+; Declaring an already-defined, already-used symbol is inert to codegen -- the
+; production binary is byte-identical before and after this block.
+; ---------------------------------------------------------------
+
+; HAL_gfx_blit_sprite_mixed
+;   Blit with a MIXED opacity descriptor: repeating rectangle entries select
+;   opaque vs keyed regions at byte-column x row-band granularity, composited to
+;   MIX_SCRATCH then blitted by the shared leaf.
+;   Args:  X = sprite (height,width,bitmap); A = dest byte col; B = dest row;
+;          U = descriptor ptr; blit_subbyte ($0C) set by caller.
+;   Uses mix_* ZP ($14-$20); blit_subbyte persists across regions.
+;   [ref: src/hal/coco3-dsk/gfx.s]
+        import  HAL_gfx_blit_sprite_mixed
+
+; HAL_gfx_blit_sprite_masked
+;   Opaque blit with a per-COLUMN positional mask -- splits opacity at the PIXEL
+;   within a byte (the plain blit splits at byte boundaries). Result is
+;   (dest AND ~mask) OR source; mask bit-pair 11 = take source (opaque),
+;   00 = keep dest. Kept-dest pixels rely on source being index-0 there.
+;   Args:  X = sprite (height,width,bitmap); A = dest byte col; B = dest row;
+;          U = mask array ptr (one mask byte per source column, width bytes).
+;   BYTE-ALIGNED ONLY (no sub-byte shift).
+;   [ref: src/hal/coco3-dsk/gfx.s]
+        import  HAL_gfx_blit_sprite_masked
+
+; HAL_gfx_blit_stencil_punch
+;   Punch a per-PIXEL 2D silhouette to black: dest = dest AND ~mask, walking a
+;   FULL 2D mask (width*height bytes, advancing continuously) rather than a
+;   per-column mask reset each row. Mask bit-pair 11 = force pixel black.
+;   Args:  X = stencil (height,width,maskbytes); A = dest byte col; B = dest row.
+;   BYTE-ALIGNED. Bounds-checked. Clobbers A,B,X,Y,CC.
+;   [ref: src/hal/coco3-dsk/gfx.s]
+        import  HAL_gfx_blit_stencil_punch
+
+; HAL_gfx_blit_scroll
+;   As HAL_gfx_blit_sprite, but targets a 16-bit PHYSICAL row (0-391) rather than
+;   a 0-191 screen row -- for the scene-4 VOFFSET sliding-window scroll, where
+;   both buffers form one continuous scroll region. Row stride #80.
+;   Args:  X = sprite ptr (height,width,bitmap); dest row via s4_dest_row;
+;          blit_subbyte ($0C) = sub-byte offset 0-3 (caller sets).
+;   Returns: CC.C clear. Preserves U. Clobbers A,B,X,Y,CC,$0D/$0E.
+;   [ref: src/hal/coco3-dsk/gfx.s]
+        import  HAL_gfx_blit_scroll
+
+
 ; HAL_gfx_set_palette
 ;   Write 4-entry palette to GIME palette registers.
 ;   Args:  X = pointer to 4-byte palette array (one byte per
