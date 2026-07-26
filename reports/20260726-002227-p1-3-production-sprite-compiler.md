@@ -257,11 +257,29 @@ ASCENDING ORDER: A (D high), B (D low), X high, X low, Y high, Y low
 **25.2 — the compiler + output:** `harness/tools/sprite_compiler.py`; compiled `.s` in `build/compiled/`
 (gitignored build artifacts); the emitted routines are quoted above.
 
-**25.3 — the real GIME render → JAY'S GATE, pending.**
-`build/compiled-review/compiled_kid_chtab1_040_large__real-GIME.png` — a MAME snapshot of the compiled
-sprite drawn by real 6809 code. **Generated and surfaced without inspection** (`CLAUDE.md §3`). Note the
-background is the `$A5` canary by design, so the frame is deliberately noisy — that noise *is* the
-transparency evidence. Appearance is Jay's call.
+**25.3 — the real GIME render → JAY'S GATE: ✅ CONFIRMED 2026-07-26T00:45:32Z ("the png looks good").**
+
+Surfaced uninspected per `CLAUDE.md §3`. The background is the `$A5` canary by design, so the frame is
+deliberately noisy — that noise *is* the transparency evidence.
+
+**Gated on the SECOND snapshot, not the first — and the reason matters.** The original
+`…__real-GIME.png` was rendered in **Composite**, because MAME's `Monitor Type` defaults to Composite
+(`value=0, default="yes"`) and this harness never set it, while `CLAUDE.md §4` makes **RGB** the project
+gate. On top of that the probe palette (`$24`/`$12`) had been hand-computed as an RGB bit-pack and was wrong
+for both modes; under composite decoding `$24` is intensity 2 / hue 4 — **yellow**. Jay reported the orange
+reading yellow-ish, which is what exposed the monitor-mode error underneath it. Both fixed (commit
+`6f07c8a`): RGB forced via `-cfg_directory dist/mame-cfg/rgb`, palette set to karateka's MAME-verified RGB
+values `$00/$26/$19/$3F`. The confirmed artifact is
+`build/compiled-review/compiled_kid_chtab1_040_large__RGB-corrected.png`.
+
+**None of it moved a single measurement in this report.** The framebuffer holds palette INDICES; monitor
+type and palette registers only change how those indices are DECODED for display. Every cycle count,
+soundness diff and the 492-byte framebuffer match are unaffected, and were re-run green after the fix
+(compiled proof PASS, P1.1 loop probe 6/6, P1.2 cel spot-check PASS).
+
+**And no automated check could have caught it** — the byte-diff was green at 1968/1968 px throughout,
+because palette semantics live entirely outside the bytes being diffed. Structurally the same blind spot as
+the P1.2-fix orientation flip: different property, identical shape. Filed as idiom §18/§18a.
 
 **`git status --porcelain` (tracked):**
 ```
@@ -295,6 +313,10 @@ M  project-state.md
 ---
 
 ### 7 — Uncertainty flags
+
+*(25.3 is CLOSED — Jay confirmed the corrected render 2026-07-26. The monitor-mode/palette defect
+found in the process changed no measurement in this report; see 25.3.)*
+
 
 1. **The cy/byte figures are counted from emitted instructions, not executed cycle counts.** MAME exposes no
    cycle counter (idiom §0), so per-instruction counts are the method — the same one PA.7/PA.9/PA.11 used.
@@ -331,7 +353,12 @@ M  project-state.md
 ---
 
 ### 9 — User interaction during task
-**None.**
+**One, post-report, and it caught a real defect.** Jay reviewed the surfaced snapshot and reported
+*"the orange color shows as yellow-ish but i guess thats because you didn't set the proper palette
+colros?"* — correct, and the cause ran deeper than the palette: the harness had never set MAME's
+Monitor Type, so it had been rendering in Composite (MAME's default) since P1.1 while `CLAUDE.md §4`
+specifies RGB. Both fixed in `6f07c8a`; see 25.3. Jay then confirmed the corrected render
+(*"the png looks good"*, 2026-07-26T00:45:32Z), closing the gate.
 
 ---
 
