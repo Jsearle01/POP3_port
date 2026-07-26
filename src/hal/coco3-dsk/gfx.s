@@ -140,7 +140,11 @@ HAL_gfx_init:
 *     state, so IEN=1 is harmless in this configuration.
 *     [ref: src/hal.inc INIT ORDER — time init (step 2) before gfx (step 3)]
 *
-        lda     #$6C
+        lda     #$6C                    ; == KCOCO3_INIT0_RUN (hal.inc) — IEN=1 MUST be
+                                        ; re-asserted here or HAL_time_init's VBL interrupt
+                                        ; dies silently. $FF90 is write-only: no RMW possible.
+                                        ; Literal, not the symbol: hal.inc uses `import` and
+                                        ; cannot be included in a --decb build.
         sta     $FF90                   ; INIT0: COCO=0,MMUEN=1,IEN=1,MC3=1,MC2=1
 
 * --- Step 2: Clear Frame A ($8000-$BBFF, 15,360 bytes) ---

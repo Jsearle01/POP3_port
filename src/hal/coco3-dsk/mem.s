@@ -29,4 +29,8 @@ HAL_mem_size_detect:
         andcc   #$FE                    ; CC.C clear = success
         rts
 
-        end     boot                    ; DECB exec address = $0200 (boot in boot.s)
+* NOTE (HAL-sync flag 2): the `end boot` directive that used to terminate this file
+* has been relocated to src/engine/entry.s. A HAL module must not name the ENGINE's
+* entry symbol — it made the HAL unassemblable in any project without a `boot`
+* (demonstrated when POP adopted it) and forced this file to be build-list-last.
+* The program entry now lives in the engine/build layer, where it belongs.

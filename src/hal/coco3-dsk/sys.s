@@ -183,7 +183,9 @@ HAL_sys_init:
 * COCO=0 switches from SAM-mode to GIME-mode address translation.
 * [ref: docs/ground-truth/SockmasterGime.md — $FF90 bit definitions]
 * [ref: refs/GFXMODE3.ASM line 53-54 — empirical provenance]
-        lda     #$4C
+        lda     #$4C                    ; == KCOCO3_INIT0_ACTIVATE (hal.inc)
+                                        ; literal, not the symbol: hal.inc uses `import`
+                                        ; and cannot be included in a --decb build.
         sta     $FF90                   ; INIT0: COCO=0,MMUEN=1,IEN=0,MC3=1,MC2=1
 
 * Step 4: Program MMU task 0 slots to P1.6 physical page layout.

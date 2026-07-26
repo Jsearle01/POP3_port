@@ -104,7 +104,22 @@ KCOCO3_SAM_RAM_C000     equ $FFDF   ; SAM: RAM at $C000 (task 0)
 ; [ref: GIME-RM §10] verified working reference mode
 KCOCO3_VMODE_GRAPHICS   equ $80     ; $FF98 = graphics (BP=1)
 KCOCO3_VRES_320x192x4   equ $15     ; $FF99 = LPF=00, HRES=101, CRES=01
-KCOCO3_INIT0_COCO3      equ $4C     ; $FF90 = COCO=0, MMUEN=1, MC3=1, MC2=1
+; $FF90 INIT0 has TWO correct values at TWO points in the boot sequence. A single
+; constant cannot serve both, and the one that existed was correct only for the
+; early write — so gfx.s bypassed it with a literal. Split, so each site can name
+; what it means and neither has to hard-code a magic number.
+;
+;   bit 5 = IEN (GIME master interrupt enable).
+;   ACTIVATE ($4C, IEN=0) — HAL_sys_init step 3. Switches to CoCo3-mode address
+;     translation before interrupts are wanted. IEN=0 is CORRECT here.
+;   RUN      ($6C, IEN=1) — every write AFTER HAL_time_init has enabled the GIME
+;     VBL interrupt. $FF90 is write-only, so a read-modify-write is impossible and
+;     any later writer must re-assert IEN or the VBL interrupt dies silently.
+;
+; Using ACTIVATE at a late site clears IEN and stops the frame counter with no
+; error — the failure mode this split exists to prevent.
+KCOCO3_INIT0_ACTIVATE   equ $4C     ; $FF90 = COCO=0, MMUEN=1, IEN=0, MC3=1, MC2=1
+KCOCO3_INIT0_RUN        equ $6C     ; $FF90 = COCO=0, MMUEN=1, IEN=1, MC3=1, MC2=1
 
 ;--------------------------------------------------------------
 ; ERROR CODES
