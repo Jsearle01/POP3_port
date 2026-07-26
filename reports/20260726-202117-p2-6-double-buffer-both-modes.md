@@ -4,8 +4,9 @@ POP `wip` (service + probe + harness + idioms) and Karateka `wip` (shared source
 **Karateka `main` UNTOUCHED at `5eb92b1`.**
 **Karateka prod byte-identity: `88eba89b15cdf17c8d25e082d2d3e1f3cce57d38`, 17,978 bytes — HELD.**
 **25.3 LIVE animation gate: OBSERVED BY JAY** (2026-07-26, live throttled `coco3`, RGB, direct load).
-Two viewings: *"looks ok, still a bit blinky"*, then after the frame-rate fix *"look better"*.
-See the ADDENDUM for the exact scope of what that does and does not confirm.
+Stages 1-4: *"looks ok, still a bit blinky"*, then after the frame-rate fix *"look better"*.
+**Stage 5, the no-swap contrast: *"stage 5 did blink"* — the contrast HELD, by eye.**
+**AC5 fully MET, contrast half included.**
 
 ### 0 — Receipt / status (C-35 stamp)
 t0=2026-07-26T20:21:17Z (POP HEAD `96860f4`, wip; tracked tree clean).
@@ -368,8 +369,9 @@ up where 1–4 do not.** Not self-certified.
 7. **[PARKED BY JAY] The stage-5 DECB-path freeze** (ADDENDUM 1) — reproducible, mine, unexplained; the
    probe freezes in the no-swap contrast under `LOADM` but not under direct load. Must be separated from
    the independent `natkeyboard` flakiness (idiom §20d) before either is called fixed.
-8. **Confirm the contrast stage actually tears** (ADDENDUM 2) — currently automated-only; until an eye
-   confirms stage 5 looks wrong, the smoothness of stages 1-4 proves less than it appears to.
+8. ~~Confirm the contrast stage actually tears~~ — **CLOSED 2026-07-26**: Jay observed *"stage 5 did
+   blink"*. The asymmetry between the animated stages and the no-swap stage is now eye-confirmed, which
+   is what makes the smoothness of stages 1-4 attributable to the swap (ADDENDUM 2).
 
 ---
 
@@ -448,6 +450,19 @@ measured. The current binary measures **22/23 with stage 5 failing on the DECB p
 1. after the first live run — *"looks ok, still a bit blinky"*
 2. after the ~20 Hz → ~29 Hz fix — *"look better"*
 
+**Jay's third observation, which closed the gate:** *"stage 5 did blink"*.
+
+**THE CONTRAST HELD, AND IT IS THE WHOLE PROOF.** Stages 1-4 and stage 5 run the identical
+animation, at the identical draw cost, with the identical VBL pacing. The only difference is
+that stage 5 draws into the buffer the GIME is scanning instead of the hidden one. Jay saw
+stages 1-4 as acceptable and stage 5 as blinking — and distinguished the two, having already
+described a *residual* blinkiness in 1-4 that the frame-rate fix improved. That asymmetry is
+evidence no counter can supply: it is what makes "smooth" attributable to the double-buffering
+rather than to the animation happening to look fine.
+
+Follow-up 8 (confirm the contrast stage actually tears) is therefore **CLOSED by observation**,
+not carried.
+
 **What that confirms.** The double-buffered animation renders acceptably in both modes,
 across mode switches in both directions, and the residual artifact Jay saw was addressed by
 raising the update rate rather than by changing the swap. It is a pass on the substance of
@@ -464,8 +479,10 @@ AC5: he looked at it live, twice, and accepted it.
   the right direction, which is corroboration. It is not proof that no tearing exists —
   a swap-timing artifact could still be present below the threshold of the improved rate.
 
-**Honest summary of 25.3:** observed and accepted by Jay; the contrast-stage half is
-automated-only. Not self-certified at any point.
+**Honest summary of 25.3: DISCHARGED.** Observed and accepted by Jay across three
+observations, including the contrast stage. Both halves of the proof rest on his eye — the
+animated stages look right, and the deliberately-broken one looks wrong. Not self-certified
+at any point.
 
 **PARKED BY JAY:** the stage-5 DECB-path freeze (ADDENDUM 1) is deferred, not resolved.
 The suite stands at 22/23 with that failure outstanding and mine. It is carried into §8 as
