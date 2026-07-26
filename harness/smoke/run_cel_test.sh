@@ -31,6 +31,19 @@ rm -f "$PASS" "$FAIL" "$LOG"
 
 echo "[run_cel_test] cel: $CEL_DIR"
 
+# ---------------------------------------------------------------------------
+# ORIENTATION GUARD (P1.2-fix). Runs BEFORE the framebuffer check, because the
+# framebuffer check structurally cannot see a vertical flip: it compares the
+# framebuffer to the converter's output, and both are downstream of the
+# converter, so a consistent flip round-trips clean. It passed 1152/1152 pixels
+# on cels that were upside down; Jay's eye caught it, not the bytes.
+# This guard compares against the ORIGINAL POP cel binary instead.
+# Skipped (not failed) for synthetic cels with no ORIGIN header.
+if ! python harness/tools/verify_orientation.py "$CEL_DIR"; then
+    echo "[run_cel_test] FAIL — orientation guard rejected $CEL_DIR" >&2
+    exit 1
+fi
+
 # One home for the cel choice: this generated include (src/harness/cel_probe.s
 # includes it). lwasm resolves `include` relative to the SOURCE dir, not the CWD,
 # so the assemble below passes `-I .` to make repo-relative paths work.

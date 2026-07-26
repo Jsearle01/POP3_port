@@ -13,26 +13,26 @@
 kid_chtab1_064_thin:
         fcb     24,2  ; height=24 rows, coco3_width=2 bytes/row (4px/byte)
         fcb     $03,$C0  ; row 0
-        fcb     $7F,$C0  ; row 1
-        fcb     $0F,$00  ; row 2
-        fcb     $0F,$C0  ; row 3
+        fcb     $17,$C0  ; row 1
+        fcb     $17,$C0  ; row 2
+        fcb     $17,$C0  ; row 3
         fcb     $0F,$C0  ; row 4
         fcb     $0F,$C0  ; row 5
         fcb     $0F,$C0  ; row 6
         fcb     $0F,$C0  ; row 7
-        fcb     $03,$C0  ; row 8
-        fcb     $03,$C0  ; row 9
-        fcb     $03,$C0  ; row 10
-        fcb     $03,$C0  ; row 11
-        fcb     $0F,$C0  ; row 12
-        fcb     $0F,$C0  ; row 13
-        fcb     $0F,$C0  ; row 14
-        fcb     $0F,$C0  ; row 15
+        fcb     $0F,$C0  ; row 8
+        fcb     $0F,$C0  ; row 9
+        fcb     $0F,$C0  ; row 10
+        fcb     $0F,$C0  ; row 11
+        fcb     $03,$C0  ; row 12
+        fcb     $03,$C0  ; row 13
+        fcb     $03,$C0  ; row 14
+        fcb     $03,$C0  ; row 15
         fcb     $0F,$C0  ; row 16
         fcb     $0F,$C0  ; row 17
         fcb     $0F,$C0  ; row 18
         fcb     $0F,$C0  ; row 19
-        fcb     $17,$C0  ; row 20
-        fcb     $17,$C0  ; row 21
-        fcb     $17,$C0  ; row 22
+        fcb     $0F,$C0  ; row 20
+        fcb     $0F,$00  ; row 21
+        fcb     $7F,$C0  ; row 22
         fcb     $03,$C0  ; row 23

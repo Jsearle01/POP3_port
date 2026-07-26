@@ -306,6 +306,34 @@ def convert_one(table_path, index, out_path, label, start_col=0,
     height, apple_width = cel["h"], cel["w"]        # POP order: byte0=W, byte1=H
     bitmap = cel["data"]
 
+    # ------------------------------------------------------------------
+    # VERTICAL FLIP AT INGEST — load-bearing. POP cel rows are stored
+    # BOTTOM-ROW-FIRST. Three independent code sites in HIRES.S establish it:
+    #
+    #   1. PREPREP  : IMAGE += 2 past the [width][height] header, so IMAGE
+    #                 points at DATA ROW 0 when drawing starts.
+    #   2. CROP     : TOPEDGE = YCO - HEIGHT, and YCO is documented and used
+    #                 as the "Y-coord of lowest visible line of image".
+    #   3. draw loop: "Next line up" — IMAGE += WIDTH (source advances
+    #                 FORWARD) while DEC YCO walks the destination UP, until
+    #                 YCO reaches TOPEDGE.
+    #
+    #   => data row 0 is drawn at YCO, the BOTTOM scanline.
+    #   => data row h-1 is drawn at TOPEDGE+1, the TOP scanline.
+    #
+    # The HIRES.S:187 comment "image bytes read left-right, top-bottom"
+    # describes sequential storage, not visual orientation; taken as visual it
+    # contradicts the three code sites above. CLAUDE.md §2 ranks comments
+    # LOWEST and mechanism above them, so the code wins.
+    #
+    # karateka's cels are the other way round (row 0 = visual top), which is
+    # why the colour model — carried over verbatim — needs no change but the
+    # ROW ORDER does. Without this flip every converted POP cel, and every
+    # compiled sprite built from one, renders upside down.
+    # [P1.2-fix; caught by Jay's eye, not by the byte-level spot-check]
+    bitmap = [b for r in range(height - 1, -1, -1)
+              for b in bitmap[r * apple_width:(r + 1) * apple_width]]
+
     coco3_bitmap, coco3_width = convert_sprite_to_coco3(
         bitmap, height, apple_width, start_col, parity_flip, mirror)
 

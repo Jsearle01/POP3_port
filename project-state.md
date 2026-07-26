@@ -48,6 +48,7 @@ Feasibility is a translation choice. That is why §3 is a standard and not advic
 | **Authoring tool** | `harness/tools/sprite_tool/` | **PORTED** — 11 of 13 files byte-identical to karateka; `placement_table.py`/`catalog.py` retargeted |
 | **Compiler round-trip** | `harness/tools/compile_check.py` | **WORKING** — converted.s + opacity.s → PA.9 compiled-sprite pipeline, with soundness sim |
 | **Cel colour spot-check** | `harness/smoke/run_cel_test.sh` + `cel_test.lua` + `src/harness/cel_probe.s` | **WORKING** — displays a converted cel on the GIME, reads the framebuffer back |
+| **Orientation guard** | `harness/tools/verify_orientation.py` | **WORKING** — compares converted rows against the ORIGINAL POP cel binary; wired into the spot-check, exit 1 on a flip |
 | Converted sample | `content/kid/`, `content/guard/` | 9 POP cels (kid CHTAB1/2/3 + guard CHTAB4.GD; large/median/thin) |
 
 **Engine: nothing built yet.** `src/{boot,engine,hal/coco3-dsk,opt/*}` are still empty
@@ -67,6 +68,21 @@ dependence. `start_col` is a conversion-time authoring input, consumed once. The
 converted at `--start-col 0` (EVEN), which is also the source-defensible default: the draw
 path doubles a 140-res `CharX` into 280-res (`asl`/`rol`, CTRLSUBS.S:809-813), so a
 character's base column is always even.
+
+### Cel ROW ORDER — POP is bottom-first (P1.2-fix). Trap for anyone porting art.
+POP cel data is stored **BOTTOM-ROW-FIRST**; karateka's is top-first. Three code sites in
+`HIRES.S` establish it: PREPREP leaves `IMAGE` at data row 0; CROP sets `TOPEDGE = YCO - HEIGHT`
+with `YCO` the *lowest* line; the draw loop advances `IMAGE` FORWARD while `DEC YCO` walks UP.
+**The `HIRES.S:187` comment says the opposite** (*"read left-right, top-bottom"*) — it describes
+sequential storage, and taken as visual orientation it would make the original render upside
+down. `CLAUDE.md §2` ranks comments lowest; the mechanism wins. The converter therefore reverses
+rows at ingest. Without it every cel, and every compiled sprite built from one, is upside down.
+
+**The verification lesson is the bigger one.** P1.2's spot-check passed **1152/1152 pixels** on
+upside-down cels, because both sides of that comparison were downstream of the converter — a
+uniform flip round-trips clean. Jay caught it by eye. `verify_orientation.py` now anchors to the
+original cel binary instead. **For any property with a ground truth, at least one check must be
+anchored OUTSIDE the pipeline under test.**
 
 ### The loop, concretely
 ```

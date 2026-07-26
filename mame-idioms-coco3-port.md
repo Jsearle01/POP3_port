@@ -835,3 +835,48 @@ breaks the build/verify loop and each cost real time here. **PROVISIONAL** — t
   `a-validation-sample-that-doesnt-span-the-input-space-can-certify-a-broken-tool`.
 
 *Established:* P1.2 sprite-tooling port 2026-07-25 (POP3_port).
+
+
+---
+
+## 16. Cel ROW ORDER: POP stores bottom-first, karateka top-first (P1.2-fix)
+*(Filed by Clyde under 2A.3. **PROVISIONAL** pending the standing authorship ruling.)*
+
+**POP cel data is stored BOTTOM-ROW-FIRST.** Three code sites in `HIRES.S` establish
+it — code, not comments:
+1. **PREPREP**: `IMAGE += 2` past the `[width][height]` header, so `IMAGE` points at
+   **data row 0** when drawing begins.
+2. **CROP**: `TOPEDGE = YCO - HEIGHT`, with `YCO` the *"Y-coord of lowest visible line
+   of image"* — `YCO` is the **BOTTOM** scanline.
+3. **draw loop** (`*  Next line up`): `IMAGE += WIDTH` advances the source **FORWARD**
+   while `DEC YCO` walks the destination **UP**, terminating at `TOPEDGE`.
+
+=> data row 0 is drawn at the BOTTOM scanline; data row h-1 at the TOP.
+
+**The `HIRES.S:187` comment says the opposite** — *"image bytes read left-right,
+top-bottom"*. Read as visual orientation it contradicts all three code sites, and
+taken at face value it makes the original game render upside down, which it does not.
+It describes sequential storage. `CLAUDE.md` 2 ranks comments **lowest**; the
+mechanism wins. **This comment is a live trap for anyone porting POP art.**
+
+**karateka is the other way round** (cel row 0 = visual top), so a converter ported
+from karateka must **reverse the row order** on ingest. The colour model needs no
+change — it is per-row — but the row loop does. Symptom: every cel, and every
+compiled sprite built from one, renders vertically flipped.
+
+*Candidates:* `pop-cel-rows-are-stored-bottom-first-the-source-comment-says-otherwise`,
+`porting-a-converter-between-two-apple-ii-games-check-row-order-not-just-colour`.
+*Established:* P1.2-fix 2026-07-25 (POP3_port), after Jay caught the flip by eye.
+
+### 16a. A self-consistent check cannot see an orientation error — anchor to the SOURCE
+P1.2's colour spot-check compared the CoCo3 framebuffer against the converter's
+output and passed **1152/1152 pixels on cels that were upside down**. It could not
+have failed: both sides are downstream of the same converter, so a consistent flip
+round-trips perfectly. The guard that closes it (`harness/tools/verify_orientation.py`)
+compares against the **original cel binary** in `oracle/source/.../IMG.CHTAB*` plus the
+blitter's documented row-order semantics — an input the converter cannot influence.
+Demonstrated failing on the real pre-fix data recovered from git.
+**Rule: for any property with a ground truth (orientation, scale, handedness, colour),
+at least one check must be anchored OUTSIDE the pipeline under test.**
+*Candidate:* `at-least-one-check-must-be-anchored-outside-the-pipeline-under-test`.
+*Established:* P1.2-fix 2026-07-25.
