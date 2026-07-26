@@ -880,3 +880,45 @@ Demonstrated failing on the real pre-fix data recovered from git.
 at least one check must be anchored OUTSIDE the pipeline under test.**
 *Candidate:* `at-least-one-check-must-be-anchored-outside-the-pipeline-under-test`.
 *Established:* P1.2-fix 2026-07-25.
+
+
+---
+
+## 17. `PSHU D,X,Y` byte order, and the codegen-simulator trap (P1.3)
+*(Filed by Clyde under 2A.3. **PROVISIONAL** pending the standing authorship ruling.)*
+
+**Measured on the real 6809 under MAME** (`src/harness/pshu_probe.s`: load D/X/Y with
+distinguishable constants, one `PSHU`, dump memory with canaries either side):
+
+    LDD #$A1A2 / LDX #$B1B2 / LDY #$C1C2 / PSHU D,X,Y
+    ascending from the final U:   A1 A2 B1 B2 C1 C2
+
+So for a compiled-sprite burst: **run[0:2] -> D, run[2:4] -> X, run[4:6] -> Y.**
+(PSHU pushes Y first, so Y lands at the HIGHEST addresses.) The PA.9 POC had this
+inverted and it shipped through two dispatches undetected.
+
+**17a. Why it went undetected — the trap worth remembering.** The POC's soundness
+simulator handled PSHU as `for v in reversed(chunk): mem[u]=v` — it replayed the
+`chunk` list the emitter had handed it and **never modelled A/B/X/Y**. The register
+assignment is the *only* decision the emitter makes there, and it sat outside the
+checker's model, so the check validated the tokenizer and the addressing arithmetic
+while being blind to the encoding. It reported ALL PASS on every cel.
+**Rule: a codegen simulator must consume ONLY the emitted instruction stream and
+execute the target's registers.** If it takes anything else the emitter computed, it
+is replaying intent, not testing the lowering.
+
+**17b. `PSHU` is not always the cheapest store.** 6 bytes = 11 cy (1.83/byte), 4 = 9
+(2.25), but 2 = 7 — worse than `STD d,U` at 6 cy, which also leaves U alone (no
+`LEAU` to reposition). Glen's own file mixes 46 `PSHU` with 14 `STD` / 16 `STX` /
+18 `STA` for this reason. Cost both forms per run; do not burst greedily.
+
+**17c. Burst optimizations are worthless without long homogeneous runs.** On POP's
+cels (thin limbed figures, ~60% of drawn bytes "mixed" at 2bpp) only **7% of opaque
+bytes sit in runs of 4+**, `PSHU` fires in 0.4% of cycles, and all four of Glen's
+optimizations together buy ~3%. The predictor is cheap and needs only the input:
+**measure the run-length distribution before building the optimizer.**
+
+*Candidates:* `pshu-dxy-byte-order-d-first-y-last-verify-on-hardware`,
+`a-codegen-simulator-must-execute-registers-not-replay-the-emitters-chunk-list`,
+`measure-run-length-distribution-before-building-a-burst-optimizer`.
+*Established:* P1.3 production sprite compiler 2026-07-26 (POP3_port).

@@ -9,7 +9,7 @@ comes next.
 doc under `CLAUDE.md §2D` (no decision records, post-mortems, or behavioural models here —
 those stay Orchestrator-owned). Clyde updates this file directly as build state changes.
 
-**Last updated:** 2026-07-25 (P1.2 — sprite tooling ported to POP and verified)
+**Last updated:** 2026-07-26 (P1.3 — production sprite compiler built and proven on hardware)
 **Phase:** BUILD (the feasibility investigation is CLOSED — see §1)
 
 ---
@@ -49,6 +49,9 @@ Feasibility is a translation choice. That is why §3 is a standard and not advic
 | **Compiler round-trip** | `harness/tools/compile_check.py` | **WORKING** — converted.s + opacity.s → PA.9 compiled-sprite pipeline, with soundness sim |
 | **Cel colour spot-check** | `harness/smoke/run_cel_test.sh` + `cel_test.lua` + `src/harness/cel_probe.s` | **WORKING** — displays a converted cel on the GIME, reads the framebuffer back |
 | **Orientation guard** | `harness/tools/verify_orientation.py` | **WORKING** — compares converted rows against the ORIGINAL POP cel binary; wired into the spot-check, exit 1 on a flip |
+| **Sprite compiler** | `harness/tools/sprite_compiler.py` | **WORKING (production)** — draw+save+erase per cel, all 4 Glen optimizations, register-level sim; supersedes `poc/compiled-sprite/` |
+| **Compiled-sprite proof** | `harness/smoke/run_compiled_test.sh` + `compiled_test.lua` + `src/harness/compiled_probe.s` | **WORKING** — LWTools-assembled compiled cel drawn on the real GIME, framebuffer-diffed |
+| **PSHU order probe** | `src/harness/pshu_probe.s` | one-shot: pinned `PSHU D,X,Y` = D,X,Y ascending (the POC had it inverted) |
 | Converted sample | `content/kid/`, `content/guard/` | 9 POP cels (kid CHTAB1/2/3 + guard CHTAB4.GD; large/median/thin) |
 
 **Engine: nothing built yet.** `src/{boot,engine,hal/coco3-dsk,opt/*}` are still empty
@@ -85,6 +88,16 @@ upside-down cels, because both sides of that comparison were downstream of the c
 uniform flip round-trips clean. Jay caught it by eye. `verify_orientation.py` now anchors to the
 original cel binary instead. **For any property with a ground truth, at least one check must be
 anchored OUTSIDE the pipeline under test.**
+
+### Compiled-sprite cost model (P1.3, counted from emitted instructions)
+Per footprint byte, 9-cel sample: **draw 5.77**, erase 4.52 (byte-set) / 7.32 (rectangle),
+**draw+erase 10.29** (byte-set) or 13.09 (rectangle). PA.9's POC was 5.94 on identical data,
+so Glen's four optimizations bought **~3%** — `PSHU` fires in 0.4% of cycles because only 7%
+of opaque bytes sit in runs of 4+; 60% of drawn bytes are *mixed* and fragment every run.
+**Opaque-black is the real lever** (mixed 644→0, PSHU 7→348, draw −32%) but it is an
+AUTHORING decision. **Peel model is an open engine decision worth ~2.8 cy/byte**: POP's own
+peel is a rectangle (`LAYRSAVE` `inc WIDTH`+`CROP`, constant cost), but a compiled sprite can
+restore only the bytes it drew. p90 frame: PA.9's marginal 1.01× → **0.96–0.99× FEASIBLE**.
 
 ### The loop, concretely
 ```
