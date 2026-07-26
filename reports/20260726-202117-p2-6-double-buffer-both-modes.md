@@ -386,6 +386,6 @@ Committed and pushed.
 ---
 
 ### 11 — Commit
-**POP:** `4b8ea94` (study + double-buffer + idioms + probe) + `<hash>` (this report) — pushed to `origin/wip`.
+**POP:** `4b8ea94` (study + double-buffer + idioms + probe) + `52260c6` (this report) — pushed to `origin/wip`.
 **Karateka:** `58cad3e` on `wip` — shared source, service gated OFF, binary byte-identical. Pushed.
 **Karateka `main` @ `5eb92b1` — untouched.**
