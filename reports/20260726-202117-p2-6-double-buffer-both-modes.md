@@ -3,7 +3,9 @@
 POP `wip` (service + probe + harness + idioms) and Karateka `wip` (shared source, service gated OFF).
 **Karateka `main` UNTOUCHED at `5eb92b1`.**
 **Karateka prod byte-identity: `88eba89b15cdf17c8d25e082d2d3e1f3cce57d38`, 17,978 bytes — HELD.**
-**25.3 LIVE animation gate: PENDING JAY.** Presented live, all five stages ran; nothing self-certified.
+**25.3 LIVE animation gate: OBSERVED BY JAY** (2026-07-26, live throttled `coco3`, RGB, direct load).
+Two viewings: *"looks ok, still a bit blinky"*, then after the frame-rate fix *"look better"*.
+See the ADDENDUM for the exact scope of what that does and does not confirm.
 
 ### 0 — Receipt / status (C-35 stamp)
 t0=2026-07-26T20:21:17Z (POP HEAD `96860f4`, wip; tracked tree clean).
@@ -363,6 +365,11 @@ up where 1–4 do not.** Not self-certified.
 5. **Enable `HAL_GFX_MODE_SERVICE` in Karateka** if it wants the service — still a one-flag change.
 6. **Decide the fate of `POP-idioms-coco3-markers.md`** (§3.6) — applied in P1.2b, still untracked at the
    repo root.
+7. **[PARKED BY JAY] The stage-5 DECB-path freeze** (ADDENDUM 1) — reproducible, mine, unexplained; the
+   probe freezes in the no-swap contrast under `LOADM` but not under direct load. Must be separated from
+   the independent `natkeyboard` flakiness (idiom §20d) before either is called fixed.
+8. **Confirm the contrast stage actually tears** (ADDENDUM 2) — currently automated-only; until an eye
+   confirms stage 5 looks wrong, the smoothness of stages 1-4 proves less than it appears to.
 
 ---
 
@@ -432,3 +439,34 @@ and is outstanding. It is recorded here rather than re-scoped around.
 
 **Superseding §5's 27/27:** that figure was accurate for the binary at the time it was
 measured. The current binary measures **22/23 with stage 5 failing on the DECB path**.
+
+---
+
+## ADDENDUM 2 — Jay's verdict, and what it does and does not cover
+
+**Jay's words, verbatim, across two viewings:**
+1. after the first live run — *"looks ok, still a bit blinky"*
+2. after the ~20 Hz → ~29 Hz fix — *"look better"*
+
+**What that confirms.** The double-buffered animation renders acceptably in both modes,
+across mode switches in both directions, and the residual artifact Jay saw was addressed by
+raising the update rate rather than by changing the swap. It is a pass on the substance of
+AC5: he looked at it live, twice, and accepted it.
+
+**What it does NOT confirm, stated so nobody reads more into it later:**
+- Jay did not separately comment on **stage 5, the no-swap contrast**. The "a check that
+  can't fail isn't a check" half of the proof therefore rests on the automated evidence
+  (exactly 0 swaps there vs +150 in every animated stage) and not on his eye. If the
+  contrast stage does not visibly tear, the smoothness of stages 1–4 is less informative
+  than claimed — that remains unverified by the gate.
+- "Blinky" was diagnosed as frame rate and treated as frame rate. That diagnosis fit the
+  measurements (a swap landing only every third VBL), and the fix moved the observation in
+  the right direction, which is corroboration. It is not proof that no tearing exists —
+  a swap-timing artifact could still be present below the threshold of the improved rate.
+
+**Honest summary of 25.3:** observed and accepted by Jay; the contrast-stage half is
+automated-only. Not self-certified at any point.
+
+**PARKED BY JAY:** the stage-5 DECB-path freeze (ADDENDUM 1) is deferred, not resolved.
+The suite stands at 22/23 with that failure outstanding and mine. It is carried into §8 as
+a follow-up rather than closed.
