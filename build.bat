@@ -105,7 +105,7 @@ REM Every HAL module opens `section code` and exports its hal.inc entry points
 REM under -DOBJTARGET. The six runtime-blit entry points stay DORMANT in POP
 REM (PA.6 / P1.3) and are deliberately NOT exported: a POP call to one is now a
 REM link error naming the symbol. Add -DPOP_HAL_RUNTIME_BLIT to enable them.
-lwasm --obj -DOBJTARGET -I . -o build/obj/hal_build.o src/harness/hal_build.s
+lwasm --obj -DOBJTARGET -DHAL_GFX_MODE_SERVICE -I . -o build/obj/hal_build.o src/harness/hal_build.s
 if errorlevel 1 goto :error
 call :size build/obj/hal_build.o
 
@@ -118,6 +118,11 @@ echo --- Assemble: HAL ABI link proof (object) ---
 lwasm --obj -DOBJTARGET -I . -o build/obj/hal_link_proof.o src/harness/hal_link_proof.s
 if errorlevel 1 goto :error
 call :size build/obj/hal_link_proof.o
+
+echo --- Assemble: P2.5 mode-cycling probe (object) ---
+lwasm --obj -DOBJTARGET -I . -o build/obj/mode_probe.o src/harness/mode_probe.s
+if errorlevel 1 goto :error
+call :size build/obj/mode_probe.o
 
 echo --- Link: probe + HAL kernel ---
 REM --section-base is SILENTLY IGNORED by lwlink (P2.3-recon D4) — the script is
@@ -133,6 +138,15 @@ lwlink --decb --script=link/pop.link --entry=link_proof_entry --map=build/obj/pr
 if errorlevel 1 goto :error
 call :size build/hal_link_proof.bin
 
+echo --- Link: mode-cycling probe + HAL kernel ---
+REM Exercises the P2.5 kernel service across the linked ABI: the probe imports
+REM HAL_gfx_set_mode and the published geometry from hal.inc, so a service that
+REM is declared but not exported fails HERE rather than at runtime.
+lwlink --decb --script=link/pop.link --entry=mode_entry --map=build/obj/mode.map ^
+       -o build/mode_probe.bin build/obj/mode_probe.o build/obj/hal_build.o
+if errorlevel 1 goto :error
+call :size build/mode_probe.bin
+
 echo --- Bootable RS-DOS disk image ---
 REM .dsk is always 18 sectors/track (idiom §3); default geometry is correct.
 if exist build\probe.dsk del /q build\probe.dsk
@@ -141,6 +155,8 @@ if errorlevel 1 goto :error
 "%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\loop_probe.bin PROBE.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
 call :size build/probe.dsk
+"%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\mode_probe.bin MODE.BIN --ftype=binary --ascii=binary
+if errorlevel 1 goto :error
 "%IMGTOOL%" dir coco_jvc_rsdos build\probe.dsk
 if errorlevel 1 goto :error
 

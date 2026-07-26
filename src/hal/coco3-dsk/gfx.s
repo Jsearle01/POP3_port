@@ -73,6 +73,14 @@
         export  HAL_gfx_init
         export  HAL_gfx_clear
         export  HAL_gfx_present
+        ifdef   HAL_GFX_MODE_SERVICE
+        export  HAL_gfx_set_mode
+        export  HAL_gfx_cur_mode
+        export  HAL_gfx_cur_vres
+        export  HAL_gfx_cur_stride
+        export  HAL_gfx_cur_words
+        export  HAL_gfx_cur_palcnt
+        endc
         endc
 
 * DP allocations and shared constants declared in src/engine/globals.s (P2.3a.3).
@@ -254,6 +262,239 @@ gfx_init_clear_b:
         puls    u,y                     ; restore U, Y per contract
         andcc   #$FE                    ; CC.C clear = success
         rts
+
+                ifdef   HAL_GFX_MODE_SERVICE
+* P2.5 KERNEL SERVICE -- compiled where a project asks for it.
+* ONE shared source, per-project CONFIGURATION (governance rule 3), the same
+* mechanism as the runtime-blit dormancy guard. POP defines the flag in its
+* build.bat; karateka does not YET, so its absolute binary stays byte-identical
+* and adopting the service later is a one-flag change, not a port.
+* ===============================================================
+* HAL_gfx_set_mode  [P2.5 — the first real kernel GRAPHICS SERVICE]
+*
+* Switch the display to a requested graphics mode. This generalizes the
+* register programming that HAL_gfx_init hardcodes for 320x192x4.
+*
+* Args:    A = mode id (GFX_MODE_320x192x4 = 0, GFX_MODE_320x192x16 = 1)
+*              Out-of-range falls back to mode 0, same documented behaviour
+*              as HAL_gfx_init's palette-descriptor argument.
+* Returns: CC.C clear (always succeeds; no failure mode exists — every
+*          supported mode is statically allocatable).
+* Preserves: U, Y   [per the hal.inc calling convention]
+* Clobbers:  A, B, X, CC
+*
+* GUARANTEE TO THE CALLER, on return:
+*   - display is in the requested mode
+*   - the framebuffer is CLEARED to palette index 0
+*   - that mode's palette is loaded
+*   - HAL_gfx_cur_* describe the active geometry
+*   - ready to draw. NOTHING carries over from the previous mode.
+*
+* WHY CLEAR-ON-SWITCH IS THE CONTRACT, not a convenience:
+*   The two modes pack pixels differently (4 px/byte vs 2 px/byte). Surviving
+*   pixels would not be "old content" under the new mode — they would be
+*   reinterpreted as garbage at a different width. There is no meaningful way
+*   to preserve them, so the service defines the slate as clean and the caller
+*   never has to wonder.
+*
+* MODE VALUES — CONFIRMED FROM THE REFERENCE, NOT DERIVED (P2.5 §0.2):
+*   [ref: docs/ground-truth/GIME_Reference_Manual.pdf §10 Video Mode Reference]
+*     "320 x lines | 16 | 4 | 160 | 111 | 10 | $1E"   <- 192-line column
+*     "320 x lines |  4 | 2 |  80 | 101 | 01 | $15"
+*   [ref: docs/ground-truth/SockmasterGime.md:108-136 — $FF99 bit layout]
+*     bits 6-5 LPF  00 = 192 scan lines
+*     bits 4-2 HRES 111 = 160 bytes/row ; 101 = 80 bytes/row
+*     bits 1-0 CRES  10 = 16 colours (2 px/byte) ; 01 = 4 colours (4 px/byte)
+*   Both sources agree independently: $1E = %0 00 111 10.
+*
+* GEOMETRY DIFFERS AND IT IS NOT SUBTLE:
+*   4-colour : 2 bpp,  80 B/row, 192 rows = 15,360 B ($3C00)
+*   16-colour: 4 bpp, 160 B/row, 192 rows = 30,720 B ($7800)  <- DOUBLE
+*   A caller that draws with the wrong stride does not fail loudly; it draws a
+*   skewed diagonal. Hence HAL_gfx_cur_stride, published rather than assumed.
+*
+* SINGLE-BUFFERED BY CONSTRUCTION (P2.5 scope):
+*   The framebuffer is FB_A ($8000) and VOFFSET points at it. 16-colour
+*   double-buffering would need 2 x 30,720 = 60 KB of the 64 KB CPU window,
+*   which is a real constraint for later animation work. NOT solved here;
+*   recorded so the number is on the table when it matters.
+*
+* ORDERING — the codebase's empirically-proven sequence is used, and it
+* DIFFERS from GIME-RM §14's generic example. Two deliberate divergences:
+*   (1) $FF90 FIRST. Our framebuffer lives at $8000+, which is ROM territory
+*       under the CoCo1/2 map, so the CoCo3 all-RAM map must exist before the
+*       clear can write anything. GIME-RM's example uses $6000 and can afford
+*       to write $FF90 late. We cannot. [HAL_gfx_init CONSTRAINT A]
+*   (2) PALETTE LAST. GIME-RM §14 loads the palette at step 4, before the mode
+*       registers. This codebase found empirically that palette writes do not
+*       latch until $FF98/$FF99 hold their final values — indices render black
+*       otherwise. [HAL_gfx_init CONSTRAINT B, MAME-verified]
+*   Per CLAUDE.md §2, observed behaviour outranks documentation: the trace wins
+*   on fact, the manual wins on intent. Recorded here so the divergence reads
+*   as a decision rather than an oversight.
+* ===============================================================
+* The MODE IDs themselves live in hal.inc, not here — they are contract, not
+* implementation. A caller that includes only the contract must be able to name
+* the mode it wants; this file never uses them by name because its table is
+* positional (row 0 = mode 0, row 1 = mode 1). One home each.
+*   [ref: src/hal.inc — GFX_MODE_320x192x4 / GFX_MODE_320x192x16]
+GFX_MODE_MAX        equ 1           ; highest supported id
+GFX_MODE_ENTSZ      equ 7           ; bytes per mode-descriptor row
+
+HAL_gfx_set_mode:
+        pshs    u,y                     ; preserve U, Y per contract
+
+        cmpa    #GFX_MODE_MAX
+        bls     gfx_sm_ok
+        clra                            ; unsupported -> mode 0 (documented)
+gfx_sm_ok:
+        sta     HAL_gfx_cur_mode
+        ldb     #GFX_MODE_ENTSZ
+        mul                             ; D = mode * entry size
+        ldx     #gfx_mode_table
+        leax    d,x                     ; X -> this mode's descriptor
+
+* --- publish the geometry BEFORE touching hardware ---------------
+* Callers read these; the clear below uses them too, so there is exactly one
+* source for "how big is the screen" and it cannot disagree with itself.
+        lda     ,x                      ; $FF99 (VRES) value
+        sta     HAL_gfx_cur_vres
+        lda     1,x                     ; stride, bytes per row
+        sta     HAL_gfx_cur_stride
+        ldd     2,x                     ; framebuffer size in WORDS
+        std     HAL_gfx_cur_words
+        ldu     4,x                     ; -> palette table
+        lda     6,x                     ; palette entry count
+        sta     HAL_gfx_cur_palcnt
+
+* --- Step 1: CoCo3 map FIRST (Constraint A) ----------------------
+* $6C == KCOCO3_INIT0_RUN: COCO=0, MMUEN=1, IEN=1, MC3=1, MC2=1.
+* Write-only register; no read-modify-write is possible. IEN=1 is re-asserted
+* because HAL_time_init depends on it and would die silently if cleared.
+        lda     #$6C
+        sta     $FF90
+
+* --- Step 2: CLEAR the framebuffer (the contract's clean slate) ---
+* Word stores, count taken from the published geometry — 15,360 B in 4-colour,
+* 30,720 B in 16-colour. This is why the mode table carries a word count.
+        ldx     #GFX_FB_A_BASE
+        ldd     #$0000
+        ldy     HAL_gfx_cur_words
+gfx_sm_clear:
+        std     ,x++
+        leay    -1,y
+        bne     gfx_sm_clear
+
+* --- Step 3: video mode + resolution -----------------------------
+        lda     #$80                    ; VMODE: BP=1 graphics
+        sta     $FF98
+        lda     HAL_gfx_cur_vres        ; VRES: $15 (4-col) or $1E (16-col)
+        sta     $FF99
+
+* --- Step 4: VOFFSET -> FB_A (single-buffered, see header) -------
+* VOFFSET = physical / 8 = $78000 / 8 = $F000.  [ref: GIME-RM §13]
+        ldd     #$F000
+        std     $FF9D
+
+* --- Step 5: VSCROL / HOFFSET = 0 (REQUIRED, undefined at reset) -
+        clr     $FF9C
+        clr     $FF9F
+
+* --- Step 6: SAM clock + RAM -------------------------------------
+        clra
+        sta     $FFD9                   ; 1.78 MHz CPU clock
+        sta     $FFDF                   ; RAM at $C000 (task 0)
+
+* --- Step 7: PALETTE LAST (Constraint B) -------------------------
+* U -> this mode's palette table, A = entry count (4 or 16). Writing these
+* before $FF98/$FF99 settle makes indices render black; see the header.
+        ldx     #$FFB0
+        ldb     HAL_gfx_cur_palcnt
+gfx_sm_pal:
+        lda     ,u+
+        sta     ,x+
+        decb
+        bne     gfx_sm_pal
+
+        lda     #$01
+        sta     <gfx_initialized        ; the display is live and usable
+
+        puls    u,y
+        andcc   #$FE                    ; CC.C clear = success
+        rts
+
+* ---------------------------------------------------------------
+* Mode descriptor table. Adding a mode is a row plus a palette — the service
+* itself does not change. Row layout (GFX_MODE_ENTSZ = 7):
+*   +0  $FF99 VRES value
+*   +1  stride, bytes per row
+*   +2  framebuffer size in WORDS (bytes / 2, the clear loop's unit)
+*   +4  pointer to palette table
+*   +6  palette entry count
+* ---------------------------------------------------------------
+gfx_mode_table:
+        fcb     $15                     ; mode 0: 320x192x4  VRES  [GIME-RM §10]
+        fcb     80                      ;   80 bytes/row
+        fdb     $1E00                   ;   15,360 B / 2 = $1E00 words
+        fdb     gfx_pal4
+        fcb     4                       ;   palette regs $FFB0-$FFB3
+
+        fcb     $1E                     ; mode 1: 320x192x16 VRES  [GIME-RM §10]
+        fcb     160                     ;   160 bytes/row
+        fdb     $3C00                   ;   30,720 B / 2 = $3C00 words
+        fdb     gfx_pal16
+        fcb     16                      ;   palette regs $FFB0-$FFBF
+
+* ---------------------------------------------------------------
+* Default test palettes — RGB monitor format, bits 5:0 = R1 G1 B1 R0 G0 B0,
+* i.e. each channel is 2 bits (0-3).
+* [ref: docs/ground-truth/SockmasterGime.md:218-225 — palette register layout]
+*
+* RGB, NOT COMPOSITE. CLAUDE.md §4 makes RGB (screen_config=1) the project's
+* monitor gate, and POP ships dist/mame-cfg/rgb/coco3.cfg to force it. The same
+* byte decodes to a different colour in composite mode — that mismatch is
+* exactly what made orange read as yellow in P1.3 before the gate was set.
+*
+* These are DIAGNOSTIC palettes chosen so the colour COUNT is visible at a
+* glance: 16 distinct hues so "16-colour is really 16-colour" is eye-checkable.
+* Not POP's art palette.
+* ---------------------------------------------------------------
+gfx_pal4:
+        fcb     $00                     ; 0 black
+        fcb     $26                     ; 1 orange  R=3 G=1 B=0
+        fcb     $19                     ; 2 blue    R=0 G=2 B=3
+        fcb     $3F                     ; 3 white   R=3 G=3 B=3
+
+gfx_pal16:
+        fcb     $00                     ;  0 black      R0 G0 B0
+        fcb     $07                     ;  1 dk grey    R1 G1 B1
+        fcb     $38                     ;  2 grey       R2 G2 B2
+        fcb     $3F                     ;  3 white      R3 G3 B3
+        fcb     $24                     ;  4 red        R3 G0 B0
+        fcb     $26                     ;  5 orange     R3 G1 B0
+        fcb     $36                     ;  6 yellow     R3 G3 B0
+        fcb     $12                     ;  7 green      R0 G3 B0
+        fcb     $1B                     ;  8 cyan       R0 G3 B3
+        fcb     $09                     ;  9 blue       R0 G0 B3
+        fcb     $2D                     ; 10 magenta    R3 G0 B3
+        fcb     $04                     ; 11 dk red     R1 G0 B0
+        fcb     $02                     ; 12 dk green   R0 G1 B0
+        fcb     $01                     ; 13 dk blue    R0 G0 B1
+        fcb     $1D                     ; 14 lt blue    R1 G2 B3
+        fcb     $33                     ; 15 lt green   R2 G3 B1
+
+* ---------------------------------------------------------------
+* Published geometry of the ACTIVE mode. Callers read these to draw with the
+* right stride; the service itself uses them for the clear, so there is one
+* source of truth rather than two that can drift.
+* ---------------------------------------------------------------
+HAL_gfx_cur_mode:   fcb 0               ; active mode id
+HAL_gfx_cur_vres:   fcb 0               ; $FF99 value written for it
+HAL_gfx_cur_stride: fcb 0               ; bytes per row (80 or 160)
+HAL_gfx_cur_words:  fdb 0               ; framebuffer size in words
+HAL_gfx_cur_palcnt: fcb 0               ; palette entries loaded (4 or 16)
+
+                endc                    ; HAL_GFX_MODE_SERVICE
 
 * ---------------------------------------------------------------
 * HAL_gfx_clear

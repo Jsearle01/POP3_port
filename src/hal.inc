@@ -320,6 +320,66 @@ HAL_gfx_shutdown    equ *       ; STUB-P3 — not yet implemented
 ;     writes during active scanline cause visible artifact]
 HAL_gfx_set_palette equ *       ; STUB-P3 — not yet implemented
 
+; Mode ids for HAL_gfx_set_mode. These are CONTRACT, so they live here rather
+; than in the implementation: a caller that includes only hal.inc must be able
+; to name the mode it wants. gfx.s does not define them — its descriptor table
+; is positional — so there is exactly one home for the value.
+GFX_MODE_320x192x4  equ 0        ; $FF99=$15,  80 B/row, 15,360 B,  4 palette regs
+GFX_MODE_320x192x16 equ 1        ; $FF99=$1E, 160 B/row, 30,720 B, 16 palette regs
+
+; HAL_gfx_set_mode                                    [P2.5 — kernel service]
+;   Switch the display to a graphics mode. Generalizes the register
+;   programming HAL_gfx_init hardcodes for 320x192x4.
+;
+;   Args:  A = mode id
+;            0 = GFX_MODE_320x192x4   ($FF99=$15,  80 B/row, 15,360 B, 4 pal)
+;            1 = GFX_MODE_320x192x16  ($FF99=$1E, 160 B/row, 30,720 B, 16 pal)
+;          Out-of-range falls back to mode 0 (same documented behaviour as
+;          HAL_gfx_init's descriptor argument; no panic).
+;   Returns: CC.C clear — always succeeds, no failure mode exists.
+;   Errors:  none
+;   Preserves: U, Y
+;   Clobbers: A, B, X, CC
+;
+;   GUARANTEE ON RETURN: display is in the requested mode, the framebuffer is
+;   CLEARED to palette index 0, that mode's palette is loaded, the HAL_gfx_cur_*
+;   geometry describes the active mode, and NOTHING carries over from the
+;   previous mode. Clear-on-switch is the contract, not a side effect: the two
+;   modes pack pixels at different widths, so surviving pixels would reinterpret
+;   as garbage rather than as old content.
+;
+;   Single-buffered: framebuffer is FB_A ($8000) and VOFFSET points at it.
+;   16-colour double-buffering would need 60 KB of the 64 KB CPU window — a real
+;   constraint for later animation, deliberately not addressed here.
+;
+;   Mode register values are CONFIRMED, not derived:
+;   [ref: GIME_Reference_Manual.pdf §10 Video Mode Reference — the $FF99 table]
+;   [ref: SockmasterGime.md:108-136 — $FF99 LPF/HRES/CRES bit layout]
+;   [ref: src/hal/coco3-dsk/gfx.s — implementation, and the two deliberate
+;     divergences from GIME-RM §14's ordering ($FF90 first, palette last)]
+        ifdef   OBJTARGET
+        import  HAL_gfx_set_mode
+        endc
+
+; HAL_gfx_cur_mode / _vres / _stride / _words / _palcnt   [P2.5]
+;   Published geometry of the ACTIVE mode, written by HAL_gfx_set_mode.
+;   Callers MUST draw with HAL_gfx_cur_stride: 80 in 4-colour, 160 in
+;   16-colour. Using the wrong stride does not fail loudly — it skews the
+;   image into a diagonal, which is why the value is published rather than
+;   assumed by each caller.
+;     HAL_gfx_cur_mode    1 B  active mode id
+;     HAL_gfx_cur_vres    1 B  the $FF99 value written
+;     HAL_gfx_cur_stride  1 B  bytes per row
+;     HAL_gfx_cur_words   2 B  framebuffer size in words (bytes / 2)
+;     HAL_gfx_cur_palcnt  1 B  palette entries loaded (4 or 16)
+        ifdef   OBJTARGET
+        import  HAL_gfx_cur_mode
+        import  HAL_gfx_cur_vres
+        import  HAL_gfx_cur_stride
+        import  HAL_gfx_cur_words
+        import  HAL_gfx_cur_palcnt
+        endc
+
 ; HAL_gfx_present
 ;   Swap front/back buffers (double-buffer flip).
 ;   Args:  none
