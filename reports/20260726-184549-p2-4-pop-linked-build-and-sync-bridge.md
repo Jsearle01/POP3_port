@@ -461,6 +461,6 @@ temporary infrastructure should name its own deletion condition. Committed and p
 ---
 
 ### 11 — Commit
-**POP:** `dd1cec4` (conversion + bridge) + `760396f` (this report) — pushed to POP `origin/wip`.
+**POP:** `dd1cec4` (conversion + bridge) + `d97b4ba` (this report) — pushed to POP `origin/wip`.
 **Karateka:** `372cd6d` on `wip` — bridge + shared guards only, still absolute. Pushed.
 **Karateka `main` @ `5eb92b1` — untouched.**
