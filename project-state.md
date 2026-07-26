@@ -70,9 +70,11 @@ path doubles a 140-res `CharX` into 280-res (`asl`/`rol`, CTRLSUBS.S:809-813), s
 character's base column is always even.
 
 ### Cel ROW ORDER — POP is bottom-first (P1.2-fix). Trap for anyone porting art.
-POP cel data is stored **BOTTOM-ROW-FIRST**; karateka's is top-first. Three code sites in
-`HIRES.S` establish it: PREPREP leaves `IMAGE` at data row 0; CROP sets `TOPEDGE = YCO - HEIGHT`
-with `YCO` the *lowest* line; the draw loop advances `IMAGE` FORWARD while `DEC YCO` walks UP.
+POP cel data is stored **BOTTOM-ROW-FIRST** — **SETTLED: Jay confirmed the corrected render
+2026-07-26** ("yes the afters look correct"), so this is fact, not an inference from code.
+Karateka's is top-first. Three code sites in `HIRES.S` establish it: PREPREP leaves `IMAGE` at
+data row 0; CROP sets `TOPEDGE = YCO - HEIGHT` with `YCO` the *lowest* line; the draw loop
+advances `IMAGE` FORWARD while `DEC YCO` walks UP.
 **The `HIRES.S:187` comment says the opposite** (*"read left-right, top-bottom"*) — it describes
 sequential storage, and taken as visual orientation it would make the original render upside
 down. `CLAUDE.md §2` ranks comments lowest; the mechanism wins. The converter therefore reverses
