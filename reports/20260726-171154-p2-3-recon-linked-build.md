@@ -313,4 +313,4 @@ was a mechanism this very codebase adopted one dispatch earlier.
 ---
 
 ### 11 — Commit
-`<hash>` — pushed to `origin/wip` before this report.
+`61a719d` — pushed to `origin/wip`.
