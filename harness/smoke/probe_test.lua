@@ -81,6 +81,40 @@ log("#")
 local function rd8(a)  return mem:read_u8(a) end
 local function rd16(a) return mem:read_u8(a) * 256 + mem:read_u8(a + 1) end
 
+-- P2.4: parse a DECB binary's segment table WITHOUT writing anything.
+--
+-- WHY THIS EXISTS. The disk-mode readiness gate used to poll $0200 alone and post
+-- EXEC the moment it saw 7E 02 08. That was correct while POP built ABSOLUTE, because
+-- the binary had exactly ONE segment and the first segment landing meant LOADM was
+-- done. POP now builds LINKED, so loop_probe.bin carries TWO segments -- the program
+-- at $0200 and the HAL kernel at $3000 -- and $0200 lands FIRST. The old gate fired
+-- EXEC while LOADM was still loading the kernel, typing into a running LOADM. The
+-- probe never ran and the failure looked like a code fault rather than a race.
+--
+-- Gating on the LAST segment instead of the first is the general fix: it holds for
+-- any segment count, so adding kernel sections later cannot silently re-break it.
+local function decb_segments(path)
+    local f = io.open(path, "rb"); if not f then return nil, "cannot open " .. path end
+    local d = f:read("*a"); f:close()
+    local segs, i = {}, 1
+    while i <= #d do
+        local t = string.byte(d, i)
+        if t == 0 then
+            local n = string.byte(d, i+1) * 256 + string.byte(d, i+2)
+            local a = string.byte(d, i+3) * 256 + string.byte(d, i+4)
+            segs[#segs+1] = { addr = a, len = n,
+                              first = string.byte(d, i + 5),
+                              last  = string.byte(d, i + 5 + n - 1) }
+            i = i + 5 + n
+        elseif t == 0xFF then break
+        else return nil, string.format("bad DECB record type $%02X at offset %d", t, i) end
+    end
+    return segs
+end
+
+-- Segment table of the binary under test; drives the disk-mode gate.
+local SEGS = decb_segments(BIN)
+
 -- Parse a DECB binary and poke it in (direct mode). Segment records are
 -- type 0: [00][len16][addr16][data]; terminator type $FF: [FF][xx16][exec16].
 local function decb_load(path)
@@ -191,9 +225,18 @@ _G._probe_notifier = emu.add_machine_frame_notifier(function()
             -- fixed settle either races the load or wastes emulated seconds.
             -- Waiting on the observable is the robust form.
             local b0, b1, b2 = rd8(0x0200), rd8(0x0201), rd8(0x0202)
-            if b0 == 0x7E and b1 == 0x02 and b2 == 0x08 then
-                log(string.format("# disk: image present at frame %d ($0200 = %02X %02X %02X)",
-                                  fn, b0, b1, b2))
+            -- Every segment must have landed, not just the first (see decb_segments).
+            local all_in = (b0 == 0x7E and b1 == 0x02 and b2 == 0x08)
+            if all_in and SEGS then
+                for _, s in ipairs(SEGS) do
+                    if rd8(s.addr) ~= s.first or rd8(s.addr + s.len - 1) ~= s.last then
+                        all_in = false; break
+                    end
+                end
+            end
+            if all_in then
+                log(string.format("# disk: image present at frame %d ($0200 = %02X %02X %02X, %d segment(s) verified)",
+                                  fn, b0, b1, b2, SEGS and #SEGS or 0))
                 nk:post('EXEC\n')
                 log(string.format("# disk: posted EXEC at frame %d", fn))
                 state = "running"

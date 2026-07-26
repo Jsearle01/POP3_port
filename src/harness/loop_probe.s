@@ -93,8 +93,29 @@ VBORD_BIT       equ     $08             ; $FF92/$FF93 bit 3 = vertical border
 *   $0204  probe_vbls    2B   VBLs the 6809 counted for itself
 *   $0206  probe_magic   2B   $BEEF once complete
 * ---------------------------------------------------------------
+* P2.4 — the probe is now a PROGRAM UNIT: its own object, linked against the HAL
+* kernel object. Guard OFF reproduces the absolute build exactly; guard ON puts it
+* in `section prog`, which link/pop.link loads at $0200.
+*
+* $0200 IS NOT NEGOTIABLE. probe_test.lua reads probe_status/$0203,
+* probe_vbls/$0204 and probe_magic/$0206 as literal addresses, and refuses to EXEC
+* until it sees 7E 02 08 at $0200. Anything that shifts this layout by one byte
+* fails the P1.1 gate, which is exactly the behavioural-equivalence check P2.4 is
+* required to survive (hard-stop 11.4).
+                ifdef   OBJTARGET
+                section prog
+                export  probe_entry
+                else
                 org     $0200
+                endc
+                ifdef   OBJTARGET
+                * setdp is NOT permitted for the object target — the fourth
+                * object-incompatible directive class (P2.4; the recon found three).
+                * The HAL uses explicit `<` direct-mode operands, so omitting the
+                * declaration changes nothing it relies on.
+                else
                 setdp   0
+                endc
 
 probe_entry     jmp     probe_start     ; $0200 — EXEC address
 
@@ -216,4 +237,8 @@ palette         fcb     $00             ; 0 = black
                 fcb     $19             ; 2 = blue   R=0 G=2 B=3  [karateka MAME-verified RGB, CLAUDE.md §4]
                 fcb     $3F             ; 3 = white  %111111
 
+                ifdef   OBJTARGET
+                endsection
+                else
                 end     probe_entry
+                endc

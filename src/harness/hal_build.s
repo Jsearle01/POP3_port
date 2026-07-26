@@ -10,7 +10,15 @@
 * mem.s IS NOW BUILT (P2.2 flag 2): the `end boot` directive that used to pin it to
 * the end of the build list - and made it unassemblable in POP - has been relocated
 * out of the HAL into the engine layer. This is flag 2's concrete payoff for POP.
+* P2.4 — this file is now the KERNEL TRANSLATION UNIT. Under -DOBJTARGET each
+* included module opens `section code` and exports its hal.inc entry points, and
+* the whole thing assembles to ONE object that programs link against. `org` is
+* absolute-only: in the object build the linker script places the section, and an
+* `org` inside a section is not meaningful.
+                ifdef   OBJTARGET
+                else
                 org     $2000
+                endc
                 include "src/hal/coco3-dsk/hal_globals.s"
                 include "src/hal/coco3-dsk/sys.s"
                 include "src/hal/coco3-dsk/time.s"

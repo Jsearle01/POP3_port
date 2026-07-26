@@ -4,9 +4,27 @@ REM
 REM This is the BUILD half of the CLAUDE.md §1 test contract
 REM   (25.1 fresh tool output = build.bat + run_*_test).
 REM
+REM BUILD MODEL: OBJECT + LINKED (P2.4). POP no longer assembles to an absolute
+REM binary. Each translation unit is assembled to an object with
+REM `lwasm --obj -DOBJTARGET`, and `lwlink` places them via link/pop.link:
+REM
+REM     KERNEL   src/harness/hal_build.s  -> build/obj/hal_build.o   (section code)
+REM     PROGRAM  src/harness/loop_probe.s -> build/obj/loop_probe.o  (section prog)
+REM                    |
+REM                    +-- lwlink --script=link/pop.link --> build/loop_probe.bin
+REM
+REM The HAL's `export`s and hal.inc's `import`s are live in this model, so the
+REM contract is resolved by the linker instead of being documentation nothing
+REM checks. A call to a HAL entry point that is not exported is now a LINK ERROR.
+REM
+REM WHY -DOBJTARGET AND NOT A SEPARATE SOURCE TREE: one guarded HAL source serves
+REM BOTH build models (P2.3-recon). karateka assembles the SAME files absolute with
+REM the guard off and its binary does not change by one byte. One kernel, two builds.
+REM
 REM Requires:
-REM   lwasm    (LWTOOLS) on PATH
-REM   imgtool  (MAME)    on PATH, or set IMGTOOL, or at C:\mame\imgtool.exe
+REM   lwasm, lwlink  (LWTOOLS) on PATH
+REM   python                   on PATH  (the HAL-sync pre-build check)
+REM   imgtool        (MAME)    on PATH, or set IMGTOOL, or at C:\mame\imgtool.exe
 REM
 REM NOTE (carried from karateka build.bat, CLAUDE.md §2G): lwasm derives the
 REM `include` base dir by splitting the source path on '/', so source args MUST
@@ -15,18 +33,51 @@ REM the CWD and fail.
 REM
 REM Outputs (all under build/, which is gitignored — .dsk fixtures are
 REM throwaway and generated per-task, never shared; idiom §3):
-REM   build/loop_probe.bin   DECB binary  (LOADM-able)
-REM   build/probe.dsk        RS-DOS disk  (PROBE.BIN)
+REM   build/obj/*.o              relocatable objects
+REM   build/obj/*.map            link maps (the ABI, resolved)
+REM   build/loop_probe.bin       DECB binary  (LOADM-able, exec $0200)
+REM   build/hal_link_proof.bin   DECB binary  (ABI proof; not meant to run)
+REM   build/probe.dsk            RS-DOS disk  (PROBE.BIN)
 setlocal
 
 for %%I in ("%~dp0.") do set "REPO_ROOT=%%~fI"
 cd /d "%REPO_ROOT%"
 
-REM --- locate lwasm ------------------------------------------------------
+REM ======================================================================
+REM PRE-BUILD: HAL-SYNC BRIDGE (P2.4 Phase B)
+REM
+REM POP is LINKED and karateka is ABSOLUTE, from one guarded HAL source that
+REM currently lives as two copies. This diffs them (EOL-normalised, guard-aware)
+REM and FAILS THE BUILD on substantive drift — a script that merely exists
+REM enforces nothing, so it runs here, on every build, before anything is
+REM assembled. If the sibling repo is genuinely absent the check WARNS and the
+REM build proceeds: a check that blocks legitimate builds gets deleted.
+REM
+REM TEMPORARY BY DESIGN — this block and harness/tools/hal_sync_check.py both
+REM delete cleanly when the kernel becomes a single shared source.
+REM ======================================================================
+where python >nul 2>&1
+if errorlevel 1 (
+    echo [hal-sync] WARNING: python not found on PATH — HAL-sync check SKIPPED.
+) else (
+    python harness\tools\hal_sync_check.py
+    if errorlevel 1 (
+        echo *** BUILD BLOCKED BY HAL DRIFT — see [hal-sync] above ***
+        exit /b 1
+    )
+)
+
+REM --- locate lwasm / lwlink --------------------------------------------
 where lwasm >nul 2>&1
 if errorlevel 1 (
     echo ERROR: lwasm not found on PATH.
     echo Install LWTOOLS ^(lwasm/lwlink^) and add it to PATH, then re-run.
+    exit /b 1
+)
+where lwlink >nul 2>&1
+if errorlevel 1 (
+    echo ERROR: lwlink not found on PATH.
+    echo POP builds LINKED as of P2.4; lwlink is required, not optional.
     exit /b 1
 )
 
@@ -47,20 +98,40 @@ if not defined IMGTOOL (
 )
 
 if not exist build mkdir build
+if not exist build\obj mkdir build\obj
 
-echo --- Harness-proof target (P1.1 loop probe) ---
-lwasm --decb -o build/loop_probe.bin src/harness/loop_probe.s
+echo --- Assemble: HAL kernel unit (object) ---
+REM Every HAL module opens `section code` and exports its hal.inc entry points
+REM under -DOBJTARGET. The six runtime-blit entry points stay DORMANT in POP
+REM (PA.6 / P1.3) and are deliberately NOT exported: a POP call to one is now a
+REM link error naming the symbol. Add -DPOP_HAL_RUNTIME_BLIT to enable them.
+lwasm --obj -DOBJTARGET -I . -o build/obj/hal_build.o src/harness/hal_build.s
+if errorlevel 1 goto :error
+call :size build/obj/hal_build.o
+
+echo --- Assemble: P1.1 loop probe (object) ---
+lwasm --obj -DOBJTARGET -I . -o build/obj/loop_probe.o src/harness/loop_probe.s
+if errorlevel 1 goto :error
+call :size build/obj/loop_probe.o
+
+echo --- Assemble: HAL ABI link proof (object) ---
+lwasm --obj -DOBJTARGET -I . -o build/obj/hal_link_proof.o src/harness/hal_link_proof.s
+if errorlevel 1 goto :error
+call :size build/obj/hal_link_proof.o
+
+echo --- Link: probe + HAL kernel ---
+REM --section-base is SILENTLY IGNORED by lwlink (P2.3-recon D4) — the script is
+REM the only thing that actually places a section. Do not "simplify" this to a flag.
+lwlink --decb --script=link/pop.link --map=build/obj/probe.map ^
+       -o build/loop_probe.bin build/obj/loop_probe.o build/obj/hal_build.o
 if errorlevel 1 goto :error
 call :size build/loop_probe.bin
 
-echo --- HAL (P2.1: adopted from karateka; runtime blit DORMANT by default) ---
-REM mem.s is deliberately NOT listed: its last line is `end boot`, a build
-REM directive referencing the ENGINE entry symbol, which POP does not have yet.
-REM See reports/*-p2-1-hal-adoption.md. Add -DPOP_HAL_RUNTIME_BLIT to re-enable
-REM the runtime masked blit (POP uses compiled sprites instead).
-lwasm --decb -I . -o build/hal.bin src/harness/hal_build.s
+echo --- Link: HAL ABI proof (every live hal.inc import must resolve) ---
+lwlink --decb --script=link/pop.link --entry=link_proof_entry --map=build/obj/proof.map ^
+       -o build/hal_link_proof.bin build/obj/hal_link_proof.o build/obj/hal_build.o
 if errorlevel 1 goto :error
-call :size build/hal.bin
+call :size build/hal_link_proof.bin
 
 echo --- Bootable RS-DOS disk image ---
 REM .dsk is always 18 sectors/track (idiom §3); default geometry is correct.

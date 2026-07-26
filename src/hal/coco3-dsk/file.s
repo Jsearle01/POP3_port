@@ -10,7 +10,21 @@
 * HAL contract reference: src/hal.inc (HAL_file_* declarations)
 * ---------------------------------------------------------------
 
+        ifdef   OBJTARGET
+        * setdp is NOT permitted for the object target — the fourth
+        * object-incompatible directive class (P2.4; the recon found three).
+        * The HAL uses explicit `<` direct-mode operands, so omitting the
+        * declaration changes nothing it relies on.
+        else
         setdp   0
+        endc
+        
+        ifdef   OBJTARGET
+        * Object/linked build (POP, P2.4). Guard OFF = the absolute build
+        * (karateka today): not one byte of this file changes.
+        section code
+        export  HAL_file_init
+        endc
 
 * ---------------------------------------------------------------
 * HAL_file_init  [STUB-P2.x]
@@ -23,3 +37,7 @@
 HAL_file_init:
         andcc   #$FE                    ; CC.C clear = success (stub)
         rts
+                
+                ifdef   OBJTARGET
+                endsection
+                endc

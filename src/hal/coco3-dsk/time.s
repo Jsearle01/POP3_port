@@ -25,7 +25,24 @@
 *   All functions return CC.C clear on success (no error paths in stubs).
 * ---------------------------------------------------------------
 
+        ifdef   OBJTARGET
+        * setdp is NOT permitted for the object target — the fourth
+        * object-incompatible directive class (P2.4; the recon found three).
+        * The HAL uses explicit `<` direct-mode operands, so omitting the
+        * declaration changes nothing it relies on.
+        else
         setdp   0
+        endc
+        
+        ifdef   OBJTARGET
+        * Object/linked build (POP, P2.4). Guard OFF = the absolute build
+        * (karateka today): not one byte of this file changes.
+        section code
+        export  HAL_time_init
+        export  HAL_time_vbl_wait
+        export  HAL_time_frame_count
+        export  HAL_time_delay
+        endc
 
 * HAL-private DP locations — declared in src/engine/globals.s (P2.3a.3)
 * hal_frame_hi equ $10  / hal_frame_lo equ $11
@@ -177,3 +194,7 @@ hal_delay_loop:
         bne     hal_delay_loop          ; loop if more frames remaining
         andcc   #$FE                    ; CC.C clear = success
         rts
+                
+                ifdef   OBJTARGET
+                endsection
+                endc

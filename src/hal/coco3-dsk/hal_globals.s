@@ -18,7 +18,14 @@
 * would fork the shared contract, which P2.1's governing rules forbid.
 * ---------------------------------------------------------------
 
+                ifdef   OBJTARGET
+                * setdp is NOT permitted for the object target — the fourth
+                * object-incompatible directive class (P2.4; the recon found three).
+                * The HAL uses explicit `<` direct-mode operands, so omitting the
+                * declaration changes nothing it relies on.
+                else
                 setdp   0
+                endc
 
 * ---------------------------------------------------------------
 * HAL scratch band $00-$1F

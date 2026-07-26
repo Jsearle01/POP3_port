@@ -71,7 +71,22 @@
 *   $13  sys_init_cc_mask — CC state post-HAL_sys_init (test diagnostic)
 * ---------------------------------------------------------------
 
+        ifdef   OBJTARGET
+        * setdp is NOT permitted for the object target — the fourth
+        * object-incompatible directive class (P2.4; the recon found three).
+        * The HAL uses explicit `<` direct-mode operands, so omitting the
+        * declaration changes nothing it relies on.
+        else
         setdp   0
+        endc
+        
+        ifdef   OBJTARGET
+        * Object/linked build (POP, P2.4). Guard OFF = the absolute build
+        * (karateka today): not one byte of this file changes.
+        section code
+        export  HAL_sys_init
+        export  HAL_sys_panic
+        endc
 
 * sys_init_cc_mask equ $13  — declared in src/engine/globals.s (P2.3a.3)
 
@@ -231,3 +246,7 @@ HAL_sys_init:
 * ---------------------------------------------------------------
 HAL_sys_panic:
         bra     HAL_sys_panic           ; infinite loop — MAME timeout failure
+                
+                ifdef   OBJTARGET
+                endsection
+                endc

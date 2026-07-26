@@ -1,0 +1,49 @@
+; link/pop.link — POP CoCo3 port: the LINKER SCRIPT (P2.4).
+;
+; This is the memory map. It is not a build detail — it is the foundation the
+; kernel/program split sits on, and every address the absolute build used to bake
+; into an `org` now lives here, in one place, on purpose.
+;
+; WHY A SCRIPT AND NOT A FLAG (P2.3-recon D4, the gotcha worth carrying):
+;   `lwlink --section-base=code=0x4000` is SILENTLY IGNORED. No error, no warning,
+;   exit 0 — and the section still lands at the default $2000. A conversion that
+;   used the flag and checked only the exit code would place every section at the
+;   wrong address and look completely healthy. Only a script actually places code.
+;
+; ---------------------------------------------------------------------------
+; POP CoCo3 MEMORY MAP
+; ---------------------------------------------------------------------------
+;   $0000-$001F   DP — HAL band            [hal.inc: DIRECT PAGE USAGE POLICY]
+;   $0020-$007F   DP — engine band         (page_register $50, s4_dest_row $66)
+;   $0080-$00FF   DP — reserved, CoCo3 system use
+;   $0100-$01FF   6809 vectors / DECB scratch. $010C is DECB's IRQ hook, which
+;                 LOADM overwrites — nothing may be placed here.
+;                 [mame-idioms-coco3-port.md §5 — the disk-boot overlap]
+;
+;   $0200-...     PROGRAM  (section `prog`)  <-- load + exec address
+;   $3000-...     KERNEL   (section `code`)  <-- the HAL, linked as its own unit
+;
+;   $7800-$78FF   trace ring buffer         [hal.inc KCOCO3_TRACE_BUFFER]
+;   $8000-$BBFF   framebuffer A, $3C00      [hal.inc KCOCO3_FB_A_BASE/_FB_SIZE]
+;   $C000-$FBFF   framebuffer B, $3C00      [hal.inc KCOCO3_FB_B_BASE]
+;   $FF00-$FFFF   I/O — GIME, MMU, SAM, palette
+;
+; WHY THE PROGRAM IS LOW AND THE KERNEL IS HIGH (state plainly — it is not the
+; conventional OS layout, and it is not a preference):
+;   $0200 is FORCED. The P1.1 harness reads probe_status at $0203, probe_vbls at
+;   $0204 and probe_magic at $0206 as literal addresses, and gates the LOADM on
+;   finding the bytes 7E 02 08 (`jmp $0208`) at $0200. The program's load address
+;   is therefore a harness contract, not a choice, and the kernel goes above it.
+;   When the engine replaces the probe that constraint disappears and this map
+;   should be revisited — kernel-low is the better long-term shape.
+;
+;   $3000 for the kernel: comfortably above anything the program region will grow
+;   into from $0200, and well below the trace buffer at $7800. The HAL currently
+;   links to a few hundred bytes, so the gap is large on purpose — it is headroom,
+;   not an estimate of size.
+; ---------------------------------------------------------------------------
+
+section prog load 0200
+section code load 3000
+
+entry probe_entry

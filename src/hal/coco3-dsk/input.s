@@ -48,7 +48,22 @@
 *   [ref: conventions.md §3 — CC.C clear on success]
 * ---------------------------------------------------------------
 
+        ifdef   OBJTARGET
+        * setdp is NOT permitted for the object target — the fourth
+        * object-incompatible directive class (P2.4; the recon found three).
+        * The HAL uses explicit `<` direct-mode operands, so omitting the
+        * declaration changes nothing it relies on.
+        else
         setdp   0
+        endc
+        
+        ifdef   OBJTARGET
+        * Object/linked build (POP, P2.4). Guard OFF = the absolute build
+        * (karateka today): not one byte of this file changes.
+        section code
+        export  HAL_input_init
+        export  HAL_input_poll
+        endc
 
 * ---------------------------------------------------------------
 * HAL_input_init
@@ -119,3 +134,7 @@ hal_input_none:
         clrb
         andcc   #$FE                    ; CC.C clear = no input
         rts
+                
+                ifdef   OBJTARGET
+                endsection
+                endc

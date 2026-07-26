@@ -183,7 +183,9 @@ ERR_INTERNAL    equ 8           ; internal HAL error
 ;   Clobbers: A, B, X, CC
 ;   Init order: 3
 ;   [ref: src/hal/coco3-dsk/gfx.s — implementation]
+        ifdef   OBJTARGET
         import  HAL_gfx_init            ; defined in src/hal/coco3-dsk/gfx.s
+        endc
 
 ; HAL_gfx_shutdown
 ;   Restore screen mode (e.g. return to text for error display).
@@ -205,7 +207,9 @@ HAL_gfx_shutdown    equ *       ; STUB-P3 — not yet implemented
 ;   Clobbers: A, B, X, Y, CC
 ;   Note: per D.3 back-buffer discipline; never writes to front
 ;   [ref: src/hal/coco3-dsk/gfx.s — implementation]
+        ifdef   OBJTARGET
         import  HAL_gfx_clear           ; defined in src/hal/coco3-dsk/gfx.s
+        endc
 
 ; HAL_gfx_blit_sprite
 ;   Render CoCo3 packed sprite at sub-byte-precise (col, row) in back buffer.
@@ -227,7 +231,9 @@ HAL_gfx_shutdown    equ *       ; STUB-P3 — not yet implemented
 ;   Note: when blit_subbyte>0, effective output width = sprite_width+1 bytes;
 ;         caller must ensure col+width <= 78 to avoid out-of-bounds overflow write.
 ;   [ref: src/hal/coco3-dsk/gfx.s — implementation]
+        ifdef   OBJTARGET
         import  HAL_gfx_blit_sprite     ; defined in src/hal/coco3-dsk/gfx.s (P2.4.1)
+        endc
 
 ; HAL_gfx_blit_sprite_opaque
 ;   As HAL_gfx_blit_sprite, but OPAQUE: every pixel incl. index-0 (black) is
@@ -235,7 +241,9 @@ HAL_gfx_shutdown    equ *       ; STUB-P3 — not yet implemented
 ;   shadows / solid fills that must render against a (partially black) floor.
 ;   Faithful to the oracle's $0F-selected store blend (video.s routine_1927).
 ;   Same args/returns as HAL_gfx_blit_sprite. [ref: src/hal/coco3-dsk/gfx.s]
+        ifdef   OBJTARGET
         import  HAL_gfx_blit_sprite_opaque
+        endc
 
 ; ---------------------------------------------------------------
 ; The four blit entry points below were IMPLEMENTED and LIVE but never declared
@@ -257,7 +265,9 @@ HAL_gfx_shutdown    equ *       ; STUB-P3 — not yet implemented
 ;          U = descriptor ptr; blit_subbyte ($0C) set by caller.
 ;   Uses mix_* ZP ($14-$20); blit_subbyte persists across regions.
 ;   [ref: src/hal/coco3-dsk/gfx.s]
+        ifdef   OBJTARGET
         import  HAL_gfx_blit_sprite_mixed
+        endc
 
 ; HAL_gfx_blit_sprite_masked
 ;   Opaque blit with a per-COLUMN positional mask -- splits opacity at the PIXEL
@@ -268,7 +278,9 @@ HAL_gfx_shutdown    equ *       ; STUB-P3 — not yet implemented
 ;          U = mask array ptr (one mask byte per source column, width bytes).
 ;   BYTE-ALIGNED ONLY (no sub-byte shift).
 ;   [ref: src/hal/coco3-dsk/gfx.s]
+        ifdef   OBJTARGET
         import  HAL_gfx_blit_sprite_masked
+        endc
 
 ; HAL_gfx_blit_stencil_punch
 ;   Punch a per-PIXEL 2D silhouette to black: dest = dest AND ~mask, walking a
@@ -277,7 +289,9 @@ HAL_gfx_shutdown    equ *       ; STUB-P3 — not yet implemented
 ;   Args:  X = stencil (height,width,maskbytes); A = dest byte col; B = dest row.
 ;   BYTE-ALIGNED. Bounds-checked. Clobbers A,B,X,Y,CC.
 ;   [ref: src/hal/coco3-dsk/gfx.s]
+        ifdef   OBJTARGET
         import  HAL_gfx_blit_stencil_punch
+        endc
 
 ; HAL_gfx_blit_scroll
 ;   As HAL_gfx_blit_sprite, but targets a 16-bit PHYSICAL row (0-391) rather than
@@ -287,7 +301,9 @@ HAL_gfx_shutdown    equ *       ; STUB-P3 — not yet implemented
 ;          blit_subbyte ($0C) = sub-byte offset 0-3 (caller sets).
 ;   Returns: CC.C clear. Preserves U. Clobbers A,B,X,Y,CC,$0D/$0E.
 ;   [ref: src/hal/coco3-dsk/gfx.s]
+        ifdef   OBJTARGET
         import  HAL_gfx_blit_scroll
+        endc
 
 
 ; HAL_gfx_set_palette
@@ -314,7 +330,9 @@ HAL_gfx_set_palette equ *       ; STUB-P3 — not yet implemented
 ;   Timing: call after render complete, before or during VBL
 ;   [no-ref: GIME buffer-base register (VOFF or equivalent)
 ;     for page flip — resolve during P2 from GIME-RM]
+        ifdef   OBJTARGET
         import  HAL_gfx_present         ; defined in src/hal/coco3-dsk/gfx.s (P2.3a.5)
+        endc
 
 ;==============================================================
 ; TIME SUBSYSTEM — DETAILED
@@ -333,7 +351,9 @@ HAL_gfx_set_palette equ *       ; STUB-P3 — not yet implemented
 ;   Preserves: U, Y
 ;   Clobbers: A, B, X, CC
 ;   Init order: 2
+        ifdef   OBJTARGET
         import  HAL_time_init           ; defined in src/hal/coco3-dsk/time.s
+        endc
 
 ; HAL_time_vbl_wait
 ;   Block until next vertical blanking interval.
@@ -345,7 +365,9 @@ HAL_gfx_set_palette equ *       ; STUB-P3 — not yet implemented
 ;   Preserves: U, Y, X
 ;   Clobbers: A, B, CC
 ;   Side effects: increments internal frame counter
+        ifdef   OBJTARGET
         import  HAL_time_vbl_wait       ; defined in src/hal/coco3-dsk/time.s
+        endc
 
 ; HAL_time_frame_count
 ;   Return current 16-bit frame counter (wraps $FFFF→$0000).
@@ -354,7 +376,9 @@ HAL_gfx_set_palette equ *       ; STUB-P3 — not yet implemented
 ;   Errors:  none
 ;   Preserves: U, Y, X, CC
 ;   Clobbers: D
+        ifdef   OBJTARGET
         import  HAL_time_frame_count    ; defined in src/hal/coco3-dsk/time.s
+        endc
 
 ; HAL_time_delay
 ;   Busy-wait N frames.
@@ -363,7 +387,9 @@ HAL_gfx_set_palette equ *       ; STUB-P3 — not yet implemented
 ;   Errors:  none
 ;   Preserves: U, Y, X
 ;   Clobbers: A, B, CC
+        ifdef   OBJTARGET
         import  HAL_time_delay          ; defined in src/hal/coco3-dsk/time.s
+        endc
 
 ;==============================================================
 ; SOUND SUBSYSTEM — DETAILED
@@ -383,7 +409,9 @@ HAL_gfx_set_palette equ *       ; STUB-P3 — not yet implemented
 ;   Preserves: U, Y
 ;   Clobbers: A, B, X, CC
 ;   Init order: 5
+        ifdef   OBJTARGET
         import  HAL_sound_init          ; defined in src/hal/coco3-dsk/sound.s (P2.3a.3 stub)
+        endc
 
 ; HAL_sound_shutdown
 ;   Silence output and release sound resources.
@@ -458,7 +486,9 @@ HAL_sound_play_event equ *      ; defined in src/hal/coco3-dsk/sound.s
 ;   Init order: 1 (first — other init may need memory info)
 ;   [no-ref: GIME MMU probing for 128K vs 512K — resolve
 ;     during P2 from CC3-TR MMU section; see D.5 pattern]
+        ifdef   OBJTARGET
         import  HAL_mem_size_detect     ; defined in src/hal/coco3-dsk/mem.s (P2.3a.3 stub)
+        endc
 
 ;==============================================================
 ; INPUT SUBSYSTEM — SKELETON
@@ -473,7 +503,9 @@ HAL_sound_play_event equ *      ; defined in src/hal/coco3-dsk/sound.s
 ;   Preserves: U, Y
 ;   Clobbers: A, B, X, CC
 ;   Init order: 4
+        ifdef   OBJTARGET
         import  HAL_input_init          ; defined in src/hal/coco3-dsk/input.s
+        endc
 
 ; HAL_input_poll
 ;   Sample keyboard and joystick; return packed state.
@@ -487,7 +519,9 @@ HAL_sound_play_event equ *      ; defined in src/hal/coco3-dsk/sound.s
 ;   Clobbers: A, B, CC
 ;   [no-ref: CoCo3 keyboard matrix registers — resolve during
 ;     P2 from CC3-TR input section]
+        ifdef   OBJTARGET
         import  HAL_input_poll          ; defined in src/hal/coco3-dsk/input.s
+        endc
 
 ;==============================================================
 ; FILE SUBSYSTEM — SKELETON
@@ -502,7 +536,9 @@ HAL_sound_play_event equ *      ; defined in src/hal/coco3-dsk/sound.s
 ;   Preserves: U, Y
 ;   Clobbers: A, B, X, CC
 ;   Init order: 6 (last)
+        ifdef   OBJTARGET
         import  HAL_file_init           ; defined in src/hal/coco3-dsk/file.s (P2.3a.3 stub)
+        endc
 
 ; HAL_file_load
 ;   Load entire named file to a memory address.
@@ -543,7 +579,9 @@ HAL_file_load       equ *       ; (P2 stub)
 ;   [ref: src/hal/coco3-dsk/sys.s — implementation]
 ;   [ref: docs/interrupt-handling.md — dispatch block design]
 ;   [ref: docs/conventions.md — interrupt mask policy section]
+        ifdef   OBJTARGET
         import  HAL_sys_init            ; defined in src/hal/coco3-dsk/sys.s
+        endc
 
 ; HAL_sys_cpu
 ;   Return detected CPU type (cached from boot probe).
@@ -568,7 +606,9 @@ HAL_sys_target      equ *       ; (P2 stub)
 ;   Args:  X = pointer to null-terminated message (or 0)
 ;   Returns: does not return
 ;   Errors:  this IS the error path
+        ifdef   OBJTARGET
         import  HAL_sys_panic           ; defined in src/hal/coco3-dsk/sys.s
+        endc
 
 ;==============================================================
 ; DEBUG/TRACE SUBSYSTEM — DETAILED

@@ -11,7 +11,21 @@
 * HAL contract reference: src/hal.inc (HAL_mem_size_detect declaration)
 * ---------------------------------------------------------------
 
+        ifdef   OBJTARGET
+        * setdp is NOT permitted for the object target — the fourth
+        * object-incompatible directive class (P2.4; the recon found three).
+        * The HAL uses explicit `<` direct-mode operands, so omitting the
+        * declaration changes nothing it relies on.
+        else
         setdp   0
+        endc
+        
+        ifdef   OBJTARGET
+        * Object/linked build (POP, P2.4). Guard OFF = the absolute build
+        * (karateka today): not one byte of this file changes.
+        section code
+        export  HAL_mem_size_detect
+        endc
 
 * ---------------------------------------------------------------
 * HAL_mem_size_detect  [STUB-P2.x]
@@ -34,3 +48,7 @@ HAL_mem_size_detect:
 * entry symbol — it made the HAL unassemblable in any project without a `boot`
 * (demonstrated when POP adopted it) and forced this file to be build-list-last.
 * The program entry now lives in the engine/build layer, where it belongs.
+                
+                ifdef   OBJTARGET
+                endsection
+                endc
