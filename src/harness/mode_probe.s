@@ -63,7 +63,11 @@
 * ---------------------------------------------------------------
 * Constants
 * ---------------------------------------------------------------
-FB_BASE         equ     $8000           ; single-buffered; set_mode points VOFFSET here
+* P2.6: HAL_gfx_set_mode is now DOUBLE-buffered and maps the BACK buffer at
+* HAL_gfx_draw_base ($6000) -- the physical buffers are no longer in the CPU's
+* default view at all. This probe reads the base from the HAL instead of naming
+* an address, which is the whole point of publishing it.
+*   [ref: src/hal.inc — HAL_gfx_draw_base]
 SCREEN_ROWS     equ     192
 STAGE_VBLS      equ     90              ; ~1.5 s per stage, so each is separately visible
 PROBE_MAGIC     equ     $D00D
@@ -88,40 +92,72 @@ probe_magic     fdb     0               ; $0206
 * ---------------------------------------------------------------
 mode_start
                 orcc    #$50            ; mask IRQ+FIRQ for the whole run
+* P2.6: HAL_gfx_set_mode remaps MMU $FFA3-$FFA6 (CPU $6000-$DFFF) to map the back
+* buffer. DECB leaves S at about $7F2B, INSIDE that range, so the stack has to
+* move first or set_mode never returns. $1F00 is in MMU block 0, never remapped.
+* [ref: src/hal.inc — HAL_gfx_set_mode CALLER REQUIREMENT]
+                lds     #$1F00
                 clra
                 tfr     a,dp            ; DP = 0
 
 * --- stage 1: 16-colour ------------------------------------------
                 lda     #GFX_MODE_320x192x16
                 jsr     HAL_gfx_set_mode
-                jsr     draw_16
+                jsr     show_16
                 lda     #1
                 jsr     checkpoint
 
 * --- stage 2: 4-colour -------------------------------------------
                 lda     #GFX_MODE_320x192x4
                 jsr     HAL_gfx_set_mode
-                jsr     draw_4
+                jsr     show_4
                 lda     #2
                 jsr     checkpoint
 
 * --- stage 3: BACK to 16-colour (this is the real test) ----------
                 lda     #GFX_MODE_320x192x16
                 jsr     HAL_gfx_set_mode
-                jsr     draw_16
+                jsr     show_16
                 lda     #3
                 jsr     checkpoint
 
 * --- stage 4: BACK to 4-colour -----------------------------------
                 lda     #GFX_MODE_320x192x4
                 jsr     HAL_gfx_set_mode
-                jsr     draw_4
+                jsr     show_4
                 lda     #4
                 jsr     checkpoint
 
                 ldd     #PROBE_MAGIC
                 std     probe_magic     ; all four stages completed
 mode_done       bra     mode_done       ; spin; the harness captures here
+
+* ---------------------------------------------------------------
+* show_16 / show_4 — paint the bars into BOTH buffers.
+*
+* P2.6: HAL_gfx_set_mode is double-buffered now. It leaves buffer A as the draw
+* target and B on screen, so drawing once and stopping would display the CLEARED
+* half -- a black screen. Draw, swap to put the image on screen, then draw again
+* so the new back buffer matches. Both halves then hold the same static image,
+* which is what a still picture means under double buffering, and it also lets
+* the harness read the pattern from the draw window whichever half is mapped.
+*
+* No CC.I unmask here (this probe keeps interrupts masked, see the header), so
+* HAL_gfx_swap's VBL wait takes its documented synthetic path and returns at
+* once. Correct for a static image; ANIMATION is what needs the real wait, and
+* that is src/harness/anim_probe.s.
+* ---------------------------------------------------------------
+show_16
+                jsr     draw_16
+                jsr     HAL_gfx_swap
+                jsr     draw_16
+                rts
+
+show_4
+                jsr     draw_4
+                jsr     HAL_gfx_swap
+                jsr     draw_4
+                rts
 
 * ---------------------------------------------------------------
 * checkpoint — publish the stage, mirror the HAL's geometry, then hold the
@@ -188,7 +224,7 @@ draw_4
 draw_bars
                 sta     db_bars
                 stb     db_bytes
-                ldx     #FB_BASE
+                ldx     HAL_gfx_draw_base
                 ldy     #SCREEN_ROWS
 db_row
                 clrb                    ; B = bar index

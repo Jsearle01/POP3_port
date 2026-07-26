@@ -341,16 +341,32 @@ GFX_MODE_320x192x16 equ 1        ; $FF99=$1E, 160 B/row, 30,720 B, 16 palette re
 ;   Preserves: U, Y
 ;   Clobbers: A, B, X, CC
 ;
-;   GUARANTEE ON RETURN: display is in the requested mode, the framebuffer is
+;   GUARANTEE ON RETURN: display is in the requested mode, BOTH buffers are
 ;   CLEARED to palette index 0, that mode's palette is loaded, the HAL_gfx_cur_*
-;   geometry describes the active mode, and NOTHING carries over from the
-;   previous mode. Clear-on-switch is the contract, not a side effect: the two
-;   modes pack pixels at different widths, so surviving pixels would reinterpret
-;   as garbage rather than as old content.
+;   geometry describes the active mode, the back buffer is mapped at
+;   HAL_gfx_draw_base, and NOTHING carries over from the previous mode.
+;   Clear-on-switch is the contract, not a side effect: the two modes pack pixels
+;   at different widths, so surviving pixels would reinterpret as garbage rather
+;   than as old content.
 ;
-;   Single-buffered: framebuffer is FB_A ($8000) and VOFFSET points at it.
-;   16-colour double-buffering would need 60 KB of the 64 KB CPU window — a real
-;   constraint for later animation, deliberately not addressed here.
+;   *** CALLER REQUIREMENT: THE STACK MUST NOT LIVE IN THE DRAW WINDOW ***
+;   This service REMAPS MMU registers $FFA3-$FFA6, i.e. CPU $6000-$DFFF. A caller
+;   whose stack pointer is inside that range has the ground pulled out from under
+;   it mid-call and does not return. DECB leaves S at about $7F2B, which is inside
+;   it, so any program entered from a DECB LOADM/EXEC must move its stack first:
+;       lds  #$1F00        ; MMU block 0 -- never remapped
+;   Measured: without this, a probe that had worked for two dispatches hung the
+;   moment set_mode gained its MMU mapping. Nothing warns you; the call simply
+;   never comes back.
+;
+;   DOUBLE-BUFFERED, BOTH MODES (P2.6). One model; only the buffer SIZE differs.
+;   Buffers live in PHYSICAL RAM (A $20000, B $30000) selected for display by
+;   VOFFSET; the CPU sees only the BACK one, MMU-mapped at HAL_gfx_draw_base.
+;
+;   P2.5 recorded a worry that 16-colour double-buffering would need 60 KB of the
+;   64 KB CPU window. That was WRONG — it reasoned about the CPU's view rather
+;   than the machine's. There is no memory wall: 16-colour double-buffers exactly
+;   like 4-colour.
 ;
 ;   Mode register values are CONFIRMED, not derived:
 ;   [ref: GIME_Reference_Manual.pdf §10 Video Mode Reference — the $FF99 table]
@@ -359,6 +375,58 @@ GFX_MODE_320x192x16 equ 1        ; $FF99=$1E, 160 B/row, 30,720 B, 16 palette re
 ;     divergences from GIME-RM §14's ordering ($FF90 first, palette last)]
         ifdef   OBJTARGET
         import  HAL_gfx_set_mode
+        endc
+
+; HAL_gfx_swap                                        [P2.6 — the VBL-synced flip]
+;   Show the buffer just drawn; map the other in as the new draw target.
+;   Args:  none
+;   Returns: CC.C clear
+;   Errors:  none
+;   Preserves: U, Y
+;   Clobbers: A, B, X, CC
+;
+;   Order is load-bearing: WAIT for vertical blank, THEN write VOFFSET, THEN
+;   remap. Writing VOFFSET mid-scanline switches the GIME's source address while
+;   it is drawing — the top of the frame comes from one buffer and the bottom
+;   from the other, which is a visible tear.
+;
+;   *** THE CC.I TRAP — read this before animating anything ***
+;   HAL_time_vbl_wait does NOT wait when CC.I is SET. It takes its documented
+;   fallback (Q001 N3=beta), synthesises a frame-counter increment and returns
+;   immediately. A caller that leaves interrupts masked gets a swap loop running
+;   flat out, flipping VOFFSET at arbitrary raster positions. It compiles, it
+;   runs, the counters advance, and it tears.
+;
+;   REQUIRED CALLER SEQUENCE:
+;       jsr  HAL_time_init      ; install the $010C VBL handler, enable VBORD
+;       andcc #$EF              ; CLEAR CC.I -- nothing else will do this
+;       lda  #<mode>
+;       jsr  HAL_gfx_set_mode
+;     loop:
+;       ... draw into HAL_gfx_draw_base ...
+;       jsr  HAL_gfx_swap
+;       bra  loop
+;   HAL_time_init deliberately does not clear CC.I (the E1.c invariant: HAL init
+;   never changes the caller's mask state), so the andcc is the caller's job and
+;   nothing will remind them.
+        ifdef   OBJTARGET
+        import  HAL_gfx_swap
+        endc
+
+; HAL_gfx_draw_base / HAL_gfx_cur_back / HAL_gfx_swaps(_hi)   [P2.6]
+;   HAL_gfx_draw_base  2 B  CPU address of the BACK buffer. DRAW HERE, and
+;                           nowhere else. The physical buffer addresses are
+;                           HAL-private on purpose: a caller that hardcodes one
+;                           writes to whichever buffer happens to be mapped,
+;                           which surfaces only as an intermittent tear.
+;   HAL_gfx_cur_back   1 B  current draw target, 0 = A, 1 = B
+;   HAL_gfx_swaps(_hi) 2 B  swaps performed; the observable that distinguishes
+;                           "flipping" from "drawing to a static screen"
+        ifdef   OBJTARGET
+        import  HAL_gfx_draw_base
+        import  HAL_gfx_cur_back
+        import  HAL_gfx_swaps
+        import  HAL_gfx_swaps_hi
         endc
 
 ; HAL_gfx_cur_mode / _vres / _stride / _words / _palcnt   [P2.5]

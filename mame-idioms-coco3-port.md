@@ -975,3 +975,174 @@ property with a ground truth outside the pipeline, a byte-diff is not the check.
 `palette-registers-decode-differently-per-monitor-type-a-byte-diff-cannot-see-it`.
 *Established:* P1.3 palette/monitor-mode fix 2026-07-26 (POP3_port), after Jay
 reported orange rendering yellow.
+
+
+## 19. The object/linked build model (P2.1–P2.6, filed retrospectively)
+
+**Why "retrospectively".** §2A.3 rule 3 says a discovered idiom goes in the applicable
+file. That was honoured through P1.3-fix — seven commits touch this file — and then
+LAPSED: P2.1–P2.5 recorded their findings in source comments and reports instead, while a
+report counter tracked "§2A.3 authorship deferrals" up to twenty-one. There was no ruling
+to wait for; see §19h. These are the lapsed entries, filed now.
+
+### 19a. FOUR directive classes are object-target-only, not three
+`lwasm --decb` (absolute) rejects `export`, `import`, `section`/`endsection`, **and
+`setdp`**. P2.3-recon enumerated the first three from toy probes; `setdp` only surfaced on
+real HAL code, because a toy probe has no direct-page usage to declare:
+```
+SETDP not permitted for object target
+```
+One source serves both build models by guarding all four behind `ifdef OBJTARGET`; the
+absolute output is then byte-identical to a source that never had them. Verified:
+karateka's production binary `88eba89b…` unchanged across the whole conversion.
+*Established:* P2.4 (POP3_port).
+
+### 19b. `lwlink --section-base` is SILENTLY IGNORED — only a script places sections
+No error, no warning, exit 0, and the section still lands at the default address. A
+conversion that used the flag and checked only the exit code would place everything wrong
+and look healthy. A linker script works:
+```
+section prog load 0200
+section code load 3000
+entry probe_entry
+```
+*Established:* P2.3-recon D4; used in `link/pop.link` from P2.4.
+
+### 19c. `lwlink` only errors on a REFERENCED undefined symbol
+An `import` that nothing calls links clean. The ABI is therefore enforced at the point of
+USE, not of declaration — so "the contract's imports resolve" is only a real claim for
+symbols something actually calls. Measured both ways:
+```
+import never_defined_symbol, NOT called -> lwlink exit 0
+import never_defined_symbol, JSR'd      -> External symbol ... not found, exit 1
+```
+Consequence worth having: a deliberately-dormant entry point that is declared but not
+exported becomes a link error naming the symbol, rather than a jump into whatever occupies
+the address.
+*Established:* P2.4.
+
+### 19d. A linked DECB binary has MULTIPLE segments — gate on the LAST one
+`lwlink --decb` emits one record per section. The program segment lands FIRST, so a
+harness that polls the entry address and posts `EXEC` on sight types into a still-running
+`LOADM`: the program never runs, and it presents as a code fault rather than a race.
+Verify every segment's first AND last byte before proceeding. Gating on the last segment
+instead of the first holds for any segment count, so adding sections later cannot silently
+re-break it.
+*Established:* P2.4, after P1.1's single-segment gate broke on the first linked build.
+
+### 19e. GIME 16-colour: `$FF99 = $1E`, 160 B/row, 30,720 B
+CONFIRMED from two independent sources, not derived:
+
+| mode | bpp | B/row | HRES | CRES | `$FF99` (192 lines) | bytes |
+|------|-----|-------|------|------|---------------------|-------|
+| 320×192×4  | 2 | 80  | 101 | 01 | `$15` | 15,360 |
+| 320×192×16 | 4 | 160 | 111 | 10 | `$1E` | 30,720 |
+
+GIME-RM §10's Video Mode Reference gives `$1E` directly; SockmasterGime.md:108-136's bit
+layout reconstructs the same byte (`%0 00 111 10`). Palette is `$FFB0-$FFBF`, 16 registers.
+A wrong stride does not fail loudly — it skews the image into a diagonal — so the mode
+service PUBLISHES the stride rather than letting each caller assume it.
+*Established:* P2.5.
+
+### 19f. Mode-set ordering DIVERGES from GIME-RM §14, deliberately
+The manual's example loads the palette at step 4, before the mode registers, and writes
+`$FF90` late. This codebase does neither:
+- **`$FF90` FIRST** — framebuffers at `$8000+` are ROM territory until the CoCo3 all-RAM
+  map exists, so nothing can be cleared before it.
+- **Palette LAST** — palette writes do not latch until `$FF98`/`$FF99` hold their final
+  values; indices render black otherwise.
+
+Per CLAUDE.md §2, observed behaviour outranks documentation: the trace wins on fact, the
+manual wins on intent.
+*Established:* karateka `HAL_gfx_init` constraints A/B; carried into `HAL_gfx_set_mode` P2.5.
+
+### 19g. Double-buffering lives in PHYSICAL RAM — there is no 64 KB wall
+P2.5 recorded a worry that 16-colour double-buffering would need 60 KB of the 64 KB CPU
+window. **That was wrong**, and the error was reasoning about the CPU's view instead of the
+machine's. Framebuffers are addressed by the GIME's VOFFSET (`physical / 8`); the CPU sees
+only an MMU-mapped window onto part of it. 512 KB is MAME's coco3 default — confirmed, not
+assumed:
+```
+mame coco3 -listxml  ->  <ramoption name="512K" default="yes">524288</ramoption>
+```
+Place buffers AWAY from the default-mapped top 64 KB (`$70000-$7FFFF`): the CoCo3 boots
+with CPU `$0000-$FFFF` mapped there, so a buffer placed in it overlaps the running program
+(a program at CPU `$0200` is physical `$70200`). Map the BACK buffer at CPU `$6000` via
+`$FFA3-$FFA6`; basing the window at `$6000` rather than `$8000` avoids `$FFA7` (CPU
+`$E000-$FFFF`) and so never remaps the block the stack and vectors live in.
+*Established:* P2.6.
+
+### 19h. §2A.3 needed no ruling — idioms files are REFERENCE, not §2D authored docs
+§2D reserves Orchestrator authorship for "decision records, post-mortems, behavioral
+models." An idioms file is none of those: §2A.3 rule 3 explicitly instructs Clyde to add to
+it, and this file's own history is seven Clyde commits (P1.0 → P1.3-fix). The "authorship
+ruling" tracked as open from P1.1 was a phantom — the rule was already unambiguous. What
+was real was the P2.1–P2.5 filing lapse. The counter is retired here; discovered idioms go
+in this file, in the dispatch that finds them.
+*Established:* P2.6 §2A.3 reconciliation.
+
+---
+
+## 20. Interrupt discipline for VBL-synced animation (P2.6)
+
+### 20a. `HAL_sys_init` is step 0, and skipping it is an INTERRUPT STORM
+The PIAs assert IRQ **independently of the GIME's `IRQENR`**. PIA0 `$FF01`/`$FF03` and PIA1
+`$FF21`/`$FF23` bits 0-1 enable CA1/CA2/CB1/CB2 interrupts, and PIA0 fires on **horizontal
+sync at ~15.7 kHz**. A handler that acknowledges only by reading `$FF92` never clears them,
+so the CPU re-enters the handler immediately after every `rti` and the main program makes
+essentially no progress.
+
+**What it looks like, and why it costs hours:** the VBL path appears *healthy*. The frame
+counter advances 1:1 with real frames. What fails is everything else. Measured — a graphics
+clear loop that should take ~6 frames never finished, with **42% of sampled PCs in the ROM →
+`$010C` dispatch path**. It reads as a hung graphics routine.
+
+`HAL_sys_init` clears those bits (mask `$FC`) while IRQ is still masked, which is why it is
+step 0 of the documented init order. karateka root-caused the identical failure in its
+R-boot work: *"infinite interrupt loop at `$0226`, 833,172 times per 30 seconds in MAME."*
+*Established:* P2.6, by skipping it and reproducing karateka's R-boot bug exactly.
+
+### 20b. `HAL_time_vbl_wait` does NOT wait when `CC.I` is set
+It takes a documented fallback (Q001 N3=β), synthesises a frame-counter increment and
+returns immediately. A caller that leaves interrupts masked gets a swap loop running flat
+out, flipping VOFFSET at arbitrary raster positions. **It compiles, it runs, the counters
+advance, and it tears.** `HAL_time_init` deliberately does not clear `CC.I` (the E1.c
+invariant: HAL init never changes the caller's mask state), so the caller must:
+```asm
+        jsr   HAL_sys_init      ; step 0 -- silence the PIAs (20a)
+        jsr   HAL_time_init     ; install $010C handler, enable VBORD only
+        andcc #$EF              ; CLEAR CC.I -- nothing else will do this
+```
+*Established:* P2.6.
+
+### 20c. Polling `$FF92` requires ARMING VBORD first
+`$FF92` latches VBORD only when the source is enabled (`$FF92 = $08`) and `IEN` is set in
+`$FF90`. Polling without arming spins forever. This is the mirror image of 20a: one is a
+source that fires and is never acknowledged, the other a source that never fires at all.
+*Established:* P2.5 (the mode probe hung after stage 1), fixed by arming per checkpoint.
+
+### 20d. MAME `natkeyboard` mis-delivers the SHIFTED double quote — INTERMITTENTLY
+`nk:post('LOADM"ANIM"')` arrived at the DECB prompt as:
+```
+LOADMBANIMB
+?SN ERROR
+```
+Each `"` came through as the letter **B**. Confirmed by dumping the text screen at `$0400`,
+so it is keystroke DELIVERY — not the disk and not the filename (`ANIM.BIN` was present, and
+the identical string loaded successfully in other runs **in the same session**).
+Intermittent is worse than broken: it passes the automated run and fails the one with a
+human waiting.
+
+**For a LIVE visual gate, direct-load instead** — poke the DECB segments in and set PC. The
+disk path proves nothing a human is judging, and removing the keyboard removes an
+intermittent failure from the run that costs someone's attention. Keep `LOADM` in the
+automated test, where a retry is free.
+*Established:* P2.6, after two dead live runs Jay sat through before reporting the error.
+
+### 20e. 6809 accumulator-offset indexing is SIGNED (not MAME, but it bites here)
+In `leax a,x` the offset is two's-complement **−128..+127**. A 16-colour stride of 160 is
+therefore **−96**, and the draw pointer walks BACKWARD out of the framebuffer and through
+whatever precedes it. Measured: a probe completed one swap, then executed at `$6001` — it
+had overwritten itself. Use `clra / ldb <value> / leax d,x` for a genuine 0..255
+displacement, since `D` is 16-bit and the high byte is zero.
+*Established:* P2.6.

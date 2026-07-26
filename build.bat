@@ -138,6 +138,11 @@ lwlink --decb --script=link/pop.link --entry=link_proof_entry --map=build/obj/pr
 if errorlevel 1 goto :error
 call :size build/hal_link_proof.bin
 
+echo --- Assemble: P2.6 double-buffered animation probe (object) ---
+lwasm --obj -DOBJTARGET -I . -o build/obj/anim_probe.o src/harness/anim_probe.s
+if errorlevel 1 goto :error
+call :size build/obj/anim_probe.o
+
 echo --- Link: mode-cycling probe + HAL kernel ---
 REM Exercises the P2.5 kernel service across the linked ABI: the probe imports
 REM HAL_gfx_set_mode and the published geometry from hal.inc, so a service that
@@ -146,6 +151,14 @@ lwlink --decb --script=link/pop.link --entry=mode_entry --map=build/obj/mode.map
        -o build/mode_probe.bin build/obj/mode_probe.o build/obj/hal_build.o
 if errorlevel 1 goto :error
 call :size build/mode_probe.bin
+
+echo --- Link: animation probe + HAL kernel ---
+REM Proves the double-buffer ABI resolves: HAL_gfx_swap plus the published
+REM draw base and swap counters all come from the kernel object.
+lwlink --decb --script=link/pop.link --entry=anim_entry --map=build/obj/anim.map ^
+       -o build/anim_probe.bin build/obj/anim_probe.o build/obj/hal_build.o
+if errorlevel 1 goto :error
+call :size build/anim_probe.bin
 
 echo --- Bootable RS-DOS disk image ---
 REM .dsk is always 18 sectors/track (idiom §3); default geometry is correct.
@@ -156,6 +169,8 @@ if errorlevel 1 goto :error
 if errorlevel 1 goto :error
 call :size build/probe.dsk
 "%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\mode_probe.bin MODE.BIN --ftype=binary --ascii=binary
+if errorlevel 1 goto :error
+"%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\anim_probe.bin ANIM.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
 "%IMGTOOL%" dir coco_jvc_rsdos build\probe.dsk
 if errorlevel 1 goto :error

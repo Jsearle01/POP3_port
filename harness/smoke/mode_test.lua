@@ -39,7 +39,8 @@ local ADDR_VRES   = 0x0204
 local ADDR_STRIDE = 0x0205
 local ADDR_MAGIC  = 0x0206
 local PROBE_MAGIC = 0xD00D
-local FB_BASE     = 0x8000
+-- P2.6: set_mode double-buffers and maps the BACK buffer here (HAL_gfx_draw_base).
+local FB_BASE     = 0x6000
 
 -- Expected per stage: {mode name, $FF99, stride, bars, bytes/bar, fb bytes}
 -- $FF99 values are the CONFIRMED ones (GIME-RM §10), not derived here.

@@ -80,6 +80,11 @@
         export  HAL_gfx_cur_stride
         export  HAL_gfx_cur_words
         export  HAL_gfx_cur_palcnt
+        export  HAL_gfx_swap
+        export  HAL_gfx_draw_base
+        export  HAL_gfx_cur_back
+        export  HAL_gfx_swaps
+        export  HAL_gfx_swaps_hi
         endc
         endc
 
@@ -341,6 +346,57 @@ gfx_init_clear_b:
 GFX_MODE_MAX        equ 1           ; highest supported id
 GFX_MODE_ENTSZ      equ 7           ; bytes per mode-descriptor row
 
+* ===============================================================
+* DOUBLE-BUFFER GEOMETRY (P2.6) — ONE model, BOTH modes.
+*
+* THE CORRECTION THIS RESTS ON. P2.5 shipped this service single-buffered and
+* recorded a worry that 16-colour double-buffering would need 60 KB of the 64 KB
+* CPU window. That was WRONG, and the error was reasoning about the CPU's view
+* instead of the machine's. Framebuffers live in PHYSICAL RAM addressed by the
+* GIME's VOFFSET register; the CPU only ever sees an MMU-mapped window onto part
+* of it. There is no 60 KB wall and no forced choice — 16-colour double-buffers
+* exactly like 4-colour, with bigger buffers at different physical addresses.
+*
+* PHYSICAL RAM: 512 KB, $00000-$7FFFF, blocks $00-$3F (8 KB each).
+*   CONFIRMED, not assumed: `mame coco3 -listxml` reports
+*   <ramoption name="512K" default="yes">524288</ramoption>.
+*
+* PLACEMENT — deliberately AWAY from the default-mapped top 64 KB:
+*   buffer A  physical $20000  blocks $10-$13   VOFFSET $20000/8 = $4000
+*   buffer B  physical $30000  blocks $18-$1B   VOFFSET $30000/8 = $6000
+*   32 KB reserved per buffer, which is the 16-colour size (30,720 B) rounded up
+*   to the 8 KB block granularity. 4-colour uses 15,360 B of the same reservation.
+*
+*   WHY NOT THE TOP 64 KB. The CoCo3 boots with CPU $0000-$FFFF mapped to physical
+*   $70000-$7FFFF, so a buffer placed there overlaps the running program: this
+*   program loads at CPU $0200 = physical $70200 and its kernel at CPU $3000 =
+*   physical $73000. Drawing into such a buffer would overwrite the code doing the
+*   drawing. Blocks $10-$1B are in the 448 KB the default map never touches.
+*
+* THE DRAW WINDOW: the BACK buffer is always mapped at CPU $6000 through MMU
+* registers $FFA3-$FFA6 (CPU $6000-$DFFF, 32 KB).
+*   [ref: GIME-RM §2 — $FFA0-$FFA7 MMU task set 0]
+*   $FFA3 -> $6000  $FFA4 -> $8000  $FFA5 -> $A000  $FFA6 -> $C000
+*
+*   WHY $6000 AND NOT $8000. A 32 KB window at $8000 would need $FFA7, which maps
+*   CPU $E000-$FFFF — the stack and the vector area. Remapping the block the stack
+*   lives in pulls the ground out from under the code doing the remapping. Basing
+*   the window at $6000 keeps $E000-$FFFF permanently untouched, which costs
+*   nothing and removes an entire class of failure.
+*
+* CALLERS DRAW AT HAL_gfx_draw_base AND NEVER AT A BUFFER ADDRESS. The physical
+* addresses above are HAL-private on purpose: a caller that learns one of them
+* would be writing to whichever buffer happens to be mapped, which is a bug that
+* only shows up as a tear.
+* ===============================================================
+GFX_DB_WINDOW       equ $6000       ; CPU address the BACK buffer is mapped at
+GFX_DB_MMU          equ $FFA3       ; first MMU reg covering the window
+GFX_DB_BLOCKS       equ 4           ; 4 x 8 KB = 32 KB window
+GFX_DB_A_BLOCK      equ $10         ; buffer A, physical $20000
+GFX_DB_B_BLOCK      equ $18         ; buffer B, physical $30000
+GFX_DB_A_VOFF       equ $4000       ; $20000 / 8
+GFX_DB_B_VOFF       equ $6000       ; $30000 / 8
+
 HAL_gfx_set_mode:
         pshs    u,y                     ; preserve U, Y per contract
 
@@ -374,16 +430,19 @@ gfx_sm_ok:
         lda     #$6C
         sta     $FF90
 
-* --- Step 2: CLEAR the framebuffer (the contract's clean slate) ---
-* Word stores, count taken from the published geometry — 15,360 B in 4-colour,
-* 30,720 B in 16-colour. This is why the mode table carries a word count.
-        ldx     #GFX_FB_A_BASE
-        ldd     #$0000
-        ldy     HAL_gfx_cur_words
-gfx_sm_clear:
-        std     ,x++
-        leay    -1,y
-        bne     gfx_sm_clear
+* --- Step 2: build the DOUBLE buffer and clear BOTH halves --------
+* Clear-on-switch means BOTH buffers, not just the visible one: the caller is
+* promised a clean slate and the very first swap reveals the other half.
+*
+* Each buffer is mapped into the draw window in turn, because they live in
+* PHYSICAL RAM the CPU cannot see two of at once (see the header).
+        clr     HAL_gfx_cur_back        ; buffer A is the first draw target
+        lda     #GFX_DB_B_BLOCK
+        jsr     gfx_map_blocks
+        jsr     gfx_clear_window        ; clear B (the initial FRONT)
+        lda     #GFX_DB_A_BLOCK
+        jsr     gfx_map_blocks
+        jsr     gfx_clear_window        ; clear A, and leave A mapped = BACK
 
 * --- Step 3: video mode + resolution -----------------------------
         lda     #$80                    ; VMODE: BP=1 graphics
@@ -391,9 +450,11 @@ gfx_sm_clear:
         lda     HAL_gfx_cur_vres        ; VRES: $15 (4-col) or $1E (16-col)
         sta     $FF99
 
-* --- Step 4: VOFFSET -> FB_A (single-buffered, see header) -------
-* VOFFSET = physical / 8 = $78000 / 8 = $F000.  [ref: GIME-RM §13]
-        ldd     #$F000
+* --- Step 4: VOFFSET -> buffer B (the FRONT while A is drawn) ----
+* VOFFSET = physical / 8  [ref: GIME-RM §13]. B is physical $30000, so
+* $30000 / 8 = $6000. Displaying B while the caller draws into A is what makes
+* the first frame appear without a flash of half-drawn content.
+        ldd     #GFX_DB_B_VOFF
         std     $FF9D
 
 * --- Step 5: VSCROL / HOFFSET = 0 (REQUIRED, undefined at reset) -
@@ -421,6 +482,112 @@ gfx_sm_pal:
 
         puls    u,y
         andcc   #$FE                    ; CC.C clear = success
+        rts
+
+* ===============================================================
+* HAL_gfx_swap  [P2.6 — the VBL-synced buffer flip]
+*
+* Show the buffer the caller just drew, then map the other one in as the new
+* draw target. This is the whole point of double-buffering: the caller never
+* draws into memory the GIME is scanning out.
+*
+* Args:    none
+* Returns: CC.C clear (always succeeds)
+* Preserves: U, Y
+* Clobbers:  A, B, X, CC
+*
+* ORDER MATTERS, AND IT IS NOT ARBITRARY:
+*   1. WAIT for vertical blank. Writing VOFFSET mid-scanline switches the
+*      GIME's source address while it is drawing, which is a visible tear —
+*      the top of the frame comes from one buffer and the bottom from the
+*      other. Waiting is what makes the flip atomic to the eye.
+*   2. WRITE VOFFSET to the just-drawn buffer, which becomes the front.
+*   3. TOGGLE the back index and MAP that buffer into the window, so the
+*      caller's next draw lands in the newly hidden half.
+*
+* THE CC.I TRAP — the one thing that silently un-does all of this:
+*   HAL_time_vbl_wait has a documented fallback (Q001 N3=beta). If CC.I is SET,
+*   it does NOT wait — it synthesises a frame-counter increment and returns
+*   immediately. A caller that leaves interrupts masked therefore gets a swap
+*   loop that runs flat out at CPU speed and flips VOFFSET at arbitrary raster
+*   positions. It compiles, it runs, the counters advance, and it tears.
+*   The caller MUST install the handler (HAL_time_init) and CLEAR CC.I
+*   (andcc #$EF) before animating. HAL_time_init deliberately does not clear it
+*   (the E1.c invariant: HAL init never changes the caller's mask state), so
+*   this is the caller's job and nothing will remind them.
+*   [ref: src/hal/coco3-dsk/time.s — HAL_time_vbl_wait, hal_vbl_synthetic]
+* ===============================================================
+HAL_gfx_swap:
+        pshs    u,y
+
+* --- 1. wait for vertical blank (see the CC.I trap above) --------
+        jsr     HAL_time_vbl_wait
+
+* --- 2. display the buffer just drawn ---------------------------
+        lda     HAL_gfx_cur_back
+        bne     gfx_sw_show_b
+        ldd     #GFX_DB_A_VOFF
+        bra     gfx_sw_store
+gfx_sw_show_b:
+        ldd     #GFX_DB_B_VOFF
+gfx_sw_store:
+        std     $FF9D                   ; VOFFSET hi/lo in one 16-bit write
+
+* --- 3. the other buffer becomes the new draw target ------------
+        lda     HAL_gfx_cur_back
+        eora    #$01
+        sta     HAL_gfx_cur_back
+        bne     gfx_sw_map_b
+        lda     #GFX_DB_A_BLOCK
+        bra     gfx_sw_map
+gfx_sw_map_b:
+        lda     #GFX_DB_B_BLOCK
+gfx_sw_map:
+        jsr     gfx_map_blocks
+
+        inc     HAL_gfx_swaps           ; observable: swaps actually performed
+        bne     gfx_sw_done
+        inc     HAL_gfx_swaps_hi
+gfx_sw_done:
+        puls    u,y
+        andcc   #$FE                    ; CC.C clear = success
+        rts
+
+* ---------------------------------------------------------------
+* gfx_map_blocks — map GFX_DB_BLOCKS consecutive physical blocks starting at A
+* into the draw window ($FFA3-$FFA6). HAL-private.
+*
+* Blocks are consecutive because a framebuffer is contiguous physical memory;
+* the MMU just needs to be told which run of 8 KB pages it is.
+* Clobbers: A, B, X
+* ---------------------------------------------------------------
+gfx_map_blocks:
+        ldx     #GFX_DB_MMU
+        ldb     #GFX_DB_BLOCKS
+gfx_map_lp:
+        sta     ,x+                     ; MMU reg <- physical block number
+        inca                            ; next 8 KB block
+        decb
+        bne     gfx_map_lp
+        rts
+
+* ---------------------------------------------------------------
+* gfx_clear_window — zero whichever buffer is currently mapped, using the
+* ACTIVE mode's size. HAL-private.
+*
+* The length comes from HAL_gfx_cur_words, the same value callers read, so
+* "how big is the screen" has exactly one source and the clear cannot disagree
+* with the geometry the caller is drawing against.
+* Clobbers: A, B, X, Y
+* ---------------------------------------------------------------
+gfx_clear_window:
+        ldx     #GFX_DB_WINDOW
+        ldd     #$0000
+        ldy     HAL_gfx_cur_words
+gfx_cw_lp:
+        std     ,x++
+        leay    -1,y
+        bne     gfx_cw_lp
         rts
 
 * ---------------------------------------------------------------
@@ -493,6 +660,12 @@ HAL_gfx_cur_vres:   fcb 0               ; $FF99 value written for it
 HAL_gfx_cur_stride: fcb 0               ; bytes per row (80 or 160)
 HAL_gfx_cur_words:  fdb 0               ; framebuffer size in words
 HAL_gfx_cur_palcnt: fcb 0               ; palette entries loaded (4 or 16)
+* --- double-buffer state (P2.6) ---
+HAL_gfx_draw_base:  fdb GFX_DB_WINDOW   ; CPU address of the BACK buffer. Callers
+                                        ;   draw HERE and nowhere else.
+HAL_gfx_cur_back:   fcb 0               ; which buffer is the draw target: 0=A 1=B
+HAL_gfx_swaps_hi:   fcb 0               ; swaps performed, high byte
+HAL_gfx_swaps:      fcb 0               ;   ... low byte. Proof the flip ran.
 
                 endc                    ; HAL_GFX_MODE_SERVICE
 
