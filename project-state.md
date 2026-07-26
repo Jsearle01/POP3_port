@@ -9,7 +9,7 @@ comes next.
 doc under `CLAUDE.md §2D` (no decision records, post-mortems, or behavioural models here —
 those stay Orchestrator-owned). Clyde updates this file directly as build state changes.
 
-**Last updated:** 2026-07-26 (PA.13 — playfield blackness measured; opaque-black lever declined)
+**Last updated:** 2026-07-26 (P2.1 — HAL contract adopted from karateka)
 **Phase:** BUILD (the feasibility investigation is CLOSED — see §1)
 
 ---
@@ -52,6 +52,7 @@ Feasibility is a translation choice. That is why §3 is a standard and not advic
 | **Sprite compiler** | `harness/tools/sprite_compiler.py` | **WORKING (production)** — draw+save+erase per cel, all 4 Glen optimizations, register-level sim; supersedes `poc/compiled-sprite/` |
 | **Compiled-sprite proof** | `harness/smoke/run_compiled_test.sh` + `compiled_test.lua` + `src/harness/compiled_probe.s` | **WORKING** — LWTools-assembled compiled cel drawn on the real GIME, framebuffer-diffed |
 | **PSHU order probe** | `src/harness/pshu_probe.s` | one-shot: pinned `PSHU D,X,Y` = D,X,Y ascending (the POC had it inverted) |
+| **HAL (P2.1)** | `src/hal.inc` + `src/hal/coco3-dsk/` | **ADOPTED** — 10 files byte-identical to karateka; runtime blit DORMANT via `-DPOP_HAL_RUNTIME_BLIT` (77% of HAL code; POP uses compiled sprites). 16 of 29 declared functions are implemented; `debug.s` absent; `mem.s` not built (`end boot`). 3 rule-4 flags raised, 0 applied. |
 | Converted sample | `content/kid/`, `content/guard/` | 9 POP cels (kid CHTAB1/2/3 + guard CHTAB4.GD; large/median/thin) |
 
 **Engine: nothing built yet.** `src/{boot,engine,hal/coco3-dsk,opt/*}` are still empty

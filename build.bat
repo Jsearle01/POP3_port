@@ -53,6 +53,15 @@ lwasm --decb -o build/loop_probe.bin src/harness/loop_probe.s
 if errorlevel 1 goto :error
 call :size build/loop_probe.bin
 
+echo --- HAL (P2.1: adopted from karateka; runtime blit DORMANT by default) ---
+REM mem.s is deliberately NOT listed: its last line is `end boot`, a build
+REM directive referencing the ENGINE entry symbol, which POP does not have yet.
+REM See reports/*-p2-1-hal-adoption.md. Add -DPOP_HAL_RUNTIME_BLIT to re-enable
+REM the runtime masked blit (POP uses compiled sprites instead).
+lwasm --decb -I . -o build/hal.bin src/harness/hal_build.s
+if errorlevel 1 goto :error
+call :size build/hal.bin
+
 echo --- Bootable RS-DOS disk image ---
 REM .dsk is always 18 sectors/track (idiom §3); default geometry is correct.
 if exist build\probe.dsk del /q build\probe.dsk
