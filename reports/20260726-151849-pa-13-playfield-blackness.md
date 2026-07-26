@@ -317,4 +317,4 @@ that argues for pulling the lever this report recommends against.
 ---
 
 ### 11 — Commit
-`<hash>` — pushed to `origin/wip` before this report.
+`c49857a` — PA.13. Pushed to `origin/wip`. *(§11 names the commit containing this report; filled in by the follow-up commit below, per the standing convention.)*
