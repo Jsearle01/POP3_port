@@ -66,7 +66,12 @@ echo "[run_compiled_test] expected: $(head -1 build/compiled_expect.txt) (rows b
 export P_BIN=build/compiled_probe.bin P_EXPECT=build/compiled_expect.txt
 export P_OUT="$LOG" P_PASS="$PASS" P_FAIL="$FAIL"
 
-"$MAME" coco3 -rompath "$MAME_ROMS" -ext fdc -window -nomaximize \
+# -cfg_directory: MAME's Monitor Type default is COMPOSITE (value 0, confirmed via
+# `mame -listxml coco3`). CLAUDE.md §4 makes RGB the project's gate, so it must be
+# set explicitly or the visual gate silently runs in the wrong mode — which is how
+# the harness palette read yellow instead of orange until Jay spotted it.
+"$MAME" coco3 -rompath "$MAME_ROMS" -cfg_directory dist/mame-cfg/rgb \
+    -ext fdc -window -nomaximize \
     -nothrottle -sound none -seconds_to_run 30 \
     -autoboot_script harness/smoke/compiled_test.lua >/dev/null 2>&1
 

@@ -922,3 +922,56 @@ optimizations together buy ~3%. The predictor is cheap and needs only the input:
 `a-codegen-simulator-must-execute-registers-not-replay-the-emitters-chunk-list`,
 `measure-run-length-distribution-before-building-a-burst-optimizer`.
 *Established:* P1.3 production sprite compiler 2026-07-26 (POP3_port).
+
+
+---
+
+## 18. MAME's coco3 Monitor Type defaults to COMPOSITE — set it or the colour gate lies (P1.3-fix)
+*(Filed by Clyde under 2A.3. **PROVISIONAL** pending the standing authorship ruling.)*
+
+`mame -listxml coco3` (the 2A.4 enumeration surface):
+```
+<configuration name="Monitor Type" tag="screen_config" mask="1">
+    <confsetting name="Composite" value="0" default="yes"/>   <-- MAME's DEFAULT
+    <confsetting name="RGB"       value="1"/>
+</configuration>
+```
+**`CLAUDE.md` §4 makes RGB the project's monitor gate, but MAME's own default is
+Composite.** Every harness run that does not set it is rendering in the wrong mode,
+and nothing in a byte-level check can tell — the framebuffer holds palette INDICES;
+the monitor type only changes how `$FFB0-$FFB3` are DECODED. Set it explicitly:
+```bash
+mame coco3 -cfg_directory dist/mame-cfg/rgb ...   # ships a coco3.cfg with value="1"
+```
+(MAME rewrites that cfg on exit, adding mixer/video/image blocks — harmless; the file
+is a template, not a constant. Confirm the mode took by re-reading `value=` after.)
+
+**18a. The palette registers mean DIFFERENT THINGS in the two modes.**
+[ref: `docs/ground-truth/SockmasterGime.md`] — *"The color set when using composite
+monitors is different than above (which applies to RGB monitors). On composite
+displays, Bits 5-4 control 4 levels of intensity, and bits 3-0 control 16 hues."*
+So the same byte is two different colours:
+
+| byte | RGB decode (R1G1B1 R0G0B0) | Composite decode (intensity, hue) |
+|------|----------------------------|------------------------------------|
+| `$26` | R=3 G=1 B=0 — **orange** | intensity 2, hue 6 — **orange** (both, luckily) |
+| `$19` | R=0 G=2 B=3 — **blue** | intensity 1, hue 9 |
+| `$2D` | R=2 G=3 B=1 | intensity 2, hue 13 — **blue** |
+| `$24` | R=3 G=0 B=0 — red | intensity 2, hue 4 — **yellow** |
+
+karateka's MAME-verified sets: **RGB `$00,$26,$19,$3F`**, **composite `$00,$26,$2D,$3F`**
+(they differ only at index 2 — see §11q).
+
+**How this was caught, and the lesson.** P1.3's harness picked `$24`/`$12` by
+hand-computing the RGB bit-pack, then ran without setting the monitor type — so the
+values were decoded as composite and `$24` rendered as **hue 4, yellow**. Every
+automated check passed: the framebuffer byte-diff was green (1968/1968 px), because
+palette indices were correct and only the DECODE was wrong. **Jay spotted it in a
+screenshot.** Byte-level verification is structurally blind to palette-register
+semantics, exactly as it was blind to orientation in P1.2-fix. Same rule: for a
+property with a ground truth outside the pipeline, a byte-diff is not the check.
+
+*Candidates:* `mame-coco3-monitor-type-defaults-to-composite-set-it-explicitly`,
+`palette-registers-decode-differently-per-monitor-type-a-byte-diff-cannot-see-it`.
+*Established:* P1.3 palette/monitor-mode fix 2026-07-26 (POP3_port), after Jay
+reported orange rendering yellow.

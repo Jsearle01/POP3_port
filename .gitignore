@@ -23,3 +23,10 @@ harness/**/previews/
 
 # git checkout-index --temp scratch (used by the .gitattributes CRLF round-trip check)
 .merge_file_*
+
+# MAME writes snap/ (screenshots) into its CWD, same as cfg/.
+/snap/
+
+# MAME rewrites files in -cfg_directory on exit and drops a default.cfg there.
+# The authored coco3.cfg templates are tracked; MAME.s byproducts are not.
+dist/mame-cfg/*/default.cfg

@@ -212,8 +212,8 @@ probe_done      bra     probe_done              ; spin; harness captures here
 * Chosen for maximum separation so a wrong palette is obvious to the eye.
 * ---------------------------------------------------------------
 palette         fcb     $00             ; 0 = black
-                fcb     $24             ; 1 = red    %100100
-                fcb     $12             ; 2 = green  %010010
+                fcb     $26             ; 1 = orange R=3 G=1 B=0  [karateka MAME-verified RGB, CLAUDE.md §4]
+                fcb     $19             ; 2 = blue   R=0 G=2 B=3  [karateka MAME-verified RGB, CLAUDE.md §4]
                 fcb     $3F             ; 3 = white  %111111
 
                 end     probe_entry

@@ -122,8 +122,8 @@ byte_ctr        fcb     0
 * Palette — same four entries as loop_probe.s, matching the converter's model:
 *   0=Black 1=Orange 2=Blue 3=White   (RGB monitor format, CLAUDE.md §4)
 cel_palette     fcb     $00             ; 0 Black
-                fcb     $24             ; 1 Orange (red-ish in RGB bitpack)
-                fcb     $12             ; 2 Blue   (green-ish in RGB bitpack)
+                fcb     $26             ; 1 Orange  R=3 G=1 B=0  [karateka MAME-verified RGB, CLAUDE.md §4]
+                fcb     $19             ; 2 Blue    R=0 G=2 B=3  [karateka MAME-verified RGB, CLAUDE.md §4]
                 fcb     $3F             ; 3 White
 
 cel_data

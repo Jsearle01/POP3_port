@@ -71,6 +71,7 @@ export P_OUT="$LOG" P_PASS="$PASS" P_FAIL="$FAIL"
 
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
+    -cfg_directory dist/mame-cfg/rgb \
     -ext fdc \
     -window -nomaximize \
     -nothrottle -sound none \

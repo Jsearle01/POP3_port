@@ -79,6 +79,7 @@ export P_EXPECT_B="$EXPECT_B"
 # disk11.rom (Disk Extended Color BASIC) ships inside coco3.zip.
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
+    -cfg_directory dist/mame-cfg/rgb \
     -ext fdc \
     -flop1 "$DSK" \
     -window -nomaximize \
