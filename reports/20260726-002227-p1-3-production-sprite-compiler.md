@@ -58,7 +58,17 @@ PA.11's idiomatic k=0.35 it is **0.41×**.
 - `src/harness/compiled_probe.s` — **new.** Runs a compiled cel on the GIME (D4).
 - `harness/smoke/run_compiled_test.sh`, `harness/smoke/compiled_test.lua` — **new.** The D4 harness.
 - `project-state.md` — compiler state, the cost model, the peel finding.
-- `mame-idioms-coco3-port.md` — appended §17 (the `PSHU` order + the simulator-fidelity trap).
+- `mame-idioms-coco3-port.md` — appended §17 (the `PSHU` order + the simulator-fidelity trap)
+  and **§18/§18a** (MAME's Monitor Type default + the two palette decode tables).
+
+**Added by the post-report fix (`6f07c8a`), after Jay reported orange rendering yellow:**
+- `dist/mame-cfg/rgb/coco3.cfg`, `dist/mame-cfg/composite/coco3.cfg` — **new.** Monitor-Type presets.
+  MAME's default is Composite; `CLAUDE.md §4` makes RGB the gate, so it must be set explicitly.
+- `harness/smoke/run_probe_test.sh`, `run_cel_test.sh`, `run_compiled_test.sh` — `-cfg_directory
+  dist/mame-cfg/rgb` added to all three.
+- `src/harness/loop_probe.s`, `cel_probe.s`, `compiled_probe.s` — palette corrected to karateka's
+  MAME-verified RGB set `$00/$26/$19/$3F` (was `$24`/`$12`, wrong for **both** modes).
+- `.gitignore` — `/snap/` and `dist/mame-cfg/*/default.cfg` (MAME byproducts).
 
 **Not modified:** `poc/compiled-sprite/` (PA.9's evidence artifact — superseded, not edited), the P1.2
 tooling, `oracle/source/`, Karateka, Glen's repo (read-only; technique modelled, **no code copied**).
@@ -307,8 +317,17 @@ M  project-state.md
 5. **The opaque-black demonstration fixture lives in `build/`, not `content/`** — same call as P1.2: an
    arbitrary opacity mark is a compiler demonstration, not authored shadow art, and must not sit in
    `content/` looking authored.
-6. **A `snap/` directory was created in the repo root by MAME** and moved into `build/`. Worth a `.gitignore`
-   entry if snapshots become routine; not added yet since this is the first use.
+6. **A `snap/` directory was created in the repo root by MAME** and moved into `build/`. Now gitignored
+   alongside `cfg/`, together with the `default.cfg` MAME drops into any `-cfg_directory`.
+7. **POST-REPORT FIX (`6f07c8a`) — the harness had been rendering in the wrong monitor mode since
+   P1.1.** Jay reported the orange reading yellow-ish. Root cause was two-deep: MAME's `Monitor Type`
+   defaults to **Composite** and this harness never set it, while `CLAUDE.md §4` makes **RGB** the
+   project gate; and the probe palette had been hand-computed as an RGB bit-pack (`$24`/`$12`) that
+   was wrong for both modes — under composite decoding `$24` is intensity 2 / hue 4, i.e. yellow.
+   Fixed and re-verified (§25.3). **No measurement in this report moved**: the framebuffer holds
+   palette INDICES and only their DECODE was wrong. Surfaced here rather than folded silently in,
+   because a monitor-mode error invalidates every prior visual gate's *mode* claim even when it
+   invalidates none of the numbers.
 
 ---
 
@@ -378,4 +397,8 @@ Two, both pushed (`20f97cc`), fresh single-instance rows, no existing entry read
 ---
 
 ### 11 — Commit
-`ca1224c` — P1.3. Pushed to `origin/wip`. *(§11 names the commit containing this report; filled in by the follow-up commit below, per the standing convention.)*
+`ca1224c` — P1.3: production sprite compiler (the dispatch's deliverable).
+`93739d8` — report §11 hash fill-in.
+`6f07c8a` — P1.3-fix: monitor mode + palette (post-report, Jay-reported; §6.7, 25.3).
+`9be334a` — 25.3 gate confirmation recorded.
+All pushed to `origin/wip`.
