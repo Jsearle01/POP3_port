@@ -351,4 +351,4 @@ Two, both pushed (`20f97cc`), fresh single-instance rows, no existing entry read
 ---
 
 ### 11 — Commit
-`<hash>` — pushed to `origin/wip` before this report.
+`ca1224c` — P1.3. Pushed to `origin/wip`. *(§11 names the commit containing this report; filled in by the follow-up commit below, per the standing convention.)*
