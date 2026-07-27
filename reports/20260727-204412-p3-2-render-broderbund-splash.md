@@ -226,7 +226,7 @@ run_kernel_dispatch_test PASS run_vbl_irq_test PASS
 
 **25.2 —** `harness/tools/dhr_convert.py`, `render_square.py`, `src/engine/intro_splash.s`,
 `content/intro/broderbund_splash.{bin,pal}`, `link/pop.link`.
-POP `wip` `<hash>`; Karateka `wip` `<kar>`; `main` `5eb92b1`.
+POP `wip` `24444bf`; Karateka `wip` `c36e67e`; `main` `5eb92b1`.
 
 **25.3 — OPERATOR RUNTIME SMOKE — PASSED.** The render was surfaced repeatedly per CLAUDE.md §3 and
 graded by Jay against the oracle at native 1:1, including a 12× magnified corner. Iterations he drove:
@@ -309,6 +309,6 @@ Committed and pushed.
 ---
 
 ### 11 — Commit
-**POP:** `<hash>` — converter, engine screen, asset, memory map, this report. Pushed to `origin/wip`.
-**Karateka:** `<kar>` on `wip` — shared HAL mirror; binary byte-identical. Pushed.
+**POP:** `24444bf` — converter, engine screen, asset, memory map, this report. Pushed to `origin/wip`.
+**Karateka:** `c36e67e` on `wip` — shared HAL mirror; binary byte-identical. Pushed.
 **Karateka `main` @ `5eb92b1` — untouched.**
