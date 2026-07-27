@@ -1285,3 +1285,75 @@ observable from interrupt context is the same shape: VOFFSET pairs, palette runs
 switches. If an interrupt can see it half-written, mask it.
 *Established:* P2.9, after three disproven theories. Fixed in `gfx.s gfx_map_blocks`;
 karateka unaffected (binary byte-identical, service gated off).
+
+---
+
+## 23. `LOADM` at `$0200` dies as soon as it needs a SECOND granule (P3.3)
+
+**DECB's own storage lives at `$0600`, and a program loading at `$0200` runs straight
+through it.** Disk BASIC zeroes `$0600-$0989` at init and keeps `DBUF0=$0600`,
+`DBUF1=$0700`, the **FAT RAM at `$0800`** and the **FCBs at `$094A`** there.
+[`karateka_coco3 docs/project/decb-loadm-boot-gates.md`, from *Disk Basic Unravelled II*]
+A granule is 2,304 bytes, so a load at `$0200` fills `$0200-$0AFF` on its FIRST granule —
+taking out all four while `LOADM` is still using them. DECB then cannot follow the chain
+to granule 2 and raises **`?FS ERROR`**, having loaded nothing usable.
+
+**Measured, not inferred** (three cases, one conclusion):
+
+| file | load address | granules | result |
+|---|---|---|---|
+| `PROBE`/`MODE`/`ANIM` (798–980 B) | `$0200` | 1 | **loads** |
+| 6,912 B synthetic | `$0200` | 3 | `?FS ERROR` |
+| the SAME 6,912 B file | `$4000` | 3 | **loads** |
+
+So it is **not a size limit and not a `.dsk` capacity problem** — same file, same disk,
+same granule count, different destination. The single-granule programs work only because
+they stop below `$0600`.
+
+**The consequence for POP:** every engine screen is far past one granule (`INTRO.BIN`
+27,674 B, `INTROSEQ.BIN` 29,495 B), so **no engine program can be `LOADM`ed today.** Both
+were run by parsing the DECB segment table in Lua, poking the bytes in and setting PC —
+`build/introrun.lua` (P3.2) and `harness/smoke/introseq_test.lua` (P3.3). **A capability
+gated by Jay's eye on a poked image says nothing about the disk path.**
+
+**The fix is Karateka's and is already written.** `karateka_coco3 src/boot/bootloader.s`
+runs from framebuffer space (`$8000+`, boot-dead), masks IRQ+FIRQ first, takes its own
+stack at `$7F00`, replicates the MMU setup, raw-reads whole tracks into low RAM through
+`disk_read.s`, and `jmp`s the game entry — never returning to BASIC, which is what makes
+the clobbered `$01xx` vectors inert. Entered by **`LOADM"BOOT":EXEC`**: `LOADM` does
+`STD EXECJP`, and bare `EXEC` jumps through it, so a single-granule stub is all DECB has
+to survive. **Porting it is a POP task in its own right** (§2G copy-and-adapt), and is the
+gate on any disk-resident engine screen.
+
+*Established:* P3.3, after bisecting sizes/granules/addresses — the answer was in
+Karateka's already-written gate doc, and Jay named it.
+
+---
+
+## 24. MAME writes `.dsk` images back — mount a COPY, never the built artifact (P3.3)
+
+**MAME opens a floppy READ-WRITE and JVC saves back** (§3 already says the format is
+writable; this is what that costs). A guest that touches the disk, or an exit taken
+mid-FDC-operation, **rewrites the file the build produced.** In P3.3 a run of diagnostic
+sessions against `build/probe.dsk` left it reporting **`Corrupt image`** to `imgtool`, and
+`run_probe_test.sh`, `run_mode_test.sh` and `run_anim_test.sh` all failed at once — with
+nothing wrong in any of them, and nothing wrong in the code they test. A rebuild "fixed"
+it, which is exactly the shape that reads as flakiness.
+
+**The rule was already standing** — §3: *".dsk fixtures are gitignored / throwaway —
+generate per-task, don't share."* The fix is to enforce it in the runner instead of
+remembering it: every `run_*_test.sh` now does
+
+```bash
+SRC_DSK="build/probe.dsk"          # the built artifact — never mounted
+DSK="build/run_<test>.dsk"         # the scratch copy MAME may do as it likes with
+cp -f "$SRC_DSK" "$DSK" || exit 1
+```
+
+and `/build/` is gitignored, so the scratch images cost nothing. **Verified:** the suite's
+`md5` of `build/probe.dsk` is now identical before and after a full run.
+
+**The tell to recognise next time:** several unrelated disk-loading tests failing
+*together*, and a rebuild clearing it. That is the fixture, not the code.
+
+*Established:* P3.3.

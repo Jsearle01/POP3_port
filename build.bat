@@ -129,6 +129,11 @@ lwasm --obj -DOBJTARGET -I . -o build/obj/intro_splash.o src/engine/intro_splash
 if errorlevel 1 goto :error
 call :size build/obj/intro_splash.o
 
+echo --- Assemble: P3.3 intro sequencer (both credits, one mechanism) ---
+lwasm --obj -DOBJTARGET -I . -o build/obj/intro_seq.o src/engine/intro_seq.s
+if errorlevel 1 goto :error
+call :size build/obj/intro_seq.o
+
 echo --- Link: probe + HAL kernel ---
 REM --section-base is SILENTLY IGNORED by lwlink (P2.3-recon D4) — the script is
 REM the only thing that actually places a section. Do not "simplify" this to a flag.
@@ -171,6 +176,15 @@ lwlink --decb --script=link/pop.link --entry=intro_entry --map=build/obj/intro.m
 if errorlevel 1 goto :error
 call :size build/intro_splash.bin
 
+echo --- Link: intro sequencer + HAL kernel ---
+REM The tightest link in the project: 28,468 bytes of asset in a 30,208-byte
+REM program region. Check build/obj/introseq.map after ANY asset change -- lwlink
+REM places overlapping sections silently, and did so three times in P3.2.
+lwlink --decb --script=link/pop.link --entry=intro_seq_entry --map=build/obj/introseq.map ^
+       -o build/intro_seq.bin build/obj/intro_seq.o build/obj/hal_build.o
+if errorlevel 1 goto :error
+call :size build/intro_seq.bin
+
 echo --- Bootable RS-DOS disk image ---
 REM .dsk is always 18 sectors/track (idiom §3); default geometry is correct.
 if exist build\probe.dsk del /q build\probe.dsk
@@ -184,6 +198,8 @@ if errorlevel 1 goto :error
 "%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\anim_probe.bin ANIM.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
 "%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\intro_splash.bin INTRO.BIN --ftype=binary --ascii=binary
+if errorlevel 1 goto :error
+"%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\intro_seq.bin INTROSEQ.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
 "%IMGTOOL%" dir coco_jvc_rsdos build\probe.dsk
 if errorlevel 1 goto :error

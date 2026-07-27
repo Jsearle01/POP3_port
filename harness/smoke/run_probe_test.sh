@@ -42,16 +42,27 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-DSK="build/probe.dsk"
+SRC_DSK="build/probe.dsk"
+DSK="build/run_probe.dsk"
 BIN="build/loop_probe.bin"
 LOG="build/probe_test.log"
 PASS="build/probe_test_PASS"
 FAIL="build/probe_test_FAIL"
 
-if [ ! -f "$DSK" ] || [ ! -f "$BIN" ]; then
-    echo "[run_probe_test] ERROR: $DSK / $BIN missing — run build.bat first." >&2
+if [ ! -f "$SRC_DSK" ] || [ ! -f "$BIN" ]; then
+    echo "[run_probe_test] ERROR: $SRC_DSK / $BIN missing — run build.bat first." >&2
     exit 1
 fi
+
+# MOUNT A SCRATCH COPY, NEVER build/probe.dsk ITSELF. MAME opens a floppy
+# READ-WRITE and JVC images save back, so a guest that touches the disk -- or an
+# exit taken mid-FDC-operation -- rewrites the built artifact. That happened in
+# P3.3: after a run of diagnostic sessions the image came back "Corrupt image"
+# from imgtool and every LOADM test failed, with nothing wrong in any of them.
+# The standing idiom already says it (§3: ".dsk fixtures are throwaway --
+# generate per-task, don't share"); this is that rule enforced in the runner
+# rather than remembered.
+cp -f "$SRC_DSK" "$DSK" || exit 1
 
 rm -f "$PASS" "$FAIL" "$LOG"
 
