@@ -211,7 +211,7 @@ run_kernel_dispatch_test PASS run_vbl_irq_test PASS
 
 **25.2 —** `src/hal/coco3-dsk/gfx.s` (`gfx_map_blocks`); `src/hal/coco3-dsk/sys.s` (§4 comment);
 `src/harness/anim_probe.s`; `mame-idioms-coco3-port.md` §22.
-POP `wip` `<hash>`; Karateka `wip` `<kar>`; `main` `5eb92b1`.
+POP `wip` `62aab64`; Karateka `wip` `1c13ae8`; `main` `5eb92b1`.
 
 **25.3 — N/A.** The fix is interrupt-masking discipline; no rendering or timing-visible change. The
 probe's output is identical and DECB 27/27 is the observable. Nothing new for Jay's eye.
@@ -281,6 +281,6 @@ yours doesn't. Committed and pushed.
 ---
 
 ### 11 — Commit
-**POP:** `<hash>` — the fix, the doc correction, idioms §22, this report. Pushed to POP `origin/wip`.
-**Karateka:** `<kar>` on `wip` — mirrored shared kernel; binary byte-identical. Pushed.
+**POP:** `62aab64` — the fix, the doc correction, idioms §22, this report. Pushed to POP `origin/wip`.
+**Karateka:** `1c13ae8` on `wip` — mirrored shared kernel; binary byte-identical. Pushed.
 **Karateka `main` @ `5eb92b1` — untouched.**
