@@ -213,7 +213,7 @@ direct load: # stage 5 ... swaps=600 (frame 1402) / # all five stages done.
 ```
 
 **25.2 —** `src/harness/anim_probe.s` (step-1 conformance); `mame-idioms-coco3-port.md` §21.
-POP `wip` `<hash>`; Karateka `wip` `58cad3e`; `main` `5eb92b1`.
+POP `wip` `15324fe`; Karateka `wip` `58cad3e`; `main` `5eb92b1`.
 
 **25.3 — N/A.** No rendering or temporal change; the probe's output is unchanged and no fix was applied.
 
@@ -287,5 +287,5 @@ pushed.
 ---
 
 ### 11 — Commit
-**POP:** `<hash>` — step-1 conformance, idioms §21, this report. Pushed to POP `origin/wip`.
+**POP:** `15324fe` — step-1 conformance, idioms §21, this report. Pushed to POP `origin/wip`.
 **Karateka:** untouched at `58cad3e`; `main` `5eb92b1`.
