@@ -302,5 +302,5 @@ checking is the one that silently determines the whole pipeline. Committed and p
 ---
 
 ### 11 — Commit
-**POP:** `<hash>` — this report only (no code; Phase 2 stopped). Pushed to POP `origin/wip`.
+**POP:** `81704d6` — this report only (no code; Phase 2 stopped). Pushed to POP `origin/wip`.
 **Karateka:** untouched at `1c13ae8`; `main` `5eb92b1`.
