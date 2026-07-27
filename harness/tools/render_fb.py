@@ -77,6 +77,8 @@ def main():
     ap.add_argument('-o', '--out', help='output PNG (default: dump name + .png)')
     ap.add_argument('--bpp', type=int, choices=(2, 4),
                     help='bits per pixel; inferred from file size if omitted')
+    ap.add_argument('--palette-file', help='16 CoCo3 palette bytes to use instead of the '
+                    "built-in diagnostic palette (e.g. an image's own palette)")
     ap.add_argument('--scale', type=int, default=1,
                     help='integer NEAREST upscale for visibility (never fractional)')
     a = ap.parse_args()
@@ -88,6 +90,11 @@ def main():
         if bpp is None:
             sys.exit(f"cannot infer bpp from {len(data)} B; pass --bpp")
 
+    if a.palette_file:
+        pf = pathlib.Path(a.palette_file).read_bytes()
+        if len(pf) < 16:
+            sys.exit(f"palette file has {len(pf)} bytes, need 16")
+        PAL16[:] = list(pf[:16])
     img = decode(data, bpp)
     if a.scale > 1:
         img = img.resize((WIDTH * a.scale, ROWS * a.scale), Image.NEAREST)

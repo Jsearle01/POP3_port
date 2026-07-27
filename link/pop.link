@@ -21,7 +21,9 @@
 ;                 [mame-idioms-coco3-port.md §5 — the disk-boot overlap]
 ;
 ;   $0200-...     PROGRAM  (section `prog`)  <-- load + exec address
-;   $3000-...     KERNEL   (section `code`)  <-- the HAL, linked as its own unit
+;   $7000-...     KERNEL   (section `code`)  <-- the HAL, linked as its own unit
+;   $7F00         stack top (engine programs)  -- below the draw window
+;   $8000-$F7FF   MMU DRAW WINDOW ($FFA4-$FFA7) -- the back buffer lives here
 ;
 ;   $7800-$78FF   trace ring buffer         [hal.inc KCOCO3_TRACE_BUFFER]
 ;   $8000-$BBFF   framebuffer A, $3C00      [hal.inc KCOCO3_FB_A_BASE/_FB_SIZE]
@@ -44,6 +46,6 @@
 ; ---------------------------------------------------------------------------
 
 section prog load 0200
-section code load 3000
+section code load 7000
 
 entry probe_entry

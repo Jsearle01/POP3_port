@@ -124,6 +124,11 @@ lwasm --obj -DOBJTARGET -I . -o build/obj/mode_probe.o src/harness/mode_probe.s
 if errorlevel 1 goto :error
 call :size build/obj/mode_probe.o
 
+echo --- Assemble: P3.2 intro splash (first engine screen) ---
+lwasm --obj -DOBJTARGET -I . -o build/obj/intro_splash.o src/engine/intro_splash.s
+if errorlevel 1 goto :error
+call :size build/obj/intro_splash.o
+
 echo --- Link: probe + HAL kernel ---
 REM --section-base is SILENTLY IGNORED by lwlink (P2.3-recon D4) — the script is
 REM the only thing that actually places a section. Do not "simplify" this to a flag.
@@ -160,6 +165,12 @@ lwlink --decb --script=link/pop.link --entry=anim_entry --map=build/obj/anim.map
 if errorlevel 1 goto :error
 call :size build/anim_probe.bin
 
+echo --- Link: intro splash + HAL kernel ---
+lwlink --decb --script=link/pop.link --entry=intro_entry --map=build/obj/intro.map ^
+       -o build/intro_splash.bin build/obj/intro_splash.o build/obj/hal_build.o
+if errorlevel 1 goto :error
+call :size build/intro_splash.bin
+
 echo --- Bootable RS-DOS disk image ---
 REM .dsk is always 18 sectors/track (idiom §3); default geometry is correct.
 if exist build\probe.dsk del /q build\probe.dsk
@@ -171,6 +182,8 @@ call :size build/probe.dsk
 "%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\mode_probe.bin MODE.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
 "%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\anim_probe.bin ANIM.BIN --ftype=binary --ascii=binary
+if errorlevel 1 goto :error
+"%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\intro_splash.bin INTRO.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
 "%IMGTOOL%" dir coco_jvc_rsdos build\probe.dsk
 if errorlevel 1 goto :error

@@ -350,11 +350,11 @@ GFX_MODE_320x192x16 equ 1        ; $FF99=$1E, 160 B/row, 30,720 B, 16 palette re
 ;   than as old content.
 ;
 ;   *** CALLER REQUIREMENT: THE STACK MUST NOT LIVE IN THE DRAW WINDOW ***
-;   This service REMAPS MMU registers $FFA3-$FFA6, i.e. CPU $6000-$DFFF. A caller
+;   This service REMAPS MMU registers $FFA4-$FFA7, i.e. CPU $8000-$FFFF (moved
+;   from $6000-$DFFF in P3.2 to make room for full-screen image assets). A caller
 ;   whose stack pointer is inside that range has the ground pulled out from under
-;   it mid-call and does not return. DECB leaves S at about $7F2B, which is inside
-;   it, so any program entered from a DECB LOADM/EXEC must move its stack first:
-;       lds  #$1F00        ; MMU block 0 -- never remapped
+;   it mid-call and does not return. Put the stack BELOW $8000:
+;       lds  #$7F00        ; below the window, never remapped
 ;   Measured: without this, a probe that had worked for two dispatches hung the
 ;   moment set_mode gained its MMU mapping. Nothing warns you; the call simply
 ;   never comes back.

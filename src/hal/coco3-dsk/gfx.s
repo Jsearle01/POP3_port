@@ -378,19 +378,28 @@ GFX_MODE_ENTSZ      equ 7           ; bytes per mode-descriptor row
 *   [ref: GIME-RM §2 — $FFA0-$FFA7 MMU task set 0]
 *   $FFA3 -> $6000  $FFA4 -> $8000  $FFA5 -> $A000  $FFA6 -> $C000
 *
-*   WHY $6000 AND NOT $8000. A 32 KB window at $8000 would need $FFA7, which maps
-*   CPU $E000-$FFFF — the stack and the vector area. Remapping the block the stack
-*   lives in pulls the ground out from under the code doing the remapping. Basing
-*   the window at $6000 keeps $E000-$FFFF permanently untouched, which costs
-*   nothing and removes an entire class of failure.
+*   WHY $8000 (MOVED from $6000 in P3.2). The first real screen carries a 26,880-byte
+*   image asset; a program loading at $0200 with that much data runs past $6000, into
+*   the window itself. Moving the window to $8000 ($FFA4-$FFA7) gives the program
+*   $0200..$7FFF and keeps the two apart.
+*
+*   The cost is that $FFA7 (CPU $E000-$FFFF) is now remapped, which P2.6 deliberately
+*   avoided because that block holds the stack and vector area. Two facts make it
+*   safe and BOTH must hold: $FF00-$FFFF is ALWAYS I/O regardless of the MMU, and
+*   MC3=1 in $FF90 holds $FE00-$FEFF constant, so the secondary vectors are not
+*   remapped either. What IS remapped is $E000-$FDFF, which the framebuffer
+*   legitimately occupies ($8000 + $7800 = $F800).
+*
+*   THE CALLER REQUIREMENT MOVES WITH IT: the stack must now be BELOW $8000, not
+*   merely outside $6000-$DFFF.
 *
 * CALLERS DRAW AT HAL_gfx_draw_base AND NEVER AT A BUFFER ADDRESS. The physical
 * addresses above are HAL-private on purpose: a caller that learns one of them
 * would be writing to whichever buffer happens to be mapped, which is a bug that
 * only shows up as a tear.
 * ===============================================================
-GFX_DB_WINDOW       equ $6000       ; CPU address the BACK buffer is mapped at
-GFX_DB_MMU          equ $FFA3       ; first MMU reg covering the window
+GFX_DB_WINDOW       equ $8000       ; CPU address the BACK buffer is mapped at
+GFX_DB_MMU          equ $FFA4       ; first MMU reg covering the window
 GFX_DB_BLOCKS       equ 4           ; 4 x 8 KB = 32 KB window
 GFX_DB_A_BLOCK      equ $10         ; buffer A, physical $20000
 GFX_DB_B_BLOCK      equ $18         ; buffer B, physical $30000
