@@ -561,7 +561,32 @@ gfx_sw_done:
 * the MMU just needs to be told which run of 8 KB pages it is.
 * Clobbers: A, B, X
 * ---------------------------------------------------------------
+* INTERRUPTS MASKED ACROSS THE WHOLE REMAP -- this is a CRITICAL SECTION.
+*
+* Writing GFX_DB_BLOCKS MMU registers is a MULTI-STEP update of the CPU memory
+* map. Between the first write and the last, the window is half old buffer and
+* half new. An interrupt taken in that gap runs with a memory map that never
+* legitimately exists; nothing about the handler is wrong, the machine underneath
+* it is inconsistent.
+*
+* MEASURED, NOT ASSUMED (P2.9). With the remap unmasked, a probe drawing fast
+* enough to keep landing in that window fails reproducibly under the DECB load
+* path; masking ONLY these four writes makes it pass 27/27. Two earlier theories
+* (stack-clobber, ROM-residency) were killed by measurement before this one was
+* confirmed by it -- and the variable was SPEED, which is what pointed at an
+* asynchronous interaction in the first place.
+*
+* THE DISCIPLINE IS KARATEKA-S, NOT NEW. HAL_time_frame_count masks IRQ around
+* its two-byte read of the interrupt-updated frame counter for exactly this
+* reason: the 6809 offers no atomicity across multiple accesses, so any state the
+* interrupt context can observe part-way through must be made atomic by masking.
+* [ref: src/hal/coco3-dsk/time.s -- HAL_time_frame_count, the R-vbl race fix]
+*
+* CC is saved/restored, so a caller that had interrupts masked stays masked (the
+* E1.c invariant: HAL routines never change the caller mask state).
 gfx_map_blocks:
+        pshs    cc                      ; save caller mask state
+        orcc    #$50                    ; mask IRQ+FIRQ -- remap is atomic
         ldx     #GFX_DB_MMU
         ldb     #GFX_DB_BLOCKS
 gfx_map_lp:
@@ -569,6 +594,7 @@ gfx_map_lp:
         inca                            ; next 8 KB block
         decb
         bne     gfx_map_lp
+        puls    cc                      ; restore caller CC exactly
         rts
 
 * ---------------------------------------------------------------

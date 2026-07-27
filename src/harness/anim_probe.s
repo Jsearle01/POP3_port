@@ -256,6 +256,15 @@ draw_frame
 df_tear_a
                 lda     #$10            ; back=B(1) -> displayed is A, block $10
 df_tear_map
+* CRITICAL SECTION -- same discipline as the HAL's gfx_map_blocks, and the reason
+* this stage used to crash. Remapping four MMU registers is a multi-step change to
+* the CPU's memory map; an interrupt taken part-way through runs against a map that
+* is half one buffer and half the other. Masking makes the remap atomic.
+*
+* This stage defeats the BUFFERING on purpose (that is the contrast), but it must
+* not defeat the machine. [ref: gfx.s gfx_map_blocks; time.s HAL_time_frame_count]
+                pshs    cc
+                orcc    #$50
                 ldx     #$FFA3
                 ldb     #4
 df_tear_lp
@@ -263,6 +272,7 @@ df_tear_lp
                 inca
                 decb
                 bne     df_tear_lp
+                puls    cc
 
 df_draw
 * --- ERASE the bar this buffer still holds, then draw the new one ---

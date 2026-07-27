@@ -1231,4 +1231,57 @@ no observable output can still change *when* things happen relative to interrupt
 raster, and any hardware with its own clock — and a latent race that was previously masked
 by slowness becomes reachable. When a provably output-equivalent speedup breaks something,
 stop looking for a coding error and start looking for the race it uncovered.
-*Established:* P2.8, still unresolved as of that dispatch.
+*Established:* P2.8. **RESOLVED P2.9** — the race was the MMU remap; see §22.
+
+
+---
+
+## 22. A multi-register hardware update is a CRITICAL SECTION (P2.9)
+
+**The MMU remap must be atomic with respect to interrupts.** Writing the four MMU
+registers that cover the draw window is a multi-step change to the CPU's memory map.
+Between the first write and the last, the window is half one buffer and half the other —
+a map that never legitimately exists. An interrupt taken in that gap runs against it.
+
+```asm
+gfx_map_blocks:
+        pshs    cc                      ; save caller's mask state
+        orcc    #$50                    ; mask IRQ+FIRQ -- remap is atomic now
+        ldx     #GFX_DB_MMU
+        ldb     #GFX_DB_BLOCKS
+gfx_map_lp:
+        sta     ,x+
+        inca
+        decb
+        bne     gfx_map_lp
+        puls    cc                      ; restore caller's CC exactly
+        rts
+```
+
+**How it was found, because the path matters.** Three theories died before this one:
+stack-clobber (P2.7, disproven — the stack was intact and already relocated),
+ROM-residency (P2.8, disproven — every address measured writable RAM before the probe
+ran), and then the bisection that reframed everything: unrolled BYTE stores failed as
+badly as unrolled word stores while the rolled loop passed, so **the variable was SPEED,
+not the instruction** (§21e). Speed-dependence means an asynchronous interaction, and the
+only asynchronous thing present was the VBL interrupt. One decisive test — mask IRQ across
+the draw — turned 22/23 into 27/27; a second, narrower test — mask ONLY the four MMU
+writes — did the same, localising it exactly.
+
+**THE DISCIPLINE ALREADY EXISTED IN THE CODEBASE.** `HAL_time_frame_count` masks IRQ
+around its two-byte read of the interrupt-updated frame counter and is labelled a race
+fix. Same rule, different resource: **the 6809 gives no atomicity across multiple
+accesses, so anything the interrupt context can observe part-way through must be made
+atomic by masking.** The counter needed it for a 16-bit READ; the MMU needs it for a
+four-register WRITE.
+
+**Always `pshs cc` / `puls cc`, never `orcc` / `andcc`.** Restoring the caller's condition
+codes exactly preserves their mask state — a caller that had interrupts masked stays
+masked. Hard-coding `andcc` to unmask silently enables interrupts in callers that
+deliberately disabled them.
+
+**Generalises beyond the MMU.** Any hardware state written across several instructions and
+observable from interrupt context is the same shape: VOFFSET pairs, palette runs, MMU task
+switches. If an interrupt can see it half-written, mask it.
+*Established:* P2.9, after three disproven theories. Fixed in `gfx.s gfx_map_blocks`;
+karateka unaffected (binary byte-identical, service gated off).

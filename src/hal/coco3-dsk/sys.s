@@ -112,8 +112,24 @@
 * Precondition: BASIC boot complete; DP=0; stack initialized
 * Postcondition:
 *   - Interrupts masked (ORCC #$50 applied)
-*   - $FF90=$4C: COCO=0, MMUEN=1, MC3=1, MC2=1 (all-RAM; MMU enabled;
-*       $FExx locked by MC3=1; ROM unmapped from $8000-$FEFF)
+*   - $FF90=$4C: COCO=0 (CoCo3 mode), MMUEN=1 (MMU on), IEN=0, FEN=0,
+*       MC3=1 ($FExx DRAM held constant), MC2=1 (standard SCS), MC1:MC0=00.
+*
+*     CORRECTED P2.9 -- this postcondition previously read "all-RAM ... ROM
+*     unmapped from $8000-$FEFF". THAT WAS WRONG. $FF90's MC1:MC0 field selects
+*     ROM MAPPING, and it has no all-RAM setting at all:
+*         MC1 MC0   ROM mapping
+*          0   x    16K internal, 16K external
+*          1   0    32K internal
+*          1   1    32K external (except vectors)
+*     $4C is MC1=0, MC0=0 -- "16K internal, 16K external". Writing it does not
+*     unmap anything. The CoCo3's upper-memory RAM/ROM control is the SAM pair
+*     $FFDE/$FFDF, which THIS ROUTINE NEVER WRITES; HAL_gfx_init and
+*     HAL_gfx_set_mode write $FFDF as their final step.
+*     [ref: docs/ground-truth/GIME_Reference_Manual.pdf section 3 -- INIT0]
+*     [ref: docs/ground-truth/SockmasterGime.md:24-38 -- identical table]
+*     Measured alongside: $0200/$3000/$6000/$8000/$9000/$A000/$C000/$D000/$D7FF
+*     are all writable RAM at the DECB prompt, before this routine has ever run.
 *   - FFA0-FFA7=$38-$3F: MMU task 0 mapped to P1.6 layout
 *       ($0000-$1FFF=physical $70000, ..., $C000-$FFFF=physical $7C000+)
 *   - PIA0 and PIA1 IRQ enable bits cleared: PIA will not assert IRQ.
