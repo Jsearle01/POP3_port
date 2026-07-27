@@ -114,6 +114,14 @@ anim_start
 * [ref: src/hal.inc — INIT ORDER, step 0]
                 jsr     HAL_sys_init
 
+* --- STEP 1: memory discovery, before anything allocates ------------
+* A stub today (reports 128K) but it is step 1 of the canonical order and it
+* belongs here on principle: a kernel discovers its resources after the machine
+* is configured and BEFORE anything allocates against them. Called for contract
+* conformance, not because this probe needs the answer.
+* [ref: src/hal.inc — INIT ORDER; mame-idioms-coco3-port.md §21a]
+                jsr     HAL_mem_size_detect
+
 * --- arm the VBL interrupt, THEN unmask. Both halves are required ---
 * HAL_time_init installs the $010C handler, sets $FF93=0 / $FF92=$08 (VBORD
 * only) and raises IEN in $FF90. It does NOT touch CC.I -- that is the E1.c

@@ -1146,3 +1146,89 @@ whatever precedes it. Measured: a probe completed one swap, then executed at `$6
 had overwritten itself. Use `clra / ldb <value> / leax d,x` for a genuine 0..255
 displacement, since `D` is 16-bit and the high byte is zero.
 *Established:* P2.6.
+
+
+---
+
+## 21. The canonical BOOT CONTRACT — machine-config first, always (P2.8)
+
+Three consecutive dispatches lost time to the same shape: **a probe hand-rolled its machine
+bring-up and got the ordering wrong.** P2.5 hung (polled `$FF92` without arming VBORD), P2.6
+stormed (skipped `HAL_sys_init`, so the PIAs interrupted at 15.7 kHz unacknowledged), P2.7
+froze. They are one family, and the family has a cure.
+
+### 21a. Every program runs the HAL's canonical boot, verbatim, FIRST
+`hal.inc`'s INIT ORDER is the authoritative list, and it is seven steps:
+```
+0. HAL_sys_init         bare-metal: mask, $FF90, MMU, PIA IRQ disable
+1. HAL_mem_size_detect  memory probe (stub today)
+2. HAL_time_init        frame counter + $010C VBL handler + VBORD enable
+3. HAL_gfx_init  /  HAL_gfx_set_mode(mode)
+4. HAL_input_init       (stub)
+5. HAL_sound_init       (stub)
+6. HAL_file_init        (stub)
+```
+Do not hand-roll bring-up and do not reorder. `src/engine/boot.s` in karateka is the
+reference implementation.
+
+### 21b. Boot is LAYERED, which is why "boot differs per resolution" is a non-problem
+- **Steps 0-2 are machine-establishment and RESOLUTION-INDEPENDENT.** Identical for every
+  program that will ever run on this machine. Mandatory, first, before ANY memory, graphics
+  or data access.
+- **Step 3 is the only resolution-DEPENDENT step**, and it is already parameterised —
+  `HAL_gfx_set_mode(mode)` takes the mode as an argument.
+- **Steps 4-6 are peripherals**, invariant, after graphics.
+
+So there is no ambiguity about "which boot": the part that must be identical everywhere is
+identical everywhere, and the part that varies is one parameterised call that happens later.
+
+### 21c. This is the proto-KERNEL BOOT CONTRACT
+Read it as an OS boundary and it stops being a probe convention: **the kernel establishes
+machine configuration — guaranteed, in a fixed order — before any program runs; programs
+then REQUEST modes rather than configuring hardware.** Steps 0-2 are what a kernel does
+before handing control to userland; step 3 is a syscall. That framing is worth carrying into
+the single-source extraction, because it says which side of the boundary each step lives on.
+
+### 21d. `sys.s`'s `$FF90=$4C` "unmaps ROM" comment — FLAGGED, NOT TRUSTED
+`sys.s` states the postcondition *"$FF90=$4C ... ROM unmapped from $8000-$FEFF"*. Both
+references disagree that `$FF90` does this:
+
+| MC1 | MC0 | ROM mapping |
+|-----|-----|-------------|
+| 0 | x | 16K internal, 16K external |
+| 1 | 0 | 32K internal |
+| 1 | 1 | 32K external (except vectors) |
+
+[ref: GIME_Reference_Manual.pdf §3 INIT0; SockmasterGime.md:24-38 — identical tables]
+
+`$4C` = `0100_1100` → MC1=0, MC0=0 → *"16K internal, 16K external"*. There is **no all-RAM
+setting in MC1:MC0 at all**; the CoCo3's upper-memory RAM/ROM choice is the SAM's
+`$FFDE`/`$FFDF` pair, which `HAL_sys_init` does not write (`HAL_gfx_init` and
+`HAL_gfx_set_mode` write `$FFDF` as their last step).
+
+**Measured, and it complicates the picture rather than settling it:** a write/read-back
+survey found `$0200`, `$3000`, `$6000`, `$7F00`, `$8000`, `$9000`, `$A000`, `$C000`, `$D000`
+and `$D7FF` ALL writable RAM at the DECB prompt, *before* `LOADM`, *before* `HAL_sys_init`
+ran at all. So on this target the `$8000-$FEFF` window is RAM-backed regardless, and nothing
+observed depends on the comment being true.
+
+The comment is **not corrected here**: it is a factual claim in the shared kernel about
+machine behaviour, and the correct disposition is Jay's. Flagged with the evidence.
+
+### 21e. A speed change is a schedule change — treat it as one
+P2.7's freeze was bisected to an unrolled draw loop. P2.8 bisected further: replacing the
+unroll's 16-bit stores with unrolled BYTE stores **still fails**, while the original rolled
+byte loop **passes**.
+
+| variant | speed | result |
+|---|---|---|
+| rolled byte loop | slow | PASS |
+| unrolled `sta ,x+` x16 | fast | FAIL |
+| unrolled `std ,x++` x8 | fast | FAIL |
+
+The instruction form is irrelevant; the SPEED is the variable. An optimisation that changes
+no observable output can still change *when* things happen relative to interrupts, the
+raster, and any hardware with its own clock — and a latent race that was previously masked
+by slowness becomes reachable. When a provably output-equivalent speedup breaks something,
+stop looking for a coding error and start looking for the race it uncovered.
+*Established:* P2.8, still unresolved as of that dispatch.
