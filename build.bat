@@ -187,7 +187,11 @@ echo --- Link: intro sequencer + HAL kernel ---
 REM The tightest link in the project: 28,468 bytes of asset in a 30,208-byte
 REM program region. Check build/obj/introseq.map after ANY asset change -- lwlink
 REM places overlapping sections silently, and did so three times in P3.2.
-lwlink --decb --script=link/pop.link --entry=intro_seq_entry --map=build/obj/introseq.map ^
+REM link/pop_engine.link, NOT link/pop.link: the engine loads at $2000 because
+REM Color BASIC's line-input buffer at $02DC is where the typed EXEC lands, on top
+REM of a program loaded at $0200 (P3.5). The probes keep $0200 -- they are pinned
+REM there by the P1.1 harness contract and are small enough to stay under $02DC.
+lwlink --decb --script=link/pop_engine.link --entry=intro_seq_entry --map=build/obj/introseq.map ^
        -o build/intro_seq.bin build/obj/intro_seq.o build/obj/hal_build.o
 if errorlevel 1 goto :error
 call :size build/intro_seq.bin

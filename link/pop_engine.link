@@ -1,0 +1,52 @@
+; link/pop_engine.link — the ENGINE memory map (P3.5).
+;
+; Separate from link/pop.link because the engine and the P1.x probes have
+; incompatible constraints. The probes are pinned at $0200 by a harness contract
+; (it reads probe_status at $0203 and gates the LOADM on the bytes at $0200); the
+; engine cannot live there at all, and the reason is measured, not stylistic.
+;
+; WHY THE ENGINE IS NOT AT $0200 (P3.5, the whole of it):
+;   Color BASIC's line-input buffer is at $02DC. LOADM places the program, and
+;   then the operator types EXEC to start it -- and DECB stores those keystrokes
+;   IN THE BUFFER, on top of the program that was just loaded. Caught on the bus:
+;
+;     f708  $02DD <- $45   'E'      from DECB, PC=$A3E7
+;     f717  $02DE <- $58   'X'
+;     f726  $02DF <- $45   'E'
+;     f735  $02E0 <- $43   'C'
+;
+;   $02DD was `sta probe_phase` and $02E0 was `ldx seq_beat`. The command that
+;   starts the program corrupts the program.
+;
+;   It is vicious because it is LAYOUT-SENSITIVE: whether it matters depends on
+;   which instructions happen to sit under $02DC, so adding four bytes of
+;   diagnostic changes the symptom or hides it. And it never appears on the poked
+;   path (P3.2/P3.3, and the live viewer) because nothing types EXEC there --
+;   which is exactly why the sequence ran correctly for Jay and "failed" under the
+;   test.
+;
+; THE THREE REGIONS A LOADM+EXEC PROGRAM MUST CLEAR:
+;   $02DC-$03D5   Color BASIC line-input buffer  <- typing EXEC lands here
+;   $0400-$05FF   the text screen                <- DECB prints "OK" into it
+;   $0600-$09FF   DBUF0/DBUF1/FAT/FCBs           <- LOADM itself uses these
+;                 [karateka docs/project/decb-loadm-boot-gates.md; POP idioms §23]
+;
+; ---------------------------------------------------------------------------
+;   $0A00-$1BFF   intro asset bundle (read from disk at run time)
+;   $1C00-$1EFF   caption save buffer
+;   $1F00-$1F06   disk primitive parameters (-DDR_VARBASE=0x1F00)
+;   $2000-...     ENGINE (section `prog`)  <- load + exec address
+;   $7800-$78FF   trace ring buffer
+;   $7900-$7CA6   KERNEL (section `code`)
+;   $7F00         stack top
+;   $8000-$F7FF   MMU draw window
+; ---------------------------------------------------------------------------
+; $2000 sits above every DECB region above and below the graphics pages' end at
+; $25FF, which DECB does not touch unless a BASIC graphics command runs. The
+; engine's own runtime data stays where P3.4 put it -- also chosen to be clear of
+; DECB, for the same reason, one dispatch earlier.
+
+section prog load 2000
+section code load 7900
+
+entry probe_entry

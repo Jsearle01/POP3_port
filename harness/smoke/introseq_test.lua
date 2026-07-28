@@ -64,10 +64,11 @@ local CUR_BACK  = tonumber(os.getenv("P_CURBACK") or "0x7B06")
 local SWAPS     = tonumber(os.getenv("P_SWAPS") or "0x7B07")
 local NO_BORROW = (os.getenv("P_NOBORROW") == "1")
 
-local ADDR_STATUS = 0x0203
-local ADDR_BEAT   = 0x0204
-local ADDR_PHASE  = 0x0205
-local ADDR_MAGIC  = 0x0206
+local ENGINE      = 0x2000        -- P3.5: clear of DECB's line buffer
+local ADDR_STATUS = ENGINE + 3
+local ADDR_BEAT   = ENGINE + 4
+local ADDR_PHASE  = ENGINE + 5
+local ADDR_MAGIC  = ENGINE + 6
 local SEQ_MAGIC   = 0x5E92
 
 local FB_BASE   = 0x8000        -- the MMU draw window
@@ -172,8 +173,12 @@ local function finish(reason)
 end
 
 -- The five states, in order. Each is (status, phase) -> capture tag.
+-- probe_status now identifies the BEAT (2 = first, 3 = second, 4 = finished) and
+-- probe_phase the point within it (0 base held, 1 caption up, 2 caption cleared).
 local WANT = {
-    { st = 1, ph = 0, tag = "1_base" },
+    -- the beat is entered BEFORE its screen is read, so this one also waits
+    -- for the reads to land; otherwise it captures an empty framebuffer.
+    { st = 2, ph = 0, tag = "1_base", loads = 3 },
     { st = 2, ph = 1, tag = "2_presents_up" },
     { st = 2, ph = 2, tag = "3_presents_clear" },
     { st = 3, ph = 1, tag = "4_byline_up" },
@@ -201,7 +206,7 @@ local function tick()
         if nk.empty and not loaded_at then
             loaded_at = fn
         elseif loaded_at then
-            local all_in, bad = (rd8(0x0200) == 0x7E), nil
+            local all_in, bad = (rd8(ENGINE) == 0x7E), nil
             if all_in and SEGS then
                 for _, sg in ipairs(SEGS) do
                     local g0, g1 = rd8(sg.addr), rd8(sg.addr + sg.len - 1)
@@ -222,7 +227,7 @@ local function tick()
                 started = fn
             elseif fn >= loaded_at + SETTLE then
                 check("loadm_from_disk", false,
-                      string.format("$0200 = %02X after %d frames; %s", rd8(0x0200),
+                      string.format("$%04X = %02X after %d frames; %s", ENGINE, rd8(ENGINE),
                                     SETTLE, bad or "segment table unreadable"))
                 finish("LOADM failed")
             end
@@ -234,14 +239,15 @@ local function tick()
         local st, ph = rd8(ADDR_STATUS), rd8(ADDR_PHASE)
         -- time each disk read as it lands. The load cost is a number this task
         -- owes, not something to eyeball from when the picture turns up.
-        local n = rd8(0x0208)
+        local n = rd8(ENGINE + 8)
         if n > (loads_seen or 0) then
             log(string.format("# frame %5d  disk read %d complete (+%d frames, %.1f s)",
                               fn, n, fn - (last_load or started), (fn - (last_load or started)) / 60))
             loads_seen, last_load = n, fn
         end
         local w = WANT[want_i]
-        if w and st == w.st and ph == w.ph then
+        if w and st == w.st and ph == w.ph
+           and rd8(ENGINE + 8) >= (w.loads or 0) then
             mark(w.tag, fn)
             check("capture_" .. w.tag, dump_front(w.tag), "")
             want_i = want_i + 1
@@ -253,9 +259,9 @@ local function tick()
                       string.format("last beat index %d", rd8(ADDR_BEAT)))
                 -- THE PROOF: three successful reads (bundle + the screen, twice),
                 -- and a program image far too small to have carried the screen.
-                check("disk_reads_completed", rd8(0x0208) == 3,
+                check("disk_reads_completed", rd8(ENGINE + 8) == 3,
                       string.format("probe_loads = %d (want 3: bundle + screen x2); "
-                                    .. "WD1773 status $%02X", rd8(0x0208), rd8(0x0209)))
+                                    .. "WD1773 status $%02X", rd8(ENGINE + 8), rd8(ENGINE + 9)))
                 check("image_cannot_contain_screen", BIN_BYTES < 30720,
                       string.format("INTROSEQ.BIN is %d B; the framebuffer it put on "
                                     .. "screen is 30,720 B", BIN_BYTES))
@@ -276,7 +282,7 @@ local function tick()
                                 .. "disk reads done=%d WD1773 status=$%02X nmi_done=%d "
                                 .. "dr_track=%d dr_r_count=%d dr_dest=$%04X",
                                 st, ph, want_i - 1, #WANT,
-                                rd8(0x0208), rd8(0x0209), rd8(0xFE00),
+                                rd8(ENGINE + 8), rd8(ENGINE + 9), rd8(0xFE00),
                                 rd8(0x1F00), rd8(0x1F06),
                                 rd8(0x1F02) * 256 + rd8(0x1F03)))
             finish("timeout")

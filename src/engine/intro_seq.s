@@ -145,7 +145,7 @@ BEAT_HOLD       equ     6               ; frames the caption stays up
 * ---------------------------------------------------------------
 intro_seq_entry jmp     seq_start       ; $0200 — EXEC address
 
-probe_status    fcb     0               ; $0203  0=boot 1=base up 2=beat1 3=beat2 4=done
+probe_status    fcb     0               ; $0203  0=boot 2=beat1 3=beat2 4=done
 probe_beat      fcb     0               ; $0204  beat index currently running
 probe_phase     fcb     0               ; $0205  0=pre 1=caption up 2=cleared
 probe_magic     fdb     0               ; $0206
@@ -279,6 +279,33 @@ sq_beat
                 stb     probe_beat
                 stx     seq_beat        ; the beat pointer lives in ONE place
                 pshs    b
+* probe_status identifies the BEAT and is set once, here, from the loop counter
+* that is already in B -- not recomputed mid-beat by reading probe_beat back.
+* Re-reading it was the last surviving instance of the pattern this beat's
+* descriptor caching removed, and it misread exactly the same way: $42 instead
+* of 2 on beat 1, and 2 instead of 3 on beat 2.
+                addb    #2
+                stb     probe_status
+
+* -- READ THE WHOLE DESCRIPTOR NOW, before anything else runs ------
+* Every field is copied out up front and the table is not indexed again for the
+* rest of the beat. The previous shape re-derived `ldx seq_beat / ldd FIELD,x`
+* after each call, which looks safe and is not: HAL_gfx_swap does not preserve X
+* (gfx_map_blocks walks it across $FFA4-$FFA7 and leaves it at $FFA8), so the
+* reload had to be correct AND had to actually take effect across every routine
+* in between. It did not: measured on the bus, `ldd BEAT_HOLD,x` read $FFAE/$FFAF
+* -- the MMU registers -- and handed hold_frames $353F = 13,631 frames, which is
+* the "collapsed hold" (it was a 227-second one).
+*
+* Copying the descriptor once removes the dependency rather than repairing it.
+                lda     BEAT_TRACK,x
+                sta     beat_track
+                ldd     BEAT_PATCH,x
+                std     beat_patch
+                ldd     BEAT_PRE,x
+                std     beat_pre
+                ldd     BEAT_HOLD,x
+                std     beat_hold
 
 * -- this beat's screen, if it brings one --------------------------
 * Read into the back buffer, show it, read again into the other one, so both pages
@@ -288,17 +315,14 @@ sq_beat
 * front-to-back copy through the spare MMU slots would be faster, and is the
 * obvious move if this ever happens in front of the player. It does not: both
 * reads finish before the first beat is visible.
-                lda     BEAT_TRACK,x
+                lda     beat_track
                 beq     sq_nobase
                 jsr     load_screen
                 bne     seq_disk_fail
                 jsr     HAL_gfx_swap
-                ldx     seq_beat
-                lda     BEAT_TRACK,x
+                lda     beat_track
                 jsr     load_screen
                 bne     seq_disk_fail
-                lda     #1
-                sta     probe_status
 sq_nobase
 
 * -- hold the clean base ------------------------------------------
@@ -308,27 +332,19 @@ sq_nobase
 * A once-per-frame observer then caught it or missed it by luck; P3.3 got lucky and
 * P3.4 did not. Every state a watcher is expected to see now persists for the hold
 * that belongs to it.
-                ldx     seq_beat
-                ldd     BEAT_PRE,x
+                ldd     beat_pre
                 jsr     hold_frames
 
 * -- draw the caption on the HIDDEN page, then reveal it ----------
-                ldx     seq_beat
-                ldd     BEAT_PATCH,x
+                ldd     beat_patch
                 std     seq_patch
                 clr     seq_restore
                 jsr     patch_blit      ; saves the clean bytes, then applies
                 jsr     HAL_gfx_swap    ; the caption APPEARS, in one frame
-* status before phase, so a per-frame observer never samples the pair mid-update
-* and sees a beat that has not started showing a phase that has.
-                ldb     probe_beat
-                addb    #2
-                stb     probe_status
                 lda     #1
                 sta     probe_phase
 
-                ldx     seq_beat
-                ldd     BEAT_HOLD,x
+                ldd     beat_hold
                 jsr     hold_frames
 
 * -- hide it, then repair the page that carries it ----------------
@@ -464,6 +480,10 @@ pb_rownext
 * ---------------------------------------------------------------
 * State
 * ---------------------------------------------------------------
+beat_track      fcb     0               ; the current descriptor, copied out ONCE
+beat_patch      fdb     0               ;   at beat entry. Nothing indexes the table
+beat_pre        fdb     0               ;   again for the rest of the beat.
+beat_hold       fdb     0
 seq_beat        fdb     0               ; the beat under way. Held in a variable
 *                                       ; rather than re-read from 1,S after every
 *                                       ; call: the stack offset was correct but it

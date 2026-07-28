@@ -1489,3 +1489,57 @@ against 103 MB of MJPEG. GIF's 10 ms delay granularity costs 20 ms of drift acro
 video codec, or when the artifact needs to be small.
 
 *Established:* SQ-1.
+
+---
+
+## 28. Typing `EXEC` overwrites the program you just `LOADM`ed — $02DC is the line buffer (P3.5)
+
+**Color BASIC's line-input buffer is at `$02DC`.** `LOADM` places the program; the
+operator then types `EXEC` to start it; **DECB stores those keystrokes in the
+buffer, on top of the program that was just loaded there.** Caught on the bus, with
+the writing PC inside the BASIC ROM:
+
+```
+f708  $02DD <- $45   'E'    from DECB, PC=$A3E7
+f717  $02DE <- $58   'X'
+f726  $02DF <- $45   'E'
+f735  $02E0 <- $43   'C'
+```
+
+`$02DD` was `sta probe_phase`; `$02E0` was `ldx seq_beat`. **The command that starts
+the program corrupts the program.**
+
+**THREE REGIONS A `LOADM`+`EXEC` PROGRAM MUST CLEAR** — this one completes the set:
+
+| range | owner | when it bites |
+|---|---|---|
+| `$02DC-$03D5` | line-input buffer | typing `EXEC`, i.e. AFTER the load |
+| `$0400-$05FF` | text screen | DECB prints `OK` |
+| `$0600-$09FF` | DBUF0/DBUF1/FAT/FCBs | during `LOADM` itself (§23) |
+
+POP's engine now links at **`$2000`** (`link/pop_engine.link`) — above all three and
+below the graphics pages' end at `$25FF`. The P1.x probes keep `$0200`: they are
+pinned there by the harness contract and are small enough to stop below `$02DC`.
+
+**WHY IT IS VICIOUS.** Whether it matters depends on which instructions happen to
+sit under `$02DC`, so it is **layout-sensitive**: adding four bytes of diagnostic
+changes the symptom or hides it, and successive builds produce mutually
+contradictory measurements that read as flakiness. Across P3.4/P3.5 the same
+program showed correct timing with nonsense status bytes, sane status bytes with
+collapsed timing, a hang, and a clean run.
+
+**AND IT IS INVISIBLE ON THE POKED PATH.** P3.2/P3.3 and `introseq_live.lua` wrote
+the image in from Lua and set PC — nothing types `EXEC`, so nothing is corrupted.
+That is exactly why Jay watched the sequence run correctly while the automated test
+reported it broken: **the two used different launch paths, and the fault was in the
+path, not the program.** When a human's observation and a test disagree, compare
+what each one LAUNCHED before theorising about the code.
+
+**The tell, which was visible early and explained away:** an instruction that
+provably executed followed by one that provably did not, in straight-line code with
+no branch between them. That is never a logic bug — it means the bytes are not what
+the source says. Read the memory, not the control flow.
+
+*Established:* P3.5. *Candidates:*
+`when-human-and-test-disagree-ask-what-each-one-launched`,
+`a-layout-sensitive-fault-makes-the-diagnostic-part-of-the-experiment`.
