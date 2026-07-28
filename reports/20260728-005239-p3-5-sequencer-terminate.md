@@ -295,6 +295,6 @@ Pool commit `fad8e99`, pushed.
 
 ### 11 — Commit
 
-**POP:** `<hash>` — the engine link script, the sequencer fix, the harnesses, idiom
+**POP:** `94885d1` — the engine link script, the sequencer fix, the harnesses, idiom
 §28, this report. Pushed to `origin/wip`.
 **Karateka:** untouched — `wip` `9f68eaa`, `main` `5eb92b1`.
