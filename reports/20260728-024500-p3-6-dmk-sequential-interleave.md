@@ -277,5 +277,5 @@ Pool commit `44e5b65`, pushed.
 ### 11 — Commit
 
 **POP:** `deaa6a1` — DMK build, `raw_tracks.py`, the harnesses, idiom §29. Pushed
-to `origin/wip`. This report: `<hash>`.
+to `origin/wip`. This report: `11af68d`.
 **Karateka:** untouched — `wip` `9f68eaa`, `main` `5eb92b1`, prod `88eba89b…` held.
