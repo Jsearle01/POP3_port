@@ -37,7 +37,7 @@ REM   build/obj/*.o              relocatable objects
 REM   build/obj/*.map            link maps (the ABI, resolved)
 REM   build/loop_probe.bin       DECB binary  (LOADM-able, exec $0200)
 REM   build/hal_link_proof.bin   DECB binary  (ABI proof; not meant to run)
-REM   build/probe.dsk            RS-DOS disk  (PROBE.BIN)
+REM   build/probe.dmk            RS-DOS disk  (PROBE.BIN)
 setlocal
 
 for %%I in ("%~dp0.") do set "REPO_ROOT=%%~fI"
@@ -198,19 +198,25 @@ call :size build/intro_seq.bin
 
 echo --- Bootable RS-DOS disk image ---
 REM .dsk is always 18 sectors/track (idiom §3); default geometry is correct.
-if exist build\probe.dsk del /q build\probe.dsk
-"%IMGTOOL%" create coco_jvc_rsdos build\probe.dsk
+REM DMK, interleave 0 (SEQUENTIAL) -- NOT JVC. MAME synthesises a near-pessimal
+REM physical order for JVC and the whole-track m=1 read pays ~0.89 revolutions per
+REM SECTOR for it: measured 3.31 s/track here, 3.33 s/track on karateka. DMK keeps
+REM the authored order, and sequential is the FASTEST for a Read-Multiple loader --
+REM which inverts the usual RS-DOS spread-the-sectors convention.
+REM [karateka docs/project/interleave-realization-mame.md; POP idiom 29]
+if exist build\probe.dmk del /q build\probe.dmk
+"%IMGTOOL%" create coco_dmk_rsdos build\probe.dmk --tracks=35 --sectors=18 --sectorlength=256 --interleave=0
 if errorlevel 1 goto :error
-"%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\loop_probe.bin PROBE.BIN --ftype=binary --ascii=binary
+"%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\loop_probe.bin PROBE.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
-call :size build/probe.dsk
-"%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\mode_probe.bin MODE.BIN --ftype=binary --ascii=binary
+call :size build/probe.dmk
+"%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\mode_probe.bin MODE.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
-"%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\anim_probe.bin ANIM.BIN --ftype=binary --ascii=binary
+"%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\anim_probe.bin ANIM.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
-"%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\intro_splash.bin INTRO.BIN --ftype=binary --ascii=binary
+"%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\intro_splash.bin INTRO.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
-"%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\intro_seq.bin INTROSEQ.BIN --ftype=binary --ascii=binary
+"%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\intro_seq.bin INTROSEQ.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
 echo --- Raw intro assets onto whole tracks ---
 REM The screen is NOT a DECB file. disk_read_range reads whole tracks and knows
@@ -221,12 +227,12 @@ REM tolerates exactly (karateka decb-loadm-boot-gates.md gate G1).
 if not exist build\assets mkdir build\assets
 python harness/tools/make_intro_assets.py --out-screen build/assets/intro_screen.raw --out-bundle build/assets/intro_bundle.raw
 if errorlevel 1 goto :error
-python harness/tools/raw_tracks.py --dsk build/probe.dsk --asset build/assets/intro_screen.raw --track 27 --tracks 7 --reserve
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/intro_screen.raw --track 27 --tracks 7 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
-python harness/tools/raw_tracks.py --dsk build/probe.dsk --asset build/assets/intro_bundle.raw --track 34 --tracks 1 --reserve
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/intro_bundle.raw --track 34 --tracks 1 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 
-"%IMGTOOL%" dir coco_jvc_rsdos build\probe.dsk
+"%IMGTOOL%" dir coco_dmk_rsdos build\probe.dmk
 if errorlevel 1 goto :error
 
 echo === BUILD COMPLETE ===

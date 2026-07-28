@@ -167,6 +167,8 @@ local function tick()
             loaded_at = fn
         elseif loaded_at then
             local b0, b1, b2 = rd8(0x0200), rd8(0x0201), rd8(0x0202)
+            -- the entry is `jmp <0x0208>`, so the operand bytes follow the
+            -- load address rather than being the literal $02 $08 of the old $0200 map.
             local all_in = (b0 == 0x7E and b1 == 0x02 and b2 == 0x08)
             if all_in and SEGS then
                 for _, s in ipairs(SEGS) do

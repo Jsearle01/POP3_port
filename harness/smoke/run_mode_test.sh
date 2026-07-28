@@ -3,7 +3,7 @@
 #
 # POP CoCo3 — P2.5 mode-cycling test.
 #
-# Boots build/probe.dsk in `mame coco3`, drives DECB to LOADM"MODE" + EXEC, and
+# Boots build/probe.dmk in `mame coco3`, drives DECB to LOADM"MODE" + EXEC, and
 # captures the four mode-switch stages (16 -> 4 -> 16 -> 4).
 #
 # Corroborates the HAL's published geometry and the on-screen bar pattern, and
@@ -21,8 +21,8 @@ cd "$(dirname "$0")/../.." || exit 1
 MAME="${MAME:-/c/mame/mame.exe}"
 MAME_ROMS="${MAME_ROMS:-C:/mame/roms}"
 
-SRC_DSK="build/probe.dsk"
-DSK="build/run_mode.dsk"
+SRC_DSK="build/probe.dmk"
+DSK="build/run_mode.dmk"
 BIN="build/mode_probe.bin"
 LOG="build/mode_test.log"
 PASS="build/mode_test_PASS"
@@ -32,7 +32,7 @@ DUMP="build/mode_dumps"
 [ -f "$SRC_DSK" ] || { echo "[run_mode_test] missing $SRC_DSK — run build.bat first"; exit 1; }
 [ -f "$BIN" ] || { echo "[run_mode_test] missing $BIN — run build.bat first"; exit 1; }
 
-# MOUNT A SCRATCH COPY, NEVER build/probe.dsk ITSELF. MAME opens a floppy
+# MOUNT A SCRATCH COPY, NEVER build/probe.dmk ITSELF. MAME opens a floppy
 # READ-WRITE and JVC images save back, so a guest that touches the disk -- or an
 # exit taken mid-FDC-operation -- rewrites the built artifact. That happened in
 # P3.3: after a run of diagnostic sessions the image came back "Corrupt image"

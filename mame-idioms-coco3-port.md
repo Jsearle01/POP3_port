@@ -1543,3 +1543,61 @@ the source says. Read the memory, not the control flow.
 *Established:* P3.5. *Candidates:*
 `when-human-and-test-disagree-ask-what-each-one-launched`,
 `a-layout-sensitive-fault-makes-the-diagnostic-part-of-the-experiment`.
+
+---
+
+## 29. Ship DMK with SEQUENTIAL interleave — JVC costs 2.5× (P3.6)
+
+**MAME's `coco_jvc` container has no physical sector order to preserve**, so MAME
+synthesises one — and the one it picks is near-pessimal for a whole-track read.
+Measured on POP: **3.31 s/track**; karateka independently: **3.33 s/track**. Both
+≈ **0.89 revolutions per SECTOR**, where a whole track should cost about one.
+
+**DMK preserves the authored order, and imgtool authors it:**
+
+```
+imgtool create coco_dmk_rsdos <img> --tracks=35 --sectors=18 \
+        --sectorlength=256 --interleave=0
+imgtool writesector coco_dmk_rsdos <img> <track> 0 <sector> <file>
+```
+
+**INTERLEAVE 0 = SEQUENTIAL = FASTEST, which inverts the RS-DOS convention.** The
+usual reason to spread sectors is to give a sector-at-a-time reader time to breathe.
+A HALT-paced `m=1` Read-Multiple reads the whole track under ONE command and keeps
+pace inside it, so it wants the next sector to be the *next* sector; any spread
+costs a revolution. karateka swept it and the time rises monotonically — il=0:
+10.66 s, il=1: 12.27, il=9: 25.07, il=13: 31.46 (worse than JVC).
+[`karateka_coco3 docs/project/interleave-realization-mame.md`]
+
+**POP's measured result** (three reads: 1-track bundle + 7-track screen ×2):
+
+| read | JVC | DMK il=0 | |
+|---|---:|---:|---:|
+| bundle (1 track) | 5.2 s | 3.1 s | 1.68× |
+| screen (7 tracks) | 23.2 s | 9.2 s | 2.52× |
+| screen (7 tracks) | 23.0 s | 9.0 s | 2.56× |
+| **to first frame** | **51.4 s** | **21.3 s** | **2.41×** |
+
+Per-track **3.31 s → 1.31 s**, against karateka's 3.33 → 1.33. Byte-for-byte
+identical throughout (5/5 screens). A **~6 rev/track wd_fdc floor remains** that
+interleave cannot touch, so shippable perceived time still wants load-masking.
+
+**Two free consequences:**
+- **`raw_tracks.py` can no longer compute byte offsets.** JVC is linear
+  (`(T*18+S-1)*256`); DMK is raw tracks with IDAM/DAM/gaps/CRCs. Place payload with
+  `imgtool writesector` by logical id — the read side is unchanged, the primitive
+  still asks for ids 1..18.
+- **DMK is READ-ONLY in MAME's floppy layer** (§3), so §24's write-back hazard
+  disappears: verified, the built image's md5 is unchanged across a full suite run
+  and MAME never rewrites the scratch copy either. The scratch-copy rule stays as
+  belt-and-braces.
+
+**AND THE SPEEDUP EXPOSED A LATENT HARNESS RACE.** Posting `EXEC` the instant the
+image verifies is not safe: the segment check only says the BYTES are in memory,
+while DECB may still be finishing the LOADM and getting back to its prompt, and a
+keystroke posted into that window is **dropped** — Jay watched the first `E` of
+`EXEC` get eaten. The slow JVC load had been hiding it by leaving DECB idle before
+the check passed. `anim_test.lua` now settles 90 frames after the image lands and
+requires `nk.empty` before posting. **A load-time change is a harness-timing change.**
+
+*Established:* P3.6.

@@ -31,8 +31,8 @@ cd "$(dirname "$0")/../.." || exit 1
 MAME="${MAME:-/c/mame/mame.exe}"
 MAME_ROMS="${MAME_ROMS:-C:/mame/roms}"
 
-SRC_DSK="build/probe.dsk"
-DSK="build/run_introseq.dsk"
+SRC_DSK="build/probe.dmk"
+DSK="build/run_introseq.dmk"
 BIN="build/intro_seq.bin"
 MAP="build/obj/introseq.map"
 LOG="build/introseq_test.log"

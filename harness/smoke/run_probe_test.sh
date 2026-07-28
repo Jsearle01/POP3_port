@@ -2,7 +2,7 @@
 # harness/smoke/run_probe_test.sh — POP CoCo3 P1.1 loop-probe test runner.
 #
 # The TEST half of the CLAUDE.md §1 contract (25.1 = build.bat + run_*_test).
-# Boots build/probe.dsk in `mame coco3`, drives DECB to LOADM+EXEC the probe,
+# Boots build/probe.dmk in `mame coco3`, drives DECB to LOADM+EXEC the probe,
 # verifies its observables against a spec, prints PASS/FAIL.
 #
 # Usage:
@@ -42,8 +42,8 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-SRC_DSK="build/probe.dsk"
-DSK="build/run_probe.dsk"
+SRC_DSK="build/probe.dmk"
+DSK="build/run_probe.dmk"
 BIN="build/loop_probe.bin"
 LOG="build/probe_test.log"
 PASS="build/probe_test_PASS"
@@ -54,7 +54,7 @@ if [ ! -f "$SRC_DSK" ] || [ ! -f "$BIN" ]; then
     exit 1
 fi
 
-# MOUNT A SCRATCH COPY, NEVER build/probe.dsk ITSELF. MAME opens a floppy
+# MOUNT A SCRATCH COPY, NEVER build/probe.dmk ITSELF. MAME opens a floppy
 # READ-WRITE and JVC images save back, so a guest that touches the disk -- or an
 # exit taken mid-FDC-operation -- rewrites the built artifact. That happened in
 # P3.3: after a run of diagnostic sessions the image came back "Corrupt image"

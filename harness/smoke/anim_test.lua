@@ -37,7 +37,11 @@ local STAGES = {
   { n=5, name="16-colour NO-SWAP",   vres=0x1E, stride=160, swaps=false },
 }
 
-local BOOT_FRAME, SETTLE, TIMEOUT = 300, 1200, 14000
+local EXEC_SETTLE = 90     -- frames to let DECB reach its prompt (P3.6)
+local settle_at
+-- TIMEOUT is an ABSOLUTE frame number, so it has to cover the EXEC settle too
+-- (P3.6 added 90 frames before the program even starts).
+local BOOT_FRAME, SETTLE, TIMEOUT = 300, 1200, 16000
 
 local cpu = manager.machine.devices[":maincpu"]
 local mem = cpu.spaces["program"]
@@ -93,6 +97,21 @@ local state, loaded_at, cur = "boot", nil, 0
 local entry = {}     -- per-stage snapshot at first sight
 local back_seen = {} -- per-stage set of back-buffer indices observed
 
+local function screen_dump()
+    -- what DECB actually received. A mangled command line is a keyboard race,
+    -- not a disk fault, and the two look identical from the memory side.
+    for r = 0, 15 do
+        local t = {}
+        for c = 0, 31 do
+            local b = rd8(0x0400 + r*32 + c)
+            t[#t+1] = (b >= 0x40 and b <= 0x5F) and string.char(b)
+                   or ((b >= 0x60 and b <= 0x7F) and string.char(b - 0x20) or ".")
+        end
+        local s = table.concat(t)
+        if s:gsub("%.", "") ~= "" then log("# screen |" .. s .. "|") end
+    end
+end
+
 local function tick()
     local fn = manager.machine.screens:at(1):frame_number()
 
@@ -107,19 +126,32 @@ local function tick()
     if state == "loadm" then
         if nk.empty and not loaded_at then loaded_at = fn
         elseif loaded_at then
-            local ok = (rd8(0x0200) == 0x7E)
+            local ok, why = (rd8(0x0200) == 0x7E), nil
+            if not ok then why = string.format("$0200 = $%02X, want $7E", rd8(0x0200)) end
             if ok and SEGS then
                 for _,s in ipairs(SEGS) do
-                    if rd8(s.addr) ~= s.first or rd8(s.addr+s.len-1) ~= s.last then
+                    local g0, g1 = rd8(s.addr), rd8(s.addr+s.len-1)
+                    if g0 ~= s.first or g1 ~= s.last then
+                        why = string.format("seg $%04X..$%04X: got %02X..%02X want %02X..%02X",
+                                            s.addr, s.addr+s.len-1, g0, g1, s.first, s.last)
                         ok = false; break
                     end
                 end
             end
-            if ok then
+            -- SETTLE before posting EXEC. The image verifying says only that the
+            -- BYTES are in memory; DECB may still be finishing the LOADM and getting
+            -- back to its prompt, and a keystroke posted into that window is DROPPED
+            -- -- Jay watched the first 'E' of EXEC get eaten. It surfaced when the
+            -- disk moved to DMK (P3.6) and loads got 2.5x faster: the race was always
+            -- there; the slow JVC load had been hiding it.
+            if ok and not settle_at then
+                settle_at = fn
                 log(string.format("# image loaded at frame %d (%d segments)", fn, #SEGS))
+            elseif ok and fn >= settle_at + EXEC_SETTLE and nk.empty then
+                log(string.format("# posting EXEC at frame %d", fn))
                 nk:post('EXEC\n'); state = "running"
             elseif fn >= loaded_at + SETTLE then
-                check("loadm_image_present", false, "image never landed"); finish("LOADM failed")
+                check("loadm_image_present", false, why or "image never landed"); screen_dump(); finish("LOADM failed")
             end
         end
         return
