@@ -72,7 +72,18 @@ Exit 0 ⇒ the mount is good. This costs seconds and is what turned "a dead wind
 precise missing-ROM diagnosis. A missing device ROM is a *fatal-before-boot* error, so it is invisible to
 any check that only inspects the media path.
 
-*Established:* POP P1.1 oracle build + the 2026-07-25 operator run (Jay gate: "looks good").
+- **A windowed run did NOT write the .hdv back** (measured 2026-07-28): a 137 s operator run at
+  100.00% speed left the image `c4f0b13e49b77dd0fbc5063e27e53a24` — byte-identical to the Phase 0
+  reference. So the CFFA2 `.hdv` mount does **not** behave like the coco3 side's JVC `.dsk`, which MAME
+  saves back unbidden (coco3 idiom 24). Note the limit of this evidence: one run through the intro did
+  not write. It is not proof the image is never written — a run that reached a point where the game
+  writes could still do so — so a scratch copy remains cheap insurance rather than dead weight, and the
+  reference hash is worth checking after any run that matters.
+- **Validate the mount headlessly before opening a window**, every time (the idiom below). Re-confirmed
+  2026-07-28: 5 s, exit 0, seconds of cost.
+
+*Established:* POP P1.1 oracle build + the 2026-07-25 operator run (Jay gate: "looks good");
+write-back and re-validation measured 2026-07-28.
 
 ---
 
