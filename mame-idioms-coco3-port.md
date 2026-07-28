@@ -1443,13 +1443,28 @@ no such problem.)
 ```bash
 mame coco3 ... -nothrottle -aviwrite raw.avi -autoboot_script <live>.lua
 ffmpeg -i snap/raw.avi \
-  -vf "select='between(n,FIRST,LAST)',setpts=N/FRAME_RATE/TB,scale=1280:472:flags=neighbor" \
+  -vf "select='between(n,FIRST,LAST)',setpts=N/FRAME_RATE/TB,scale=1280:944:flags=neighbor" \
   -c:v libx264 -preset slow -crf 16 -pix_fmt yuv420p -profile:v high \
-  -movflags +faststart -an out.mp4
+  -aspect 4:3 -movflags +faststart -an out.mp4
 ```
-715 MB → **746 KB**, PSNR 55 dB (transparent).
+578 MB → **827 KB**, PSNR 59 dB (luma 72 dB — essentially exact).
 
-**Two settings that are not arbitrary:**
+**THE RAW FRAME IS NOT SQUARE-PIXEL.** `-aviwrite` emits the screen bitmap, 640x236,
+which is **2.71:1** — but a CoCo3's full NTSC raster, borders included, is **4:3**.
+Encode the raw dimensions and it plays back badly squashed: a defect no amount of
+codec or container checking will surface, because the file itself is perfect.
+
+The fix is integer scaling PLUS aspect metadata, so it survives a player that
+honours either one:
+- **x2 horizontal, x4 vertical -> 1280x944.** Integer factors keep the pixels hard
+  (`flags=neighbor`), and 1280x944 is **1.356:1** — only **1.7% off 4:3**, so a
+  player that ignores the aspect flag is imperceptibly wrong rather than broken.
+- **`-aspect 4:3`** sets SAR 59:60 / DAR 4:3 for a player that honours it.
+
+Vertical x3 (1.81:1) and x5 (1.09:1) are 36% and 19% out. **x4 is the only usable
+integer factor.**
+
+**Two more settings that are not arbitrary:**
 - **`scale=…:flags=neighbor` to 2× BEFORE encoding.** The coco3's 320-pixel mode is
   emitted at 640 wide, so 4:2:0's *horizontal* chroma halving is free — but its
   *vertical* halving is not, and it smears exactly the NTSC fringe colour the
