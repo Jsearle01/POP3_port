@@ -102,7 +102,7 @@ dr_r_count      equ     DR_VARBASE+6
 STACK_TOP       equ     $7F00           ; below the $8000 draw window, above the kernel
 FB_STRIDE       equ     160             ; 320x192x16: 2 px/byte
 BEAT_SIZE       equ     8
-BEAT_COUNT      equ     5
+BEAT_COUNT      equ     6
 SEQ_MAGIC       equ     $5E92
 
 * --- the disk layout. Raw whole tracks, above the track-17 directory, with the
@@ -279,10 +279,22 @@ lt_done
 * ---------------------------------------------------------------
 * seq_run — walk the beat table.
 *
-* THE INVARIANT, which is what makes a beat composable: on entry to every beat and
-* on exit from every beat, BOTH buffers hold the clean base image. That is what
-* lets beat 2 carry no screen of its own — it inherits a guaranteed state rather
-* than a hopeful one, exactly as AuthorCredit inherits PubCredit's.
+* THE INVARIANT, AND ITS LIMIT (corrected P3.9).
+*
+* A beat that brings a CAPTION leaves BOTH buffers holding its clean base, which is
+* what lets the next beat inherit a guaranteed state rather than a hopeful one --
+* exactly as AuthorCredit inherits PubCredit's.
+*
+* A beat that brings only a PICTURE does NOT (P3.8): with no caption there is
+* nothing to repair, so it reads its picture once and leaves the previous screen on
+* the hidden page. That is deliberate -- the second read costs 9 seconds -- but it
+* means "both buffers are clean" is a property of CAPTION beats, not of all beats,
+* and a beat may only inherit from a caption beat.
+*
+* Beat 6 is where that stops being academic: the prologue pictures have taken both
+* buffers, so the reprise cannot inherit anything and re-establishes the splash
+* itself. It is a caption beat, so it reads twice and restores the invariant for
+* whatever follows.
 * Clobbers: everything
 * ---------------------------------------------------------------
 seq_run
@@ -600,6 +612,20 @@ beat_table
 *                                        ;              here is the PrincessScene
 *                                        ;              cutscene, which is not built
                 fdb     1564             ; BEAT_HOLD    f5753 - f7317
+
+                fcb     DISK_SCREEN_TRK ; BEAT_TRACK   RE-ESTABLISH the splash. It is
+*                                       ; not resident anywhere -- P3.4 put the
+*                                       ; picture on disk and nowhere else -- and the
+*                                       ; prologue has taken both buffers, so this
+*                                       ; beat reads it back. SilentTitle does the
+*                                       ; same thing for the same reason:
+*                                       ; unpacksplash + copy1to2 BEFORE delTitle,
+*                                       ; where TitleScreen (beat 3) just inherited.
+                fcb     0               ; BEAT_RSVD
+                fdb     BUNDLE_TITLE    ; BEAT_PATCH   the SAME resident title caption
+                fdb     178             ; BEAT_PRE     f7501 - f7317 = 184, less the
+*                                       ; ~6 frames the title patch takes to draw
+                fdb     310             ; BEAT_HOLD    f7811 - f7501
 
                 ifdef   OBJTARGET
                 endsection

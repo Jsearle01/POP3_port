@@ -91,7 +91,7 @@ def main():
     got = {}
     for tag in ('1_base', '2_presents_up', '3_presents_clear', '4_byline_up',
                 '5_byline_clear', '6_title_up', '7_title_clear',
-                '8_prolog1', '9_prolog2', '10_done'):
+                '8_prolog1', '9_prolog2', '10_title_reprise', '11_done'):
         p = d / f'{tag}.bin'
         if not p.exists():
             sys.exit(f"missing capture {p} — the sequence did not reach that state")
@@ -127,9 +127,12 @@ def main():
     for tag, src in (('8_prolog1', a.prolog1), ('9_prolog2', a.prolog2)):
         want = base_framebuffer(pathlib.Path(src).read_bytes(), fill)
         ok &= compare(f"{tag} == its own converted picture", got[tag], want)
-    ok &= compare("final screen == the last prologue",
-                  got['10_done'],
-                  base_framebuffer(pathlib.Path(a.prolog2).read_bytes(), fill))
+    # the reprise re-establishes the splash from disk and stamps the SAME title
+    # patch on it -- so it must equal beat 3's title screen exactly, byte for byte,
+    # despite having got there by a completely different route.
+    ok &= compare("reprise == the SAME screen as beat 3's title",
+                  got['10_title_reprise'], ttl_fb)
+    ok &= compare("reprise removal is exact", got['11_done'], base_fb)
 
     print("VERDICT:", "PASS" if ok else "FAIL")
     return 0 if ok else 1

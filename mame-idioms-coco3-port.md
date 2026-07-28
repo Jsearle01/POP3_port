@@ -1720,3 +1720,71 @@ the caption repair has a clean hidden copy; with no caption there is nothing to
 repair. Reading twice cost **18 s** of stall per prologue screen instead of 9 s.
 
 *Established:* P3.8. *Candidate:* `a-sequence-escalates-in-kind-not-just-in-content`.
+
+---
+
+## 33. The static intro closes at `SilentTitle`; `jmp Demo` is the intro→engine boundary (P3.9)
+
+The attract flow ends
+`… → Prolog2 → SilentTitle → jmp Demo`, and **`SilentTitle` is the last beat the
+caption/picture mechanism can express.** Past it lies the engine.
+
+**The reprise is beat 1's shape, and for the oracle's own reason.** `SilentTitle`
+(`MASTER.S:808`) is `unpacksplash` + `copy1to2` **first**, *then* `DeltaExpPop
+delTitle` — where `TitleScreen` (beat 3) just applied the caption to the splash
+already resident. The prologue pictures have overwritten it by then, so the reprise
+re-establishes its own base. Same visual as beat 3, different route; **verified
+byte-identical framebuffers** despite that.
+
+**The oracle batch-loads; POP does NOT — do not carry the oracle's cadence across.**
+P3.4 traced the oracle holding its whole compressed stage resident (§P3.4). POP
+deliberately inverted that: the screen picture lives **on disk and nowhere else**,
+read straight into the framebuffer for **0 bytes resident**. Only the captions are
+resident (the bundle). So "re-compose from resident data" is true of the oracle and
+false of POP: the reprise **re-reads tracks 27–33**. Two different machines, two
+different answers, and the oracle's is not automatically the port's.
+
+**WHERE `Demo` STOPS BEING A BEAT:** it is attract *gameplay* — the animation
+player and level tables, the same subsystem `PrincessScene` needs (§32). Nothing
+past `jmp Demo` is expressible as a descriptor row.
+
+**The stall this leaves:** beat 6 re-reads the splash **twice** (caption beats need
+both buffers) — ~18 s, the largest single stall in the intro, immediately before the
+final title. Prefetching during the preceding hold is the fix and needs a
+non-blocking read.
+
+*Established:* P3.9.
+
+---
+
+## 34. An invariant in a comment decays silently when an optimisation narrows it (P3.9)
+
+`intro_seq.s` stated: *"on entry to every beat and on exit from every beat, BOTH
+buffers hold the clean base image."* True when written, and the reason later beats
+could inherit instead of re-establishing.
+
+**P3.8 made it false and nothing broke.** Base-only beats began reading their
+picture once instead of twice (halving a 9 s stall, correct and deliberate), so they
+leave the *previous* screen on the hidden buffer. No beat had yet tried to inherit
+from one, so there was no failure — and the comment went on asserting the
+unqualified rule.
+
+**P3.9's plan was written from that comment** and reasoned the new beat could
+re-compose from state already in place. It could not: the prologue owns both
+buffers. The prescribed mechanism happened to be right for a different reason, so
+the error was invisible without checking the plan against the code.
+
+The statement now reads: **both buffers are clean after every CAPTION beat**, and a
+beat may only inherit from a caption beat.
+
+**The rules:**
+- **Narrow the statement in the same change that narrows the invariant.** One line,
+  and nearly unrecoverable afterwards.
+- **An invariant with no current violation is still weakened** — its value is
+  entirely in what gets built on it later.
+- **Prose invariants have no failing test.** Everything else in the file is checked
+  by something; the header is checked by nobody. Treat a plan derived from a comment
+  as a hypothesis.
+
+*Established:* P3.9. *Candidate:*
+`an-invariant-in-a-comment-decays-silently-when-an-optimisation-narrows-it`.

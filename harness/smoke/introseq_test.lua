@@ -80,7 +80,7 @@ local BLOCK_B   = 0x18          -- GFX_DB_B_BLOCK, physical $30000
 
 local BOOT_FRAME = 300
 local SETTLE     = 1200
-local TIMEOUT    = 14000
+local TIMEOUT    = 20000
 
 local cpu = manager.machine.devices[":maincpu"]
 local mem = cpu.spaces["program"]
@@ -189,7 +189,9 @@ local WANT = {
     -- means "the picture is up" rather than "a caption is up"
     { st = 5, ph = 1, tag = "8_prolog1" },
     { st = 6, ph = 1, tag = "9_prolog2" },
-    { st = 7, ph = 2, tag = "10_done" },
+    -- the reprise: the splash re-established from disk, then the SAME title caption
+    { st = 7, ph = 1, tag = "10_title_reprise" },
+    { st = 8, ph = 2, tag = "11_done" },
 }
 local want_i = 1
 
@@ -262,12 +264,12 @@ local function tick()
                 local magic = rd8(ADDR_MAGIC) * 256 + rd8(ADDR_MAGIC + 1)
                 check("seq_magic", magic == SEQ_MAGIC,
                       string.format("$%04X (want $%04X)", magic, SEQ_MAGIC))
-                check("beats_completed", rd8(ADDR_BEAT) == 4,
-                      string.format("last beat index %d (want 4 = five beats)", rd8(ADDR_BEAT)))
+                check("beats_completed", rd8(ADDR_BEAT) == 5,
+                      string.format("last beat index %d (want 5 = six beats)", rd8(ADDR_BEAT)))
                 -- THE PROOF: three successful reads (bundle + the screen, twice),
                 -- and a program image far too small to have carried the screen.
-                check("disk_reads_completed", rd8(ENGINE + 8) == 5,
-                      string.format("probe_loads = %d (want 5: bundle + splash x2 + one read per prologue); "
+                check("disk_reads_completed", rd8(ENGINE + 8) == 7,
+                      string.format("probe_loads = %d (want 7: bundle + splash x2 + one per prologue + splash x2 again); "
                                     .. "WD1773 status $%02X", rd8(ENGINE + 8), rd8(ENGINE + 9)))
                 check("image_cannot_contain_screen", BIN_BYTES < 30720,
                       string.format("INTROSEQ.BIN is %d B; the framebuffer it put on "
