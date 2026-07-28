@@ -182,7 +182,9 @@ local WANT = {
     { st = 2, ph = 1, tag = "2_presents_up" },
     { st = 2, ph = 2, tag = "3_presents_clear" },
     { st = 3, ph = 1, tag = "4_byline_up" },
-    { st = 4, ph = 2, tag = "5_done" },
+    { st = 3, ph = 2, tag = "5_byline_clear" },
+    { st = 4, ph = 1, tag = "6_title_up" },
+    { st = 5, ph = 2, tag = "7_done" },
 }
 local want_i = 1
 
@@ -255,8 +257,8 @@ local function tick()
                 local magic = rd8(ADDR_MAGIC) * 256 + rd8(ADDR_MAGIC + 1)
                 check("seq_magic", magic == SEQ_MAGIC,
                       string.format("$%04X (want $%04X)", magic, SEQ_MAGIC))
-                check("beats_completed", rd8(ADDR_BEAT) == 1,
-                      string.format("last beat index %d", rd8(ADDR_BEAT)))
+                check("beats_completed", rd8(ADDR_BEAT) == 2,
+                      string.format("last beat index %d (want 2 = three beats)", rd8(ADDR_BEAT)))
                 -- THE PROOF: three successful reads (bundle + the screen, twice),
                 -- and a program image far too small to have carried the screen.
                 check("disk_reads_completed", rd8(ENGINE + 8) == 3,

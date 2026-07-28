@@ -26,8 +26,13 @@ than a header — the engine's equates and this layout are the same three number
 and an index would just be a third place to get them wrong.
 
     $000  palette          16 B
-    $040  delta_presents  885 B   (slot is $3C0)
-    $400  delta_byline    687 B   (slot is $208 to the end of the track)
+    $040  delta_presents  885 B
+    $400  delta_byline    687 B
+    $800  delta_title   5,909 B   (P3.7 -- the title is a THIRD caption over the
+                                   same splash, not its own picture, so it lives
+                                   here with the other two. It is 6.7x the size of
+                                   the byline, which is why the bundle went from
+                                   one track to two.)
 """
 import argparse
 import pathlib
@@ -42,6 +47,8 @@ TRACK_BYTES = 4608
 SLOT_PALETTE = 0x000
 SLOT_PRESENTS = 0x040
 SLOT_BYLINE = 0x400
+SLOT_TITLE = 0x800
+BUNDLE_TRACKS = 2
 
 
 def framebuffer(packed, fill=0x00):
@@ -63,6 +70,7 @@ def main():
     ap.add_argument('--palette', default='content/intro/broderbund_splash.pal')
     ap.add_argument('--presents', default='content/intro/delta_presents.bin')
     ap.add_argument('--byline', default='content/intro/delta_byline.bin')
+    ap.add_argument('--title', default='content/intro/delta_title.bin')
     ap.add_argument('--out-screen', required=True)
     ap.add_argument('--out-bundle', required=True)
     a = ap.parse_args()
@@ -73,10 +81,12 @@ def main():
     print(f"{a.out_screen}: {len(fb)} B framebuffer "
           f"({tracks} tracks, {tracks * TRACK_BYTES - len(fb)} B pad)")
 
-    bundle = bytearray(TRACK_BYTES)
+    bundle = bytearray(TRACK_BYTES * BUNDLE_TRACKS)
     for slot, path, limit in ((SLOT_PALETTE, a.palette, SLOT_PRESENTS - SLOT_PALETTE),
                               (SLOT_PRESENTS, a.presents, SLOT_BYLINE - SLOT_PRESENTS),
-                              (SLOT_BYLINE, a.byline, TRACK_BYTES - SLOT_BYLINE)):
+                              (SLOT_BYLINE, a.byline, SLOT_TITLE - SLOT_BYLINE),
+                              (SLOT_TITLE, a.title,
+                               TRACK_BYTES * BUNDLE_TRACKS - SLOT_TITLE)):
         d = pathlib.Path(path).read_bytes()
         if len(d) > limit:
             sys.exit(f"{path} is {len(d)} B, over its {limit} B slot at ${slot:03X}")
@@ -84,7 +94,7 @@ def main():
         print(f"  ${slot:03X}  {pathlib.Path(path).name:22s} {len(d):5d} B "
               f"of {limit} B slot")
     pathlib.Path(a.out_bundle).write_bytes(bytes(bundle))
-    print(f"{a.out_bundle}: {len(bundle)} B (1 track)")
+    print(f"{a.out_bundle}: {len(bundle)} B ({BUNDLE_TRACKS} tracks)")
 
 
 if __name__ == '__main__':

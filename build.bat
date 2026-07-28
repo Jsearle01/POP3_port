@@ -112,7 +112,7 @@ REM read that follows any HAL call reads a clobbered track number.
 REM DR_VARBASE relocates disk_read.s's 7 scratch bytes off its $2100 default,
 REM which is inside POP's program region. $1F00 clears the intro's runtime asset
 REM bundle ($0A00-$1BFF) and its patch save buffer ($1C00-$1EFF).
-lwasm --obj -DOBJTARGET -DHAL_GFX_MODE_SERVICE -DDR_VARBASE=0x1F00 -I . -o build/obj/hal_build.o src/harness/hal_build.s
+lwasm --obj -DOBJTARGET -DHAL_GFX_MODE_SERVICE -DDR_VARBASE=0x6A00 -I . -o build/obj/hal_build.o src/harness/hal_build.s
 if errorlevel 1 goto :error
 call :size build/obj/hal_build.o
 
@@ -137,7 +137,7 @@ if errorlevel 1 goto :error
 call :size build/obj/intro_splash.o
 
 echo --- Assemble: P3.3 intro sequencer (both credits, one mechanism) ---
-lwasm --obj -DOBJTARGET -DDR_VARBASE=0x1F00 -I . -o build/obj/intro_seq.o src/engine/intro_seq.s
+lwasm --obj -DOBJTARGET -DDR_VARBASE=0x6A00 -I . -o build/obj/intro_seq.o src/engine/intro_seq.s
 if errorlevel 1 goto :error
 call :size build/obj/intro_seq.o
 
@@ -229,7 +229,7 @@ python harness/tools/make_intro_assets.py --out-screen build/assets/intro_screen
 if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/intro_screen.raw --track 27 --tracks 7 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
-python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/intro_bundle.raw --track 34 --tracks 1 --reserve --imgtool "%IMGTOOL%"
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/intro_bundle.raw --track 25 --tracks 2 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 
 "%IMGTOOL%" dir coco_dmk_rsdos build\probe.dmk

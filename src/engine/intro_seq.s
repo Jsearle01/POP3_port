@@ -102,7 +102,7 @@ dr_r_count      equ     DR_VARBASE+6
 STACK_TOP       equ     $7F00           ; below the $8000 draw window, above the kernel
 FB_STRIDE       equ     160             ; 320x192x16: 2 px/byte
 BEAT_SIZE       equ     8
-BEAT_COUNT      equ     2
+BEAT_COUNT      equ     3
 SEQ_MAGIC       equ     $5E92
 
 * --- the disk layout. Raw whole tracks, above the track-17 directory, with the
@@ -111,20 +111,29 @@ SEQ_MAGIC       equ     $5E92
 SECS_PER_TRACK  equ     18
 DISK_SCREEN_TRK equ     27              ; tracks 27..33 — the 30,720 B framebuffer
 DISK_SCREEN_SEC equ     7*SECS_PER_TRACK
-DISK_BUNDLE_TRK equ     34              ; one track — palette + both caption patches
-DISK_BUNDLE_SEC equ     SECS_PER_TRACK
+DISK_BUNDLE_TRK equ     25              ; two tracks — palette + all three captions
+DISK_BUNDLE_SEC equ     2*SECS_PER_TRACK
 
 * --- runtime RAM, all of it ABOVE the LOADM image on purpose. DECB's DBUF0
 * --- ($0600), DBUF1 ($0700), FAT ($0800) and FCBs ($094A) sit under $0A00, and
 * --- writing over them is only safe once DECB has finished — which it has, by the
 * --- time this code is executing. That is exactly why the assets are READ here
 * --- rather than LOADED here.
-BUNDLE          equ     $0A00
+* --- P3.7 moved this block ABOVE the engine. The bundle grew from one track to
+* --- two when the title joined it (its patch is 5,909 B against the captions' 885
+* --- and 687), and at $0A00 a 9,216-byte bundle would have run through $2000 and
+* --- over the engine itself. Everything here is written by the program at run
+* --- time, long after DECB is done, so the only constraint is not colliding with
+* --- the engine, the trace buffer or the kernel.
+BUNDLE          equ     $3000           ; 2 tracks = 9,216 B -> $3000..$52FF
 BUNDLE_PAL      equ     BUNDLE+$000     ; 16 B
 BUNDLE_PRESENTS equ     BUNDLE+$040
 BUNDLE_BYLINE   equ     BUNDLE+$400
-SAVE_BUF        equ     $1C00           ; = BUNDLE + one track
-SAVE_MAX        equ     768             ; largest patch is 747 pixel bytes
+BUNDLE_TITLE    equ     BUNDLE+$800
+SAVE_BUF        equ     $5400           ; clear of the bundle's end at $52FF
+SAVE_MAX        equ     6144            ; the TITLE patch is 5,361 pixel bytes --
+*                                       ; 7x the captions', and this buffer has to
+*                                       ; hold the largest of them, not the last.
 
 * --- SAM speed latches. The FDC cannot keep up at 1.78 MHz and HAL_gfx_init has
 * --- already set it, so every transfer is bracketed slow/fast (idiom §8:
@@ -145,7 +154,7 @@ BEAT_HOLD       equ     6               ; frames the caption stays up
 * ---------------------------------------------------------------
 intro_seq_entry jmp     seq_start       ; $0200 — EXEC address
 
-probe_status    fcb     0               ; $0203  0=boot 2=beat1 3=beat2 4=done
+probe_status    fcb     0               ; $0203  0=boot, 2+n = beat n, BEAT_COUNT+2 = done
 probe_beat      fcb     0               ; $0204  beat index currently running
 probe_phase     fcb     0               ; $0205  0=pre 1=caption up 2=cleared
 probe_magic     fdb     0               ; $0206
@@ -201,7 +210,9 @@ sq_pal          lda     ,x+
                 puls    cc
 
                 jsr     seq_run
-                lda     #4
+* DONE is BEAT_COUNT+2, not a literal. probe_status carries beat+2, so with three
+* beats the last one is 4 -- and a hardcoded 4 for "finished" collided with it.
+                lda     #BEAT_COUNT+2
                 sta     probe_status
                 ldd     #SEQ_MAGIC
                 std     probe_magic
@@ -511,9 +522,16 @@ pb_save         fdb     0
 * AuthorCredit has no unpacksplash. The Mechner byline is a second caption on the
 * Broderbund picture.
 *
-* The third beat is TitleScreen, structurally identical: track 0 (it reuses the
-* splash), its own patch, 73 and 536. It is not here because its patch has not
-* been converted — no longer because it does not fit, which was the point of P3.4.
+* The third beat is TitleScreen, and P3.7 confirmed it from the source rather than
+* from its comment. MASTER.S:823 reads "* Unpack title onto page 1" and then calls
+* DeltaExpPop with delTitle — a `del*` blob, the same family as delPresents and
+* delByline, NOT `unpacksplash`/DblExpand with a `pac*` one. SilentTitle settles
+* it: it does unpacksplash + copy1to2 FIRST and only then DeltaExpPop delTitle,
+* which would be pointless if the title carried its own picture.
+*
+* So the title is a THIRD CAPTION over the same Broderbund splash. Its track is 0
+* like Mechner's. It is simply a much bigger caption -- 5,909 bytes against 885 and
+* 687, and 34 frames to draw against 3.
 * ---------------------------------------------------------------
 beat_table
                 fcb     DISK_SCREEN_TRK ; BEAT_TRACK   the Broderbund splash
@@ -527,6 +545,17 @@ beat_table
                 fdb     BUNDLE_BYLINE   ; BEAT_PATCH   "A Game by Jordan Mechner"
                 fdb     96              ; BEAT_PRE
                 fdb     283             ; BEAT_HOLD
+
+                fcb     0               ; BEAT_TRACK   none — the title is a caption too
+                fcb     0               ; BEAT_RSVD
+                fdb     BUNDLE_TITLE    ; BEAT_PATCH   "Prince of Persia"
+                fdb     112             ; BEAT_PRE     f1183 - f1065 = 118, MINUS the
+*                                       ; ~6 frames patch_blit needs for a 5,361-byte
+*                                       ; patch. The captions draw in well under a
+*                                       ; frame so their pre IS the interval; this one
+*                                       ; is big enough that the draw has to be paid
+*                                       ; out of the hold to land on the oracle's frame.
+                fdb     537             ; BEAT_HOLD    f1720 - f1183
 
                 ifdef   OBJTARGET
                 endsection

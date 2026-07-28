@@ -1601,3 +1601,79 @@ the check passed. `anim_test.lua` now settles 90 frames after the image lands an
 requires `nk.empty` before posting. **A load-time change is a harness-timing change.**
 
 *Established:* P3.6.
+
+---
+
+## 30. Keypress-to-start is live from the FIRST intro screen — it lives in the HOLD primitives (P3.7)
+
+**`StartGame?` has exactly two call sites, and both are hold primitives:**
+`PlaySongI` (`MASTER.S:1400`) and `tpause` (`MASTER.S:1417`). Every intro beat holds
+with one or both, so the keypress check runs during **every** beat — starting with
+`PubCredit`'s first `tpause 44`, while the Brøderbund splash is on screen and before
+any caption appears.
+
+**Confirmed on the running oracle, not left at the source** (CLAUDE.md §2 ranks the
+trace higher). Keypress posted at f350, during that first hold:
+
+| | no key (P3.3/P3.4 baseline) | key at f350 |
+|---|---|---|
+| first disk activity after f196 | f2581 | **f356** |
+| next screen change | f405 ("Presents" in) | **f357** (blackout) |
+
+The intro aborts and `DOSTARTGAME` runs — `blackout`, `LoadStage3`, `set1stlevel`.
+
+**The reading to avoid:** `MASTER.S:993` is where `StartGame?` is *defined*, which
+sits after `TitleScreen` in the file and makes it look like a late-attract check.
+Where a routine is defined says nothing about when it runs. **Grep for the callers,
+not the label.**
+
+**Scope for future input work:** polling belongs at the SEQUENCER's hold, not
+per-beat — one check inside `hold_frames` covers every beat exactly as the oracle's
+does, because the oracle put it in the equivalent place. No input is built yet.
+
+*Established:* P3.7 (source + running-oracle confirmation).
+
+---
+
+## 31. The title screen is a CAPTION, not a picture — read the call, not the comment (P3.7)
+
+`MASTER.S:823` reads `* Unpack title onto page 1` and the next two lines are:
+
+```
+ lda #delTitle
+ jsr DeltaExpPop
+```
+
+**`delTitle` is a `del*` blob** — the same family as `delPresents` and `delByline` —
+expanded by `DeltaExpPop`. It is NOT `pacSplash`/`DblExpand`, which is what
+`unpacksplash` actually uses for a whole picture. The two identifier families are
+the structural evidence:
+
+```
+pac*  whole images   pacSplash $40  pacProlog $7c  pacSumup $60  pacProom $84
+del*  patches        delPresents $70  delByline $72  delTitle $74
+```
+
+**`SilentTitle` settles it beyond argument:** it calls `unpacksplash` + `copy1to2`
+FIRST and only then `DeltaExpPop delTitle`. Loading a base picture before applying
+the title would be pointless if the title *were* a picture.
+
+**So the intro is one screen with THREE captions**, not three screens. The title's
+descriptor is `track 0` (inherit) exactly like Mechner's; it is simply much bigger —
+5,909 B against 885 and 687, 229 runs, rows 102-188, and ~6 frames to draw against
+well under one.
+
+**Two consequences that bit:**
+- **A big patch has to pay its draw out of the hold.** The captions draw in under a
+  frame so their `BEAT_PRE` *is* the measured interval; the title needed
+  `118 - 6 = 112` to land on the oracle's frame. Same +1 drift as the others after.
+- **The save buffer must hold the LARGEST patch, not the last one** — 5,361 pixel
+  bytes, not 747.
+
+**The general rule:** a comment names the author's INTENT, the call names the
+MECHANISM, and a port needs the mechanism. Greps surface comments preferentially,
+because comments contain the words humans search for — so the evidence most easily
+found is the evidence least likely to be authoritative.
+
+*Established:* P3.7. *Candidate:*
+`a-comment-names-the-intent-the-call-names-the-mechanism`.

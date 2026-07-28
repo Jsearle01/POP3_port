@@ -82,11 +82,13 @@ def main():
     ap.add_argument('--base', default='content/intro/broderbund_splash.bin')
     ap.add_argument('--presents', default='content/intro/delta_presents.bin')
     ap.add_argument('--byline', default='content/intro/delta_byline.bin')
+    ap.add_argument('--title', default='content/intro/delta_title.bin')
     a = ap.parse_args()
 
     d = pathlib.Path(a.dumps)
     got = {}
-    for tag in ('1_base', '2_presents_up', '3_presents_clear', '4_byline_up', '5_done'):
+    for tag in ('1_base', '2_presents_up', '3_presents_clear', '4_byline_up',
+                '5_byline_clear', '6_title_up', '7_done'):
         p = d / f'{tag}.bin'
         if not p.exists():
             sys.exit(f"missing capture {p} — the sequence did not reach that state")
@@ -104,14 +106,19 @@ def main():
     n1 = apply_patch(pres_fb, pathlib.Path(a.presents).read_bytes())
     byl_fb = bytearray(base_fb)
     n2 = apply_patch(byl_fb, pathlib.Path(a.byline).read_bytes())
-    print(f"patches replayed offline: presents {n1} runs, byline {n2} runs")
+    ttl_fb = bytearray(base_fb)
+    n3 = apply_patch(ttl_fb, pathlib.Path(a.title).read_bytes())
+    print(f"patches replayed offline: presents {n1} runs, byline {n2} runs, "
+          f"title {n3} runs")
 
     ok = True
     ok &= compare("base screen == converted splash, centred", got['1_base'], base_fb)
     ok &= compare("caption 1 == base + presents patch", got['2_presents_up'], pres_fb)
     ok &= compare("caption 1 removal is exact", got['3_presents_clear'], base_fb)
     ok &= compare("caption 2 == base + byline patch ONLY", got['4_byline_up'], byl_fb)
-    ok &= compare("final screen == base", got['5_done'], base_fb)
+    ok &= compare("caption 2 removal is exact", got['5_byline_clear'], base_fb)
+    ok &= compare("title == base + title patch ONLY", got['6_title_up'], ttl_fb)
+    ok &= compare("final screen == base", got['7_done'], base_fb)
 
     print("VERDICT:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
