@@ -19,20 +19,31 @@ nk.in_use = true
 local log_file = io.open(OUT, "w")
 local function log(s) if log_file then log_file:write(s .. "\n"); log_file:flush() end end
 
-local state, t0 = "boot", nil
+local cpu = manager.machine.devices[":maincpu"]
+local mem = cpu.spaces["program"]
+local state, t0, loaded = "boot", nil, nil
 
 local function tick()
     local fn = scr:frame_number()
-    if state == "boot" and fn >= 300 then
+    if state == "boot" and fn >= 120 then
         nk:post('LOADM"ROOM"\n')
         log("# posted LOADM at frame " .. fn)
         state, t0 = "loadm", fn
-    elseif state == "loadm" and fn > t0 + 500 then
-        -- the settle matters: P3.6 lost the first letter of EXEC by posting it while
-        -- DECB was still finishing the load
-        nk:post('EXEC\n')
-        log("# posted EXEC at frame " .. fn .. " — one track (~1.3 s), then the room")
-        state = "run"
+    elseif state == "loadm" then
+        -- WAIT FOR THE LOAD, THEN SETTLE — do not simply wait a long time. A blind
+        -- 500-frame delay put the room on screen 15 s after launch, which is a
+        -- miserable thing to watch and is why Jay saw nothing. $2000 holds
+        -- `jmp room_start` once DECB has placed the image, so the load is
+        -- OBSERVABLE; the settle after it is what P3.6 actually needed (EXEC was
+        -- posted while DECB was still busy and the machine ate its first letter).
+        if loaded == nil and mem:read_u8(0x2000) == 0x7E then
+            loaded = fn
+            log("# LOADM landed at frame " .. fn)
+        elseif loaded ~= nil and fn > loaded + 90 then
+            nk:post('EXEC\n')
+            log("# posted EXEC at frame " .. fn .. " — one track (~1.3 s), then the room")
+            state = "run"
+        end
     end
 end
 
