@@ -75,6 +75,9 @@ export P_BLK_B=$(printf '0x%02X' $(( 0x$BLK_B - 0x$CODEBASE )))
 echo "[run_introseq_test] framebuffer blocks A=$P_BLK_A B=$P_BLK_B (from $MAP)"
 export P_NOBORROW="${NOBORROW:-0}"
 export P_SWAPS="0x$(grep -E "^Symbol: HAL_gfx_swaps_hi " "$MAP" | sed -E "s/.*= *//")"
+# the sweep probes, also from the map — P3.10 cost a dispatch to a hardcoded one
+export P_WIPES="0x$(grep -E "^Symbol: probe_wipes " "$MAP" | sed -E "s/.*= *//")"
+export P_WPLEFT="0x$(grep -E "^Symbol: wp_nleft " "$MAP" | sed -E "s/.*= *//")"
 
 # MAME_RAM=128K runs this on a 128 KB CoCo3. The framebuffer blocks are chosen
 # so both sizes work (P3.10): the GIME masks a block number to the RAM actually

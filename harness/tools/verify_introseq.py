@@ -115,6 +115,44 @@ def main():
           f"title {n3} runs")
 
     ok = True
+    # THE MOTION CHECK. Every other comparison here is an endpoint, and endpoints are
+    # exactly what hid the missing wipe for three dispatches: a plain page flip
+    # satisfies all of them. This one is taken mid-sweep and asserts the screen is a
+    # COMPOSITE -- new picture to the left of a single boundary, old picture to the
+    # right of it. Nothing but an actual left-to-right sweep produces that.
+    mid = d / '1a_wipe_mid.bin'
+    if mid.exists():
+        m = mid.read_bytes()
+        new_fb, old_fb = base_framebuffer(pathlib.Path(a.prolog1).read_bytes(), fill), base_fb
+        # A column identical in BOTH pictures says nothing about how far the sweep
+        # has got -- and there are many, because the two images share a border. Only
+        # columns that differ carry information, so classify four ways and judge on
+        # the informative ones. (Getting this wrong is the same endpoint-thinking
+        # error one level down: 'matches the new image' is not 'has been swept'.)
+        cols = []
+        for c in range(LEFT_MARGIN, FB_STRIDE - LEFT_MARGIN):
+            col = slice(c, len(m), FB_STRIDE)
+            is_new = all(x == y for x, y in zip(m[col], new_fb[col]))
+            is_old = all(x == y for x, y in zip(m[col], old_fb[col]))
+            cols.append('B' if (is_new and is_old) else
+                        'N' if is_new else 'O' if is_old else '?')
+        s = ''.join(cols)
+        nn = [i for i, ch in enumerate(s) if ch == 'N']
+        oo = [i for i, ch in enumerate(s) if ch == 'O']
+        part = s.count('?')
+        # every swept column strictly left of every unswept one, and at most one
+        # column caught half-copied (the notifier stops the CPU wherever it is)
+        clean = bool(nn) and bool(oo) and max(nn) < min(oo) and part <= 1
+        if clean:
+            print(f"  PASS mid-sweep is a left/right composite: swept through content "
+                  f"col {max(nn)}, unswept from {min(oo)}, {s.count('B')} columns "
+                  f"identical in both (the shared border), {part} caught mid-copy")
+        else:
+            print(f"  FAIL mid-sweep is not a clean composite ({part} partial): {s}")
+        ok &= clean
+    else:
+        print("  FAIL mid-sweep capture missing — a wipe cannot be verified from endpoints")
+        ok = False
     ok &= compare("base screen == converted splash, centred", got['1_base'], base_fb)
     ok &= compare("caption 1 == base + presents patch", got['2_presents_up'], pres_fb)
     ok &= compare("caption 1 removal is exact", got['3_presents_clear'], base_fb)

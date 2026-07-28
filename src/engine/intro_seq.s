@@ -123,6 +123,19 @@ LZ_LOAD_OFF     equ     32256-SCREEN_TRACKS*4608
 * One past the last readable byte of the window: $FE00-$FEFF is held constant by
 * MC3=1 and $FF00 up is I/O, so neither belongs to the framebuffer.
 LZ_SRC_END      equ     $FE00
+* --- the wipe. The oracle's DblExpand IS the sweep (UNPACK.S WipeRgtExp): it walks
+* --- 80 columns left to right straight into the page being displayed, and what
+* --- LOOKS static is whatever the outgoing and incoming pictures share. Measured on
+* --- the running oracle, the moving edge travels x=32..524 of 560 over 81 frames
+* --- while the border rows stay quiet -- so the sweep is full-width and the static
+* --- border is a property of the DATA, not of a restricted sweep region. Sweeping
+* --- the whole content reproduces all four transitions (the splash over a cleared
+* --- screen sweeps entirely; prolog1 over the splash shows only its text move).
+WIPE_COL0       equ     10              ; first content column (the +20 px margin)
+WIPE_COLS       equ     140             ; 280 content px / 2 px per byte
+FB_A_BLOCK      equ     $10             ; MUST match gfx.s GFX_DB_A_BLOCK/B_BLOCK --
+FB_B_BLOCK      equ     $14             ; lwasm's export does not carry equ symbols,
+*                                       ; and P3.10 moved these once already.
 DISK_BUNDLE_TRK equ     25              ; two tracks — palette + all three captions
 DISK_BUNDLE_SEC equ     2*SECS_PER_TRACK
 
@@ -186,7 +199,7 @@ SAM_FAST        equ     $FFD9
 
 * Beat descriptor — 8 bytes. The intro is DATA in this table, not code.
 BEAT_TRACK      equ     0               ; raw track of this beat's screen, 0 = inherit
-BEAT_RSVD       equ     1
+BEAT_WIPE       equ     1               ; frames the picture SWEEPS in over (0 = flip)
 BEAT_PATCH      equ     2               ; sparse caption patch, in the bundle
 BEAT_PRE        equ     4               ; frames the clean base is held first
 BEAT_HOLD       equ     6               ; frames the caption stays up
@@ -200,6 +213,9 @@ probe_phase     fcb     0               ; $0205  0=pre 1=caption up 2=cleared
 probe_magic     fdb     0               ; $0206
 probe_loads     fcb     0               ; $0208  successful disk reads so far
 probe_dskerr    fcb     0               ; $0209  WD1773 status of the first failure
+probe_wipes     fcb     0               ; $020A  completed sweeps — the harness gates
+*                                       ; the base capture on THIS, not on swaps:
+*                                       ; a wiped beat never calls HAL_gfx_swap
 
 * ---------------------------------------------------------------
 seq_start
@@ -363,6 +379,8 @@ sq_beat
 * Copying the descriptor once removes the dependency rather than repairing it.
                 lda     BEAT_TRACK,x
                 sta     beat_track
+                lda     BEAT_WIPE,x
+                sta     beat_wipe
                 ldd     BEAT_PATCH,x
                 std     beat_patch
                 ldd     BEAT_PRE,x
@@ -382,6 +400,18 @@ sq_beat
                 beq     sq_nobase
                 jsr     load_screen
                 bne     seq_disk_fail
+                lda     beat_wipe
+                beq     sq_flip_in
+* The picture SWEEPS in, the way DblExpand does. wipe_in consumes the pre-hold and
+* leaves BOTH buffers holding the new picture -- the back because load_screen decoded
+* it there, the front because the sweep copied it. That is what the oracle's
+* unpacksplash + copy1to2 achieves, and it is why the second read below is not
+* needed on a wiped beat.
+                jsr     wipe_in
+                ldd     #0
+                std     beat_pre        ; the sweep WAS the pre-hold
+                bra     sq_nobase
+sq_flip_in
                 jsr     HAL_gfx_swap
 * The SECOND read exists only so the caption machinery has a clean copy on the
 * hidden page to repair from. A beat with no caption never repairs anything, so it
@@ -393,7 +423,7 @@ sq_beat
                 beq     sq_nobase
                 lda     beat_track
                 jsr     load_screen
-                bne     seq_disk_fail
+                lbne    seq_disk_fail   ; LONG: the sweep pushed this past 8-bit range
 sq_nobase
 
 * -- hold the clean base ------------------------------------------
@@ -496,6 +526,127 @@ ls_failed
                 leas    1,s
                 lda     #1              ; Z clear = failure, as load_tracks reported
                 tsta
+                rts
+
+* ---------------------------------------------------------------
+* wipe_in — sweep the decoded picture onto the DISPLAYED page, column by column,
+* left to right, spread over A frames. This is the port's DblExpand.
+*
+* THE ORACLE HAS ONE PAGE AND DESTROYS IT IN PLACE; we have two and the HAL maps
+* only the back one, so the sweep copies BACK -> FRONT with the front paged in
+* through $FFA2 (the same window bank_copy uses). Afterwards both buffers hold the
+* new picture, which is exactly what unpacksplash + copy1to2 leaves behind.
+*
+* WHY THE SWEEP IS FULL-WIDTH. Jay saw the border stay still while the text swept,
+* and that is real -- but it is not the sweep skipping the border. The oracle walks
+* all 80 columns unconditionally; what looks static is whatever the outgoing and
+* incoming pictures SHARE. Measured, the shared ring differs per transition:
+*   cleared -> splash    cols  10..149 rows   0..191   (everything moves)
+*   splash  -> prolog1   cols  17..141 rows  14..167
+*   prolog1 -> prolog2   cols  28..126 rows  36..143
+* A hard-coded swept region would be wrong for three of the four AND would leave
+* 98-192 genuinely-differing cells unwritten. Sweeping everything reproduces all of
+* them for free, and matches the running oracle: its moving edge travels x=32..524
+* of 560 with the border rows quiet.  [P3.14 §1; UNPACK.S WipeRgtExp]
+*
+* Pacing is Bresenham -- add WIPE_COLS per frame, emit a column each time the
+* accumulator passes the frame count -- because the 6809 has no divide.
+* Entry: A = frames to spread the sweep over.  Clobbers: everything.
+* ---------------------------------------------------------------
+wipe_in
+                pshs    y,u
+                tfr     a,b             ; A = frames -> D = 0:frames
+                clra
+                std     wp_total
+                std     wp_frames
+                ldd     #0
+                std     wp_acc
+                ldd     #WIPE_COL0
+                std     wp_col
+                lda     #WIPE_COLS
+                sta     wp_nleft
+* The front buffer is the one HAL_gfx_cur_back does NOT name.
+                lda     HAL_gfx_cur_back
+                bne     wi_front_a
+                lda     #FB_B_BLOCK
+                bra     wi_front_set
+wi_front_a      lda     #FB_A_BLOCK
+wi_front_set    sta     wp_front
+wi_frame
+                ldd     wp_acc
+                addd    #WIPE_COLS
+                std     wp_acc
+wi_due
+                ldd     wp_acc
+                cmpd    wp_total
+                blo     wi_wait
+                subd    wp_total
+                std     wp_acc
+                tst     wp_nleft
+                beq     wi_wait
+                bsr     wipe_col
+                dec     wp_nleft
+                ldd     wp_col
+                addd    #1
+                std     wp_col
+                bra     wi_due
+wi_wait
+                jsr     HAL_time_vbl_wait
+                ldd     wp_frames
+                subd    #1
+                std     wp_frames
+                bne     wi_frame
+wi_flush
+                tst     wp_nleft        ; rounding: finish anything still owed, so the
+                beq     wi_done         ; picture is COMPLETE when the sweep ends
+                bsr     wipe_col
+                dec     wp_nleft
+                ldd     wp_col
+                addd    #1
+                std     wp_col
+                bra     wi_flush
+wi_done
+                inc     probe_wipes
+                puls    y,u,pc
+
+* wipe_col — one column of 192 bytes, back buffer -> front buffer.
+* The destination walks the $FFA2 window and steps to the next block whenever it
+* runs off the end; a row is 160 bytes and the window is 8192, so each row crosses
+* at most one boundary. B is the row counter and A carries the data -- never D,
+* which a load through A would corrupt (idiom 38).
+wipe_col
+                ldd     HAL_gfx_draw_base
+                addd    wp_col
+                tfr     d,x             ; X -> the column in the BACK buffer
+                ldd     #BANK_WINDOW
+                addd    wp_col
+                tfr     d,y             ; Y -> the same column in the mapped window
+                lda     wp_front
+                sta     wp_blk
+                orcc    #$50
+                sta     BANK_MMU
+                andcc   #$AF
+                ldb     #192
+wc_loop
+                lda     ,x
+                sta     ,y
+                leax    FB_STRIDE,x
+                leay    FB_STRIDE,y
+                cmpy    #BANK_WINDOW+8192
+                blo     wc_next
+                leay    -8192,y
+                inc     wp_blk
+                lda     wp_blk
+                orcc    #$50
+                sta     BANK_MMU
+                andcc   #$AF
+wc_next
+                decb
+                bne     wc_loop
+                lda     #BANK_MMU_HOME
+                orcc    #$50
+                sta     BANK_MMU
+                andcc   #$AF
                 rts
 
 * ---------------------------------------------------------------
@@ -805,6 +956,14 @@ lz_tok          fcb     0               ; the token being decoded — the match 
 *                                       ; is needed after the literals are copied
 lz_end          fdb     0               ; one past the last output byte
 lz_cnt          fcb     0               ; high byte of a copy count (see lz_lits)
+beat_wipe       fcb     0               ; this beat's sweep duration, from the table
+wp_total        fdb     0               ; Bresenham: columns per frame without a divide
+wp_frames       fdb     0
+wp_acc          fdb     0
+wp_col          fdb     0
+wp_nleft        fcb     0
+wp_front        fcb     0               ; the DISPLAYED buffer's first block
+wp_blk          fcb     0
 seq_patch       fdb     0
 seq_restore     fcb     0
 lt_err          fcb     0
@@ -839,19 +998,19 @@ pb_save         fdb     0
 * ---------------------------------------------------------------
 beat_table
                 fcb     DISK_SCREEN_TRK ; BEAT_TRACK   the Broderbund splash
-                fcb     0               ; BEAT_RSVD
+                fcb      99               ; BEAT_WIPE    over a CLEARED screen, so the whole picture moves
                 fdb     BUNDLE_PRESENTS ; BEAT_PATCH   "Broderbund Software Presents"
                 fdb     99              ; BEAT_PRE
                 fdb     281             ; BEAT_HOLD
 
                 fcb     0               ; BEAT_TRACK   none — inherit beat 1's picture
-                fcb     0               ; BEAT_RSVD
+                fcb       0               ; BEAT_WIPE    no track — a caption over the picture already up
                 fdb     BUNDLE_BYLINE   ; BEAT_PATCH   "A Game by Jordan Mechner"
                 fdb     96              ; BEAT_PRE
                 fdb     283             ; BEAT_HOLD
 
                 fcb     0               ; BEAT_TRACK   none — the title is a caption too
-                fcb     0               ; BEAT_RSVD
+                fcb       0               ; BEAT_WIPE    same
                 fdb     BUNDLE_TITLE    ; BEAT_PATCH   "Prince of Persia"
                 fdb     112             ; BEAT_PRE     f1183 - f1065 = 118, MINUS the
 *                                       ; ~6 frames patch_blit needs for a 5,361-byte
@@ -862,14 +1021,17 @@ beat_table
                 fdb     537             ; BEAT_HOLD    f1720 - f1183
 
                 fcb     DISK_PROLOG1_TRK ; BEAT_TRACK  its OWN picture — first beat to
-                fcb     0                ; BEAT_RSVD    carry one since the splash
+                fcb     101               ; BEAT_WIPE    measured: the oracle's edge runs x=32..524 in 81 frames
                 fdb     0                ; BEAT_PATCH   none: the picture IS the beat
                 fdb     101              ; BEAT_PRE     the oracle spends these wiping
 *                                        ;              the picture in over the splash
                 fdb     760              ; BEAT_HOLD    f1822 - f2582
 
                 fcb     DISK_PROLOG2_TRK ; BEAT_TRACK   the second prologue picture
-                fcb     0                ; BEAT_RSVD
+                fcb     101               ; BEAT_WIPE    CHOSEN, NOT oracle-derived — this beat's PRE is 0 because
+*                                       ; the oracle's gap here is the
+*                                       ; PrincessScene cutscene we have
+*                                       ; not built (P3.13 §3D)
                 fdb     0                ; BEAT_PATCH   none
                 fdb     0                ; BEAT_PRE     back-to-back: the oracle's gap
 *                                        ;              here is the PrincessScene
@@ -884,7 +1046,7 @@ beat_table
 *                                       ; same thing for the same reason:
 *                                       ; unpacksplash + copy1to2 BEFORE delTitle,
 *                                       ; where TitleScreen (beat 3) just inherited.
-                fcb     0               ; BEAT_RSVD
+                fcb     178               ; BEAT_WIPE    the reprise re-establishes the splash, then the title
                 fdb     BUNDLE_TITLE    ; BEAT_PATCH   the SAME resident title caption
                 fdb     178             ; BEAT_PRE     f7501 - f7317 = 184, less the
 *                                       ; ~6 frames the title patch takes to draw

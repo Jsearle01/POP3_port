@@ -62,6 +62,8 @@ local PASS_PATH = os.getenv("P_PASS") or "build/introseq_test_PASS"
 local FAIL_PATH = os.getenv("P_FAIL") or "build/introseq_test_FAIL"
 local CUR_BACK  = tonumber(os.getenv("P_CURBACK") or "0x7B06")
 local SWAPS     = tonumber(os.getenv("P_SWAPS") or "0x7B07")
+local WIPES     = tonumber(os.getenv("P_WIPES") or "0x200A")   -- completed sweeps
+local WPLEFT    = tonumber(os.getenv("P_WPLEFT") or "0x23E0")  -- columns still to sweep
 local NO_BORROW = (os.getenv("P_NOBORROW") == "1")
 
 local ENGINE      = 0x2000        -- P3.5: clear of DECB's line buffer
@@ -182,6 +184,10 @@ local function dump_front(tag)
     log(string.format("# %-16s displayed buffer %s (cur_back=%d swaps=%d loads=%d) -> %s",
                       tag, (back == 0) and "B" or "A", back,
                       rd8(SWAPS) * 256 + rd8(SWAPS + 1), rd8(ENGINE + 8), path))
+    if tag == "1a_wipe_mid" then
+        log(string.format("#                  sweep had %d of %d columns left to go",
+                          rd8(WPLEFT), 140))
+    end
     return true
 end
 
@@ -235,7 +241,7 @@ end
 local WANT = {
     -- the beat is entered BEFORE its screen is read, so this one also waits
     -- for the reads to land; otherwise it captures an empty framebuffer.
-    { st = 2, ph = 0, tag = "1_base", swaps = 1 },  -- gate on the SWAP, not on a
+    { st = 2, ph = 0, tag = "1_base", wipes = 1 },  -- gate on the SWEEP, not on a
     -- read count: the count was only ever a proxy for "the base is on screen",
     -- and the splash bank (P3.11) changed how many reads that takes. The swap
     -- is the thing the proxy stood for, so gate on it directly.
@@ -247,6 +253,11 @@ local WANT = {
     { st = 4, ph = 2, tag = "7_title_clear" },
     -- the prologue beats carry their OWN picture and have no caption, so phase 1
     -- means "the picture is up" rather than "a caption is up"
+    -- MID-SWEEP: the only capture that can tell a wipe from a flip. Taken while
+    -- beat 3's sweep is roughly half done, it must show the new picture on the left
+    -- and the old one on the right with ONE boundary between them. A plain swap
+    -- passes every other check in this file; it cannot pass this one.
+    { st = 5, ph = 2, tag = "1a_wipe_mid", wpleft = { 40, 100 } },
     { st = 5, ph = 1, tag = "8_prolog1" },
     { st = 6, ph = 1, tag = "9_prolog2" },
     -- the reprise: the splash re-established from disk, then the SAME title caption
@@ -319,7 +330,10 @@ local function tick()
         local w = WANT[want_i]
         if w and st == w.st and ph == w.ph
            and rd8(ENGINE + 8) >= (w.loads or 0)
-           and (rd8(SWAPS) * 256 + rd8(SWAPS + 1)) >= (w.swaps or 0) then
+           and (rd8(SWAPS) * 256 + rd8(SWAPS + 1)) >= (w.swaps or 0)
+           and rd8(WIPES) >= (w.wipes or 0)
+           and (not w.wpleft or (rd8(WPLEFT) >= w.wpleft[1]
+                                 and rd8(WPLEFT) <= w.wpleft[2])) then
                -- a state can be true the instant a swap lands and still be
                -- mid-transition; w.after lets a capture settle first.
                held = (held or 0) + 1
