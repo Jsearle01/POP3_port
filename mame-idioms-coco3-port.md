@@ -1893,3 +1893,54 @@ that has to be re-tuned every time the loading strategy changes is not a gate, i
 a coincidence with a threshold.
 
 *Established:* P3.11.
+
+---
+
+## 38. A 16-bit count cannot live in D across a copy loop (P3.12)
+
+The LZ decoder's copy loops were written as the obvious thing:
+
+```asm
+lz_lit_loop     lda     ,u+
+                sta     ,x+
+                subd    #1              ; D is the count
+                bne     lz_lit_loop
+```
+
+`lda` loads into **A, which is D's high half**. The first byte copied overwrites the
+top of the counter, so `subd #1` decrements the *data*, and the loop runs until the
+byte just fetched happens to be zero at the same moment B wraps. It cannot work, for
+any input, ever.
+
+The fix is to count in B with the high byte parked in memory — B reaching 0 with the
+page byte still set means another 256 to go, and B wrapping to 255 on the next `decb`
+is exactly right:
+
+```asm
+lz_lits         sta     lz_cnt          ; high byte
+                bne     lz_lit_loop
+                tstb
+                beq     lz_lits_done
+lz_lit_loop     lda     ,u+
+                sta     ,x+
+                decb
+                bne     lz_lit_loop
+                tst     lz_cnt
+                beq     lz_lits_done
+                dec     lz_cnt
+                bra     lz_lit_loop
+```
+
+**Any 6809 loop that loads through A or B cannot also count in D.** The registers
+that survive a `lda`/`ldb` are X, Y, U and memory — nothing else.
+
+What made it expensive was not the bug but where it pointed. The failure appeared as
+a runaway that scribbled through `$FF00` I/O (remapping memory underneath the routine
+doing the remapping), so it presented as "the second screen crashes the machine" —
+data-dependent, load-address-dependent, anything but "the copy loop is impossible".
+Two hypotheses were tested and eliminated against a decoder that had never worked at
+all. A guard that stops the reader leaving the window (`cmpu #$FE00 / bhs`) is worth
+having permanently: it converts a machine that destroys itself into a picture that is
+merely wrong, which can be looked at.
+
+*Established:* P3.12.

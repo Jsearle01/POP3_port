@@ -229,15 +229,25 @@ python harness/tools/make_intro_assets.py --out-screen build/assets/intro_screen
        --prolog content/intro/prolog1.bin build/assets/prolog1.raw ^
        --prolog content/intro/prolog2.bin build/assets/prolog2.raw
 if errorlevel 1 goto :error
-python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/intro_screen.raw --track 27 --tracks 7 --reserve --imgtool "%IMGTOOL%"
+
+REM Pack the screens. Raw they are 7 tracks / 9.0 s each and disk is a third of the
+REM intro; packed they are 2 tracks / 2.6 s, and the engine expands each one in
+REM place inside the buffer it will be displayed from, so this costs no RAM and
+REM works on a 128 KB machine. lz_pack.py verifies each blob by decoding it out of
+REM a single buffer exactly as lz_unpack does.
+python harness/tools/lz_pack.py build/assets/intro_screen.raw build/assets/prolog1.raw build/assets/prolog2.raw --out-dir build/assets
+if errorlevel 1 goto :error
+
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/intro_screen.lz --track 27 --tracks 2 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/intro_bundle.raw --track 25 --tracks 2 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 REM the two prologue screens: the FIRST beats with their own picture, so they
-REM need their own raw spans. 9-15 and 18-24 both clear the track-17 directory.
-python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/prolog1.raw --track 9 --tracks 7 --reserve --imgtool "%IMGTOOL%"
+REM need their own raw spans. Both still clear the track-17 directory; packing
+REM freed tracks 11-15 and 20-24, which nothing claims yet.
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/prolog1.lz --track 9 --tracks 2 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
-python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/prolog2.raw --track 18 --tracks 7 --reserve --imgtool "%IMGTOOL%"
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/prolog2.lz --track 18 --tracks 2 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 
 "%IMGTOOL%" dir coco_dmk_rsdos build\probe.dmk
