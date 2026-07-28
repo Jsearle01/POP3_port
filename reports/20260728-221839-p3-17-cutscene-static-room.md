@@ -1,6 +1,6 @@
 ## Form B Report — P3.17 — cutscene A+B: **INCOMPLETE.** A wrong premise, corrected by Jay, and the asset chain closed
-**Class:** BUILD (A+B) — **NOT DELIVERED; asset acquired and Jay-confirmed.** POP `wip`. **Karateka UNTOUCHED** (read-only).
-**25.3: N/A — nothing built to gate.**
+**Class:** BUILD — **PHASE A DELIVERED** (4c mode + palette + static room). Phase B (torch flicker) NOT built. POP `wip`. **Karateka UNTOUCHED** (read-only).
+**25.3: pending Jay for the running port** — launch path `live-disk`, RGB. Jay HAS confirmed the room asset itself ("that looks correct") and the palette ("the palette looks good") on a live run.
 
 ### 0 — Receipt / status (C-35 stamp)
 t0=2026-07-28T22:18:39Z (POP HEAD `f3faf61`, wip; tracked tree clean bar the standing
@@ -181,6 +181,69 @@ because the room is drawn once and never redrawn.
 
 **Jay has confirmed the render: "the princess-room looks correct."** The room is now a
 15,360 B CoCo3 4-colour framebuffer, and LZ-packs to **4,598 B — one track** (29.9%).
+
+### 3F — PHASE A DELIVERED, and the asset corrected twice more
+
+**Phase A is built and verified.** `src/engine/cutscene_room.s` sets
+`HAL_gfx_set_mode(0)`, reads one track, expands it with the shared `lz_unpack`, and
+presents:
+
+```
+room_reached_screen   PASS  magic $4B00
+disk_read_ok          PASS  loads=1, WD1773 status $00
+mode_is_4_colour      PASS  HAL_gfx_cur_mode=0
+displayed buffer == converted princess room: 15,360 bytes BYTE-IDENTICAL
+```
+
+at 512 KB and 128 KB, via `LOADM"ROOM"`+`EXEC` off a mounted floppy (launch path
+`live-disk`, §4). The first four-colour screen in the port.
+
+**Two harness bugs, both mine, both a check not checking its name.** lwlink lists
+`equ` symbols offset by the section base, so `GFX_DB_A_BLOCK` reads `$7910` not `$10`
+— taken raw it writes garbage to the MMU and dumps a buffer that is neither
+framebuffer. And the GIME's VRES register is **write-only**: reading `$FF99` returned
+`$1B` for a register set to `$15`, so the mode check was failing on bus noise. It
+reads `HAL_gfx_cur_mode` now.
+
+**The asset was wrong twice, and Jay caught both.**
+
+1. *"the scene has the princess, the hourglass and the vizier. i thought it was only
+   to be static."* Correct: I captured at **f4750**, mid-cutscene. I had picked that
+   frame because the motion instrument showed movement there — which is exactly the
+   worst frame for a static background, since motion means characters. `PlayCut0`'s
+   structure, which P3.16 already recorded, says the pristine room exists only before
+   the first `play`.
+2. *"should the princess be there? check the code."* She should be **visible but not
+   in the asset**: `startP0` places her at `CharX=120` in a `Pstand` sequence and
+   `startV0` the vizier at `CharX=197` in `Vstand`, both drawn by the engine from the
+   first `play`. Neither is in `pacProom`. Those X values are what the placement table
+   wants — framebuffer bytes 35 and 54 under the +20 px centring.
+
+**Finding the pristine frame, by measurement:**
+
+| frame | vs the characters-present frame |
+|---|---|
+| f2600, f2640 | 7,680 B — a wholly different screen (still the prologue) |
+| f2670 | room incomplete — differs across cols **5–17 full height** |
+| **f2680** | differs **only** at cols (27,29), (36,40), (50,51) — the character regions |
+| f2686 | one column — characters already drawn |
+
+`SngExpand` draws progressively, like `DblExpand` — which is also why a
+50%-of-samples change detector fired 2,000 frames late: a progressive draw never
+trips a page-flip threshold.
+
+**The stars.** Jay spotted a star in the window and asked whether it animates.
+`pstars` runs every engine frame: ~1 frame in 25 lights one of four stars for 5–8
+frames, then `twinkle` erases it — drawn directly on both pages, outside the flip.
+`starx = 2` is an Apple BYTE column, putting them at framebuffer byte 8, rows
+98/101/109/114. Sampled across 7 frames spanning the whole cutscene, **exactly one
+byte varies**: row 101 byte 8, `$0F` once and `$08` six times. f2680 holds `$08` —
+the off state — so all four twinkles are dark in it and what remains visible is
+painted art.
+
+Jay had chosen to blank the stars; the measurement showed that would delete artwork
+and leave a hole for `pstars` to toggle over, so it was surfaced rather than executed.
+**Jay's ruling: use as-is.** No authored change, no protection-catalog entry.
 
 ### 4 — Verification (AC-by-AC) — **mostly NOT MET**
 
