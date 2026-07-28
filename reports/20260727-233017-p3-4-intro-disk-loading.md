@@ -328,7 +328,7 @@ Pool commit `ea6fe39`.
 
 ### 11 — Commit
 
-**POP:** `<hash>` — cadence trace, raw-track tooling, disk-loading sequencer,
+**POP:** `affb75c` — cadence trace, raw-track tooling, disk-loading sequencer,
 idioms §25/§26, this report. Pushed to `origin/wip`.
-**Karateka:** `<kar>` on `wip` — `disk_read.s` guard mirror; prod binary
+**Karateka:** `9f68eaa` on `wip` — `disk_read.s` guard mirror; prod binary
 byte-identical `88eba89b…`. `main` untouched at `5eb92b1`.
