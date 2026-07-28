@@ -143,6 +143,34 @@ SAVE_MAX        equ     6144            ; the TITLE patch is 5,361 pixel bytes -
 * --- inside the primitive). CLAUDE.md §2G calls this rule PROVISIONAL, carried
 * --- from karateka; POP is the first project to exercise it for real.
 DSKREG          equ     $FF40           ; FDC control latch (write-only)
+* --- THE SPLASH BANK (P3.11) -------------------------------------
+* The Broderbund splash is wanted four times -- twice at beat 1 and twice again at
+* beat 6, because a caption beat needs its base in BOTH buffers and the prologue
+* pictures take both in between. At 9 s a read that was 36 s of stalling for one
+* picture the machine has plenty of room to keep.
+*
+* Blocks $3C-$3F are free at BOTH ram sizes, and for the same reason: sys.s boots
+* $FFA0-$FFA7 = $38-$3F, so $3C-$3F IS the CPU's $8000-$FFFF at boot -- and
+* HAL_gfx_set_mode then replaces $FFA4-$FFA7 with the framebuffer, leaving those
+* four blocks referenced by nothing. On 128 KB they alias to $0C-$0F (physical
+* $18000), clear of the CPU map at $08-$0B and both buffers at $00-$07.
+*
+* The bank is reached through $FFA2 (CPU $4000-$5FFF), ONE block at a time. That
+* slot normally holds part of the asset bundle and the patch save buffer -- but
+* remapping does not destroy anything, it only changes what is addressable, and a
+* base copy touches neither. $FFA0/$FFA1/$FFA3 are untouched, so the DP band, this
+* code, the kernel and the stack all stay put.
+*
+* NOT the HAL's $FFA4-$FFA7: those are HAL-private (gfx.s says callers must never
+* learn a buffer address) and this needs no knowledge of them -- it copies to and
+* from HAL_gfx_draw_base like any other drawing code.
+BANK_BLOCK      equ     $3C             ; 4 blocks = 32 KB, one screen + 2 KB spare
+BANK_MMU        equ     $FFA2           ; the borrowed slot
+BANK_MMU_HOME   equ     $3A             ; what sys.s left in it ($FFA0-$FFA7 = $38-$3F)
+BANK_WINDOW     equ     $4000           ; CPU address a bank block appears at
+BANK_CHUNK      equ     $2000           ; 8 KB per block
+BANK_TAIL       equ     30720-3*BANK_CHUNK   ; the 4th block is only part used
+
 SAM_SLOW        equ     $FFD8
 SAM_FAST        equ     $FFD9
 
@@ -422,9 +450,103 @@ sq_beat_end
 * Returns Z set on success. Clobbers: A, B, X, U
 * ---------------------------------------------------------------
 load_screen
+* The splash comes from the BANK once the bank holds it; everything else, and the
+* splash the very first time, comes from the disk. The first read is unavoidable --
+* something has to put the picture in the bank -- so this saves three of the four.
+                cmpa    #DISK_SCREEN_TRK
+                bne     ls_from_disk
+                tst     bank_valid
+                beq     ls_from_disk
+                lda     #1              ; bank -> back buffer, ~95 ms, no disk
+                jsr     bank_copy
+                clra                    ; Z set = success
+                rts
+ls_from_disk
+                pshs    a               ; keep the track: the bank test needs it after
                 ldx     HAL_gfx_draw_base
                 ldb     #DISK_SCREEN_SEC
-                jmp     load_tracks
+                jsr     load_tracks
+                bne     ls_failed
+                lda     ,s              ; was that the splash, and is the bank empty?
+                cmpa    #DISK_SCREEN_TRK
+                bne     ls_done
+                tst     bank_valid
+                bne     ls_done
+                clra                    ; back buffer -> bank, once, for free
+                jsr     bank_copy
+                inc     bank_valid
+ls_done
+                leas    1,s
+                clra                    ; Z set = success
+                rts
+ls_failed
+                leas    1,s
+                lda     #1              ; Z clear = failure, as load_tracks reported
+                tsta
+                rts
+
+* ---------------------------------------------------------------
+* bank_copy — A = 0 copies the back buffer INTO the bank, A != 0 copies the bank
+* into the back buffer. 30,720 bytes either way, four blocks through $FFA2.
+*
+* ~95 ms against a 9-second disk read: 95x, and the difference between an intro
+* that stalls for 36 seconds and one that does not.
+*
+* Interrupts are masked only around the MMU writes themselves (idiom §22 — a
+* multi-register hardware update is a critical section), not across the copy: the
+* VBL handler lives in the DP band and the kernel, neither of which is remapped
+* here, so it is free to run.
+* Clobbers: everything
+* ---------------------------------------------------------------
+bank_copy
+                sta     bk_dir
+                lda     #BANK_BLOCK
+                sta     bk_blk
+                ldd     HAL_gfx_draw_base
+                std     bk_fb
+                lda     #4
+                sta     bk_n
+bk_block
+                pshs    cc
+                orcc    #$50
+                lda     bk_blk
+                sta     BANK_MMU        ; this bank block now answers at $4000
+                puls    cc
+
+                ldy     #BANK_CHUNK
+                lda     bk_n
+                cmpa    #1
+                bne     bk_len_ok
+                ldy     #BANK_TAIL      ; the 4th block is only 6,144 bytes of screen
+bk_len_ok
+                ldx     #BANK_WINDOW
+                ldu     bk_fb
+                tst     bk_dir
+                bne     bk_to_fb
+bk_to_bank
+                ldd     ,u++            ; framebuffer -> bank
+                std     ,x++
+                leay    -2,y
+                bne     bk_to_bank
+                bra     bk_block_end
+bk_to_fb
+                ldd     ,x++            ; bank -> framebuffer
+                std     ,u++
+                leay    -2,y
+                bne     bk_to_fb
+bk_block_end
+                stu     bk_fb           ; U advanced over the framebuffer either way
+
+                pshs    cc
+                orcc    #$50
+                lda     #BANK_MMU_HOME
+                sta     BANK_MMU        ; give the slot back before anything reads it
+                puls    cc
+
+                inc     bk_blk
+                dec     bk_n
+                bne     bk_block
+                rts
 
 * ---------------------------------------------------------------
 * hold_frames — wait D frames.
@@ -542,6 +664,11 @@ seq_beat        fdb     0               ; the beat under way. Held in a variable
 *                                       ; made every routine in between part of the
 *                                       ; contract, and debugging that cost more
 *                                       ; than the two bytes this costs.
+bank_valid      fcb     0               ; the bank holds the splash
+bk_dir          fcb     0
+bk_blk          fcb     0
+bk_n            fcb     0
+bk_fb           fdb     0
 seq_patch       fdb     0
 seq_restore     fcb     0
 lt_err          fcb     0

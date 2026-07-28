@@ -140,8 +140,9 @@ local function dump_front(tag)
     local f = io.open(path, "wb")
     if not f then log("# could not open " .. path); return false end
     f:write(table.concat(t)); f:close()
-    log(string.format("# %-16s displayed buffer %s -> %s",
-                      tag, (back == 0) and "B" or "A", path))
+    log(string.format("# %-16s displayed buffer %s (cur_back=%d swaps=%d loads=%d) -> %s",
+                      tag, (back == 0) and "B" or "A", back,
+                      rd8(SWAPS) * 256 + rd8(SWAPS + 1), rd8(ENGINE + 8), path))
     return true
 end
 
@@ -178,7 +179,10 @@ end
 local WANT = {
     -- the beat is entered BEFORE its screen is read, so this one also waits
     -- for the reads to land; otherwise it captures an empty framebuffer.
-    { st = 2, ph = 0, tag = "1_base", loads = 3 },
+    { st = 2, ph = 0, tag = "1_base", swaps = 1 },  -- gate on the SWAP, not on a
+    -- read count: the count was only ever a proxy for "the base is on screen",
+    -- and the splash bank (P3.11) changed how many reads that takes. The swap
+    -- is the thing the proxy stood for, so gate on it directly.
     { st = 2, ph = 1, tag = "2_presents_up" },
     { st = 2, ph = 2, tag = "3_presents_clear" },
     { st = 3, ph = 1, tag = "4_byline_up" },
@@ -197,6 +201,7 @@ local want_i = 1
 
 local state, loaded_at, started = "boot", nil, nil
 local loads_seen, last_load = 0, nil
+local held = 0
 local last_st, last_ph = -1, -1
 
 local function tick()
@@ -256,10 +261,16 @@ local function tick()
         end
         local w = WANT[want_i]
         if w and st == w.st and ph == w.ph
-           and rd8(ENGINE + 8) >= (w.loads or 0) then
+           and rd8(ENGINE + 8) >= (w.loads or 0)
+           and (rd8(SWAPS) * 256 + rd8(SWAPS + 1)) >= (w.swaps or 0) then
+               -- a state can be true the instant a swap lands and still be
+               -- mid-transition; w.after lets a capture settle first.
+               held = (held or 0) + 1
+               if held <= (w.after or 0) then return end
             mark(w.tag, fn)
             check("capture_" .. w.tag, dump_front(w.tag), "")
             want_i = want_i + 1
+            held = 0
             if want_i > #WANT then
                 local magic = rd8(ADDR_MAGIC) * 256 + rd8(ADDR_MAGIC + 1)
                 check("seq_magic", magic == SEQ_MAGIC,
@@ -268,8 +279,8 @@ local function tick()
                       string.format("last beat index %d (want 5 = six beats)", rd8(ADDR_BEAT)))
                 -- THE PROOF: three successful reads (bundle + the screen, twice),
                 -- and a program image far too small to have carried the screen.
-                check("disk_reads_completed", rd8(ENGINE + 8) == 7,
-                      string.format("probe_loads = %d (want 7: bundle + splash x2 + one per prologue + splash x2 again); "
+                check("disk_reads_completed", rd8(ENGINE + 8) == 4,
+                      string.format("probe_loads = %d (want 4: bundle + splash ONCE + one per prologue; "
                                     .. "WD1773 status $%02X", rd8(ENGINE + 8), rd8(ENGINE + 9)))
                 check("image_cannot_contain_screen", BIN_BYTES < 30720,
                       string.format("INTROSEQ.BIN is %d B; the framebuffer it put on "

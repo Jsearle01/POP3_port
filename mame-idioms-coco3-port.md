@@ -1849,3 +1849,47 @@ which is what proves the change is inert on that side.
 divergence yet. The technique was wrong both times; the first one got away with it.)
 
 *Established:* P3.10.
+
+---
+
+## 37. A harness gate keyed to a disk-read COUNT is a proxy, and optimisations move it (P3.11)
+
+`introseq_test.lua` captures the framebuffer at chosen moments. The moment it wanted
+was *"the base picture is on the visible page"*. What it actually said was:
+
+```lua
+{ st = 2, ph = 0, tag = "1_base", loads = 2 },   -- bundle + the one splash read
+```
+
+The read count was a stand-in. It worked because beat 0 read the splash, and the
+capture landed after the read that preceded the page flip.
+
+P3.11 put the splash in a RAM bank, so the beat reads it once instead of twice. The
+count still reached its threshold — one read earlier, **before `HAL_gfx_swap`**. The
+harness dumped the visible page, which was still the cleared buffer, and reported
+
+```
+FAIL base screen == converted splash, centred: 22209 bytes differ; first at row 0 col 10
+```
+
+with all 16 in-emulator checks green. The engine was correct; the picture was
+correct; **the failure named an asset, and the defect was in the clock the test read.**
+
+**Gate on the state you mean.** The HAL already exports a swap counter, so the
+condition *"a page flip has happened"* is directly observable:
+
+```lua
+{ st = 2, ph = 0, tag = "1_base", swaps = 1 },
+```
+
+The tell that this was the diagnosis and not a guess: the capture logs
+`cur_back`, and it read `0` — the value it holds *before* the first flip. A dump of
+the buffer showed **zero non-zero bytes**, i.e. a cleared page, not a wrong picture.
+Neither number is visible from the FAIL line, which is why the log line now carries
+`cur_back`, `swaps` and `loads` at every capture.
+
+This gate had already broken once this way (P3.9 → P3.11 moved it 3 → 2). A count
+that has to be re-tuned every time the loading strategy changes is not a gate, it is
+a coincidence with a threshold.
+
+*Established:* P3.11.
