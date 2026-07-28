@@ -102,7 +102,7 @@ dr_r_count      equ     DR_VARBASE+6
 STACK_TOP       equ     $7F00           ; below the $8000 draw window, above the kernel
 FB_STRIDE       equ     160             ; 320x192x16: 2 px/byte
 BEAT_SIZE       equ     8
-BEAT_COUNT      equ     3
+BEAT_COUNT      equ     5
 SEQ_MAGIC       equ     $5E92
 
 * --- the disk layout. Raw whole tracks, above the track-17 directory, with the
@@ -111,6 +111,8 @@ SEQ_MAGIC       equ     $5E92
 SECS_PER_TRACK  equ     18
 DISK_SCREEN_TRK equ     27              ; tracks 27..33 — the 30,720 B framebuffer
 DISK_SCREEN_SEC equ     7*SECS_PER_TRACK
+DISK_PROLOG1_TRK equ    9               ; 7 tracks — the first prologue picture
+DISK_PROLOG2_TRK equ    18              ; 7 tracks — the second
 DISK_BUNDLE_TRK equ     25              ; two tracks — palette + all three captions
 DISK_BUNDLE_SEC equ     2*SECS_PER_TRACK
 
@@ -331,6 +333,14 @@ sq_beat
                 jsr     load_screen
                 bne     seq_disk_fail
                 jsr     HAL_gfx_swap
+* The SECOND read exists only so the caption machinery has a clean copy on the
+* hidden page to repair from. A beat with no caption never repairs anything, so it
+* reads its picture ONCE -- which matters a great deal here: a 7-track read is ~9.2 s
+* and the prologue beats were paying it twice, stalling on the previous screen for
+* 18 seconds where the oracle (which batch-loads the whole stage up front) takes
+* none at all.
+                ldd     beat_patch
+                beq     sq_nobase
                 lda     beat_track
                 jsr     load_screen
                 bne     seq_disk_fail
@@ -347,7 +357,12 @@ sq_nobase
                 jsr     hold_frames
 
 * -- draw the caption on the HIDDEN page, then reveal it ----------
+* A beat with NO patch is a picture and nothing else -- the prologue screens, which
+* are the first beats to carry their own base. Everything from here to the repair is
+* caption machinery and simply does not apply, so it is skipped rather than fed a
+* null pointer (patch_blit on $0000 would walk whatever is at the bottom of memory).
                 ldd     beat_patch
+                beq     sq_nopatch
                 std     seq_patch
                 clr     seq_restore
                 jsr     patch_blit      ; saves the clean bytes, then applies
@@ -367,13 +382,27 @@ sq_nobase
                 lda     #1
                 sta     seq_restore
                 jsr     patch_blit      ; same runs, from the saved bytes
+                bra     sq_beat_end
 
+sq_nopatch
+* The picture is already up -- the base load swapped it in at the top of the beat.
+* Phase 1 means "this beat's content is showing" for a picture exactly as it does
+* for a caption, so a watcher needs no special case.
+                lda     #1
+                sta     probe_phase
+                ldd     beat_hold
+                jsr     hold_frames
+                lda     #2
+                sta     probe_phase
+
+sq_beat_end
                 puls    b
                 ldx     seq_beat
                 leax    BEAT_SIZE,x
                 incb
                 cmpb    #BEAT_COUNT
-                blo     sq_beat
+                lblo    sq_beat         ; LONG branch: the base-only path pushed the
+*                                       ; loop body past the 8-bit range
                 rts
 
 * ---------------------------------------------------------------
@@ -556,6 +585,21 @@ beat_table
 *                                       ; is big enough that the draw has to be paid
 *                                       ; out of the hold to land on the oracle's frame.
                 fdb     537             ; BEAT_HOLD    f1720 - f1183
+
+                fcb     DISK_PROLOG1_TRK ; BEAT_TRACK  its OWN picture — first beat to
+                fcb     0                ; BEAT_RSVD    carry one since the splash
+                fdb     0                ; BEAT_PATCH   none: the picture IS the beat
+                fdb     101              ; BEAT_PRE     the oracle spends these wiping
+*                                        ;              the picture in over the splash
+                fdb     760              ; BEAT_HOLD    f1822 - f2582
+
+                fcb     DISK_PROLOG2_TRK ; BEAT_TRACK   the second prologue picture
+                fcb     0                ; BEAT_RSVD
+                fdb     0                ; BEAT_PATCH   none
+                fdb     0                ; BEAT_PRE     back-to-back: the oracle's gap
+*                                        ;              here is the PrincessScene
+*                                        ;              cutscene, which is not built
+                fdb     1564             ; BEAT_HOLD    f5753 - f7317
 
                 ifdef   OBJTARGET
                 endsection

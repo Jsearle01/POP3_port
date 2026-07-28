@@ -1677,3 +1677,46 @@ found is the evidence least likely to be authoritative.
 
 *Established:* P3.7. *Candidate:*
 `a-comment-names-the-intent-the-call-names-the-mechanism`.
+
+---
+
+## 32. The intro's beats escalate in KIND — captions, own-picture screens, then a cutscene (P3.8)
+
+The oracle's intro looks like one list of screens. It is three different mechanisms,
+and the identifier families give it away before any tracing does:
+
+| beat | mechanism | blob | what it is |
+|---|---|---|---|
+| Brøderbund / Mechner / Title | `DeltaExpPop` | `del*` | **captions** over one shared picture |
+| Prolog1 / Prolog2 | `DblExpand` | `pac*` | **own full pictures** (double hi-res) |
+| PrincessScene | `SngExpand` + `xplaycut` | `pacProom` | **a cutscene** — a subsystem |
+
+`PrincessScene` is where a beat dispatch has to stop, and not marginally:
+`cutprincess1` calls `LoadStage2` (the game's `bgtab1-2`/`chtab4`), unpacks with
+**`SngExpand` — SINGLE hi-res, a different video mode** — and hands off to
+`xplaycut`, the scripted player that also drives the game's cuts #1/#6/#7.
+**Different unpacker, different mode, game tables, animation subsystem.**
+
+**Two mechanism details that change what the port must do:**
+
+- **`Prolog1` WIPES IN over ~100 frames; `Prolog2` appears INSTANTLY.** Neither is a
+  flip. `Prolog1` calls `DblExpand` while its page is displayed, so the unpack is
+  visible; `Prolog2` unpacks FIRST and calls `setdhires` after, so the switch reveals
+  a finished picture. A port that flips matches `Prolog2` exactly and cuts where the
+  oracle wipes.
+- **`ReloadStuff` is NOT the title's problem.** `MASTER.S:862` is inside
+  `PrincessScene`: the Apple's dhires *pages* (`$2000-$5FFF`) sit on the crunch
+  store, so the titles eat their own source data. POP's framebuffers are banked
+  physical RAM outside the 64 KB map — nothing to reload.
+
+**A capability the mechanism "supports" but has never run is not yet a capability.**
+The beat descriptor had carried an own-base field since P3.3 and it was correct —
+but no beat had set it, and the first that did found the caption path running
+unconditionally, ready to walk memory from `$0000` on a null patch pointer. First
+real use is where untested support gets tested.
+
+**And a base-only beat must read its picture ONCE.** The second read exists only so
+the caption repair has a clean hidden copy; with no caption there is nothing to
+repair. Reading twice cost **18 s** of stall per prologue screen instead of 9 s.
+
+*Established:* P3.8. *Candidate:* `a-sequence-escalates-in-kind-not-just-in-content`.

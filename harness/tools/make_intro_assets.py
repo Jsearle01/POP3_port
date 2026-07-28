@@ -72,6 +72,8 @@ def main():
     ap.add_argument('--byline', default='content/intro/delta_byline.bin')
     ap.add_argument('--title', default='content/intro/delta_title.bin')
     ap.add_argument('--out-screen', required=True)
+    ap.add_argument('--prolog', nargs=2, action='append', metavar=('PACKED', 'OUT'),
+                    default=[], help='a further own-picture screen (P3.8)')
     ap.add_argument('--out-bundle', required=True)
     a = ap.parse_args()
 
@@ -80,6 +82,13 @@ def main():
     tracks = -(-len(fb) // TRACK_BYTES)
     print(f"{a.out_screen}: {len(fb)} B framebuffer "
           f"({tracks} tracks, {tracks * TRACK_BYTES - len(fb)} B pad)")
+
+    for packed_path, out_path in a.prolog:
+        fbp = framebuffer(pathlib.Path(packed_path).read_bytes())
+        pathlib.Path(out_path).write_bytes(fbp)
+        t = -(-len(fbp) // TRACK_BYTES)
+        print(f"{out_path}: {len(fbp)} B framebuffer "
+              f"({t} tracks, {t * TRACK_BYTES - len(fbp)} B pad)")
 
     bundle = bytearray(TRACK_BYTES * BUNDLE_TRACKS)
     for slot, path, limit in ((SLOT_PALETTE, a.palette, SLOT_PRESENTS - SLOT_PALETTE),

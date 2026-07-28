@@ -225,11 +225,19 @@ REM granule anyway (idioms 23). Tracks 27-34 sit above the track-17 directory;
 REM the granules are reserved in the FAT with no directory entry, which DECB
 REM tolerates exactly (karateka decb-loadm-boot-gates.md gate G1).
 if not exist build\assets mkdir build\assets
-python harness/tools/make_intro_assets.py --out-screen build/assets/intro_screen.raw --out-bundle build/assets/intro_bundle.raw
+python harness/tools/make_intro_assets.py --out-screen build/assets/intro_screen.raw --out-bundle build/assets/intro_bundle.raw ^
+       --prolog content/intro/prolog1.bin build/assets/prolog1.raw ^
+       --prolog content/intro/prolog2.bin build/assets/prolog2.raw
 if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/intro_screen.raw --track 27 --tracks 7 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/intro_bundle.raw --track 25 --tracks 2 --reserve --imgtool "%IMGTOOL%"
+if errorlevel 1 goto :error
+REM the two prologue screens: the FIRST beats with their own picture, so they
+REM need their own raw spans. 9-15 and 18-24 both clear the track-17 directory.
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/prolog1.raw --track 9 --tracks 7 --reserve --imgtool "%IMGTOOL%"
+if errorlevel 1 goto :error
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/prolog2.raw --track 18 --tracks 7 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 
 "%IMGTOOL%" dir coco_dmk_rsdos build\probe.dmk

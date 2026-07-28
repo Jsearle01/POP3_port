@@ -83,12 +83,15 @@ def main():
     ap.add_argument('--presents', default='content/intro/delta_presents.bin')
     ap.add_argument('--byline', default='content/intro/delta_byline.bin')
     ap.add_argument('--title', default='content/intro/delta_title.bin')
+    ap.add_argument('--prolog1', default='content/intro/prolog1.bin')
+    ap.add_argument('--prolog2', default='content/intro/prolog2.bin')
     a = ap.parse_args()
 
     d = pathlib.Path(a.dumps)
     got = {}
     for tag in ('1_base', '2_presents_up', '3_presents_clear', '4_byline_up',
-                '5_byline_clear', '6_title_up', '7_done'):
+                '5_byline_clear', '6_title_up', '7_title_clear',
+                '8_prolog1', '9_prolog2', '10_done'):
         p = d / f'{tag}.bin'
         if not p.exists():
             sys.exit(f"missing capture {p} — the sequence did not reach that state")
@@ -118,7 +121,15 @@ def main():
     ok &= compare("caption 2 == base + byline patch ONLY", got['4_byline_up'], byl_fb)
     ok &= compare("caption 2 removal is exact", got['5_byline_clear'], base_fb)
     ok &= compare("title == base + title patch ONLY", got['6_title_up'], ttl_fb)
-    ok &= compare("final screen == base", got['7_done'], base_fb)
+    ok &= compare("title removal is exact", got['7_title_clear'], base_fb)
+    # the prologue beats replace the picture outright -- their own framebuffer,
+    # no patch, so the check is against the converted image itself
+    for tag, src in (('8_prolog1', a.prolog1), ('9_prolog2', a.prolog2)):
+        want = base_framebuffer(pathlib.Path(src).read_bytes(), fill)
+        ok &= compare(f"{tag} == its own converted picture", got[tag], want)
+    ok &= compare("final screen == the last prologue",
+                  got['10_done'],
+                  base_framebuffer(pathlib.Path(a.prolog2).read_bytes(), fill))
 
     print("VERDICT:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
