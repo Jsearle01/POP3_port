@@ -245,6 +245,28 @@ to Jay for confirmation before executing a spatial correction.
   which ships `dist/mame-cfg/rgb/coco3.cfg` and `composite/coco3.cfg`). State which mode a given gate used.
   The exhaustive-enumeration rule (2A.4)
   and "the fused 1:1 read is the colour gate" stay intact.
+- **LAUNCH PATH — every 25.3 gate MUST record HOW the program reached the screen** (added 2026-07-28 after the
+  wipe slipped three gates, P3.13 §3C). One of:
+  - **`live-disk`** — real `LOADM`+`EXEC` off a mounted floppy (the delivery path: `-ext fdc`, `-flop1 <dsk>`).
+    **This is the only path that gates delivery.**
+  - **`poke`** — image poked into RAM + PC set from Lua (bypasses the disk/launch path — convenient, but HIDES
+    load/launch bugs: the freeze P2.7, the LOADM ceiling P3.3, the EXEC-overwrite P3.5 all lived on the real
+    path and were invisible to poke).
+  - **`static-png`** — a captured still. **A static PNG is NOT a live gate.** It verifies ENDPOINTS only —
+    exactly what the automated suite already checks — and CANNOT show motion (a wipe, a fade, a flip cadence).
+    A gate observed on a static PNG must be recorded as `static-png`, never as an unqualified "PASSED."
+- **MOTION-BEARING gates require a LIVE run, not a still.** If the thing under gate is a transition, animation,
+  wipe, fade, sweep, or any time-varying effect, the gate MUST be observed on a running machine (live-disk
+  preferred) and/or a **frame-by-frame capture** (the ffmpeg video capability, SQ-1) — because a settled
+  framebuffer and a correct duration are BOTH satisfied by a faithful-looking static pause (the wipe survived
+  three static-PNG gates + a green suite; it was found only by Jay watching the oracle run live). Endpoints are
+  not motion.
+- **The live-disk runner is the standard gate runner** (`run_introseq_live.sh`, fixed at P3.13 to mount a
+  floppy — it had silently sat at the BASIC prompt since P3.4). Use it; do not gate motion on the poke path.
+- **Report the path:** §6's `25.3` line states the launch path and (for motion) whether it was live/frame-by-
+  frame, e.g. `25.3: PASSED — Jay, live-disk, RGB` or `25.3: PASSED — Jay, static-png, RGB (endpoints only —
+  no motion under gate)`. A motion-bearing effect gated only on `static-png` is an INCOMPLETE gate and must say
+  so.
 
 ---
 
