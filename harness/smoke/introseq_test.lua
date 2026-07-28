@@ -241,7 +241,12 @@ end
 local WANT = {
     -- the beat is entered BEFORE its screen is read, so this one also waits
     -- for the reads to land; otherwise it captures an empty framebuffer.
-    { st = 2, ph = 0, tag = "1_base", wipes = 1 },  -- gate on the SWEEP, not on a
+    -- beat 0 FLIPS, it does not sweep: PubCredit calls setdhires after
+    -- unpacksplash, so the oracle reveals that picture whole. Gate on the swap.
+    -- (Third time this gate has moved. It tracks how the base ARRIVES, which is
+    -- exactly what these dispatches keep changing -- so it is gated on the
+    -- arrival mechanism each time, never on a count that stands in for it.)
+    { st = 2, ph = 0, tag = "1_base", swaps = 1 },  -- gate on the SWAP, not on a
     -- read count: the count was only ever a proxy for "the base is on screen",
     -- and the splash bank (P3.11) changed how many reads that takes. The swap
     -- is the thing the proxy stood for, so gate on it directly.

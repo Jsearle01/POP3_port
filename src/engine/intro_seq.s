@@ -998,7 +998,11 @@ pb_save         fdb     0
 * ---------------------------------------------------------------
 beat_table
                 fcb     DISK_SCREEN_TRK ; BEAT_TRACK   the Broderbund splash
-                fcb      99               ; BEAT_WIPE    over a CLEARED screen, so the whole picture moves
+                fcb       0               ; BEAT_WIPE    NO sweep. PubCredit calls setdhires
+*                                       ; AFTER unpacksplash, so the expand runs with the DHR
+*                                       ; page not yet displayed and setdhires reveals it whole.
+*                                       ; The oracle's own motion log says the same thing: one
+*                                       ; frame at f306 with the entire screen changing.
                 fdb     BUNDLE_PRESENTS ; BEAT_PATCH   "Broderbund Software Presents"
                 fdb     99              ; BEAT_PRE
                 fdb     281             ; BEAT_HOLD
@@ -1028,10 +1032,8 @@ beat_table
                 fdb     760              ; BEAT_HOLD    f1822 - f2582
 
                 fcb     DISK_PROLOG2_TRK ; BEAT_TRACK   the second prologue picture
-                fcb     101               ; BEAT_WIPE    CHOSEN, NOT oracle-derived — this beat's PRE is 0 because
-*                                       ; the oracle's gap here is the
-*                                       ; PrincessScene cutscene we have
-*                                       ; not built (P3.13 §3D)
+                fcb       0               ; BEAT_WIPE    NO sweep, and no invented duration:
+*                                       ; Prolog2 also calls setdhires AFTER its DblExpand
                 fdb     0                ; BEAT_PATCH   none
                 fdb     0                ; BEAT_PRE     back-to-back: the oracle's gap
 *                                        ;              here is the PrincessScene
