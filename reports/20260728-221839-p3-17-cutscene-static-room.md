@@ -1,5 +1,5 @@
 ## Form B Report — P3.17 — cutscene A+B: **INCOMPLETE.** A wrong premise, corrected by Jay, and the asset chain closed
-**Class:** BUILD (A+B) — **NOT DELIVERED.** POP `wip`. **Karateka UNTOUCHED** (read-only).
+**Class:** BUILD (A+B) — **NOT DELIVERED; asset acquired and Jay-confirmed.** POP `wip`. **Karateka UNTOUCHED** (read-only).
 **25.3: N/A — nothing built to gate.**
 
 ### 0 — Receipt / status (C-35 stamp)
@@ -142,6 +142,45 @@ Two routes, put to Jay rather than chosen:
    Jay's eye — faster, and it is how the intro's placements were settled.
 
 ---
+
+### 3E — CORRECTION, same day: the blocker was wrong, and the room is in hand
+
+**Jay: "the graphics are scrambled maybe your unpack is wrong for 4c?"** The unpack
+was not wrong. The de-interleave and the colour model were both correct; **I was
+decoding the wrong memory.**
+
+`mem:read_u8` goes through the CPU program space, which honours the `RAMRD` soft
+switch, and POP sets `RAMRDaux` constantly (unpacking, `LoadStage2`, the aux language
+card). Every dump I had taken was **aux RAM** — where `LoadStage2` parks `bgtab1-2`
+and `chtab4`. Image tables, decoded as a picture.
+
+Two objective tests separate them, and both were available before I rendered anything:
+
+| dump | row-to-row delta | screen holes non-zero |
+|---|---|---|
+| **main page 1** | **26.8** | 396/512 |
+| main page 2 | 26.9 | 396/512 |
+| aux page 1 | 101.5 | 444/512 |
+| aux page 2 | 97.0 | 420/512 |
+
+A real image is vertically coherent; a table is not. And the hires *screen holes* — the
+bytes the display never reads — are near-empty on a real page. **I should have run both
+before showing Jay a render, not after being told it was wrong.**
+
+MAME's `apple2e` exposes no named RAM shares to Lua, so `oracle_ram_dump.lua` selects
+the bank the way the hardware does: touch `$C002`/`$C003`, then read. That is normally
+forbidden under a running game — P3.3 lost a trace writing soft switches every frame —
+and is safe here only in one shape: a single flip at the end, immediately before
+`machine:exit()`, with nothing running afterwards.
+
+**§3D is retired.** `cutprincess1` is `lda #pacProom / jsr SngExpand`, then page 1 is
+copied to page 2: **the room is a single packed picture**, single-hires, the same shape
+as the intro screens. There is no block layout to find, so the choice I put to Jay was
+a false one. It also explains the measurement that misled me — the pages never change
+because the room is drawn once and never redrawn.
+
+**Jay has confirmed the render: "the princess-room looks correct."** The room is now a
+15,360 B CoCo3 4-colour framebuffer, and LZ-packs to **4,598 B — one track** (29.9%).
 
 ### 4 — Verification (AC-by-AC) — **mostly NOT MET**
 
