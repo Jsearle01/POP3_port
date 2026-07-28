@@ -139,6 +139,8 @@ call :size build/obj/intro_splash.o
 echo --- Assemble: P3.3 intro sequencer (both credits, one mechanism) ---
 lwasm --obj -DOBJTARGET -DDR_VARBASE=0x6A00 -I . -o build/obj/intro_seq.o src/engine/intro_seq.s
 if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -I . -o build/obj/lz_unpack.o src/engine/lz_unpack.s
+if errorlevel 1 goto :error
 call :size build/obj/intro_seq.o
 
 echo --- Link: probe + HAL kernel ---
@@ -192,7 +194,7 @@ REM Color BASIC's line-input buffer at $02DC is where the typed EXEC lands, on t
 REM of a program loaded at $0200 (P3.5). The probes keep $0200 -- they are pinned
 REM there by the P1.1 harness contract and are small enough to stay under $02DC.
 lwlink --decb --script=link/pop_engine.link --entry=intro_seq_entry --map=build/obj/introseq.map ^
-       -o build/intro_seq.bin build/obj/intro_seq.o build/obj/hal_build.o
+       -o build/intro_seq.bin build/obj/intro_seq.o build/obj/lz_unpack.o build/obj/hal_build.o
 if errorlevel 1 goto :error
 call :size build/intro_seq.bin
 
