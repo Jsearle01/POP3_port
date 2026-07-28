@@ -1421,3 +1421,56 @@ and am I doing that?"**
 
 *Established:* P3.4. *Candidate:*
 `a-primitive-proven-where-nothing-returns-leaks-state`.
+
+---
+
+## 27. Recording the port's output: `-aviwrite` is UNCOMPRESSED — transcode it (SQ-1)
+
+**MAME's `-aviwrite` works and its AVI is valid, but it is uncompressed 24-bpp DIB:
+about 27 MB per emulated second** (715 MB for a 26-second intro). It also lands in
+the **`snapshot_directory`** (default `snap/`), not the path you passed — `ls` in the
+working directory says "no file produced" when the file exists.
+
+**`-nothrottle` does NOT distort the recording.** MAME writes one AVI frame per
+EMULATED frame at the emulated refresh rate, so an unthrottled capture produces a
+correctly-timed video and finishes ~8× sooner. (Distinct from the §6 caveat, which
+is about *sampling* a moving image at arbitrary points; capturing every frame has
+no such problem.)
+
+**ffmpeg is installed** (`winget install Gyan.FFmpeg`, 8.1.2; binary under
+`%LOCALAPPDATA%\Microsoft\WinGet\Packages\Gyan.FFmpeg_*\ffmpeg-*\bin\`). The recipe:
+
+```bash
+mame coco3 ... -nothrottle -aviwrite raw.avi -autoboot_script <live>.lua
+ffmpeg -i snap/raw.avi \
+  -vf "select='between(n,FIRST,LAST)',setpts=N/FRAME_RATE/TB,scale=1280:472:flags=neighbor" \
+  -c:v libx264 -preset slow -crf 16 -pix_fmt yuv420p -profile:v high \
+  -movflags +faststart -an out.mp4
+```
+715 MB → **746 KB**, PSNR 55 dB (transparent).
+
+**Two settings that are not arbitrary:**
+- **`scale=…:flags=neighbor` to 2× BEFORE encoding.** The coco3's 320-pixel mode is
+  emitted at 640 wide, so 4:2:0's *horizontal* chroma halving is free — but its
+  *vertical* halving is not, and it smears exactly the NTSC fringe colour the
+  display-faithful conversion exists to reproduce. Doubling both axes first puts
+  the subsampled chroma back at the source's own resolution. `neighbor` keeps the
+  pixel art hard.
+- **`yuv420p` + `high`, not 4:4:4.** Compatibility is the whole point (see below).
+
+**THE TRAP THIS COST A ROUND-TRIP: Windows ships no MJPEG decoder.** Before ffmpeg
+was installed, the AVI was re-encoded as MJPEG — structurally valid, every frame
+decodable, verified by re-parsing — and Media Player/Photos **opened it, found no
+decoder, and closed with no video.** *Validating the container proves nothing about
+whether the target can play the codec.* On a stock Windows box: **H.264/mp4 and
+uncompressed DIB AVI play; MJPEG AVI does not.**
+
+**GIF is a serious option for this content, not a fallback.** A CoCo3 16-colour
+screen has ~16-19 distinct colours in the whole recording, so GIF is **lossless**
+(verified byte-identical, all frames), and an intro that holds still between page
+flips has ~13 distinct images in 15 s — 915 frames became **39 GIF frames, 73 KB**,
+against 103 MB of MJPEG. GIF's 10 ms delay granularity costs 20 ms of drift across
+15 s, because the holds are seconds long. Use it when the target might not have a
+video codec, or when the artifact needs to be small.
+
+*Established:* SQ-1.
