@@ -23,8 +23,12 @@
 -- used to corrupt the program between LOADM and EXEC and made this file's poked
 -- path the only one that worked.
 --
--- Expect ~47 s of disk activity before the first picture: three whole-track reads
--- at ~23 s each. That is real and is the honest cost of the current loader.
+-- Expect ~11.2 s of disk before the first picture: boot + LOADM + the bundle is
+-- 8.2 s of drive-engaged time, then the packed splash is 3.0 s. Across the whole
+-- intro it is 17.2 s, of which only 2.8 s is bytes actually moving -- the rest is
+-- spin-up, seek and rotational latency. Both numbers are MEASURED, by an FDC
+-- data-register tap and a DSKREG tap in introseq_test.lua; the ~47 s this comment
+-- used to claim predates the splash bank (P3.11) and compression (P3.12).
 
 local BIN = os.getenv("P_BIN") or "build/intro_seq.bin"
 local OUT = os.getenv("P_OUT") or "build/introseq_live.log"
@@ -50,7 +54,7 @@ local function tick()
         state = "loadm"; t0 = fn
     elseif state == "loadm" and fn > t0 + 500 then
         nk:post('EXEC\n')
-        log("# posted EXEC at frame " .. fn .. " -- ~47 s of disk reads follow")
+        log("# posted EXEC at frame " .. fn .. " -- ~11.2 s of disk before the first picture")
         state = "run"
     end
 end

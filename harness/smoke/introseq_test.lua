@@ -117,6 +117,45 @@ log("#")
 
 local function rd8(a) return mem:read_u8(a) end
 
+-- ACTUAL disk time. Every byte the WD1773 moves passes through its data register,
+-- so a read tap there sees the transfer itself -- including DECB's boot LOADM, which
+-- the engine's own counter cannot see because the engine is not running yet. This
+-- measures the thing rather than inferring it from tracks x seconds-per-track.
+-- (6809 read taps fire; the 6502 ones silently false-0. Idioms, mame-idioms.)
+local FDC_DATA  = 0xFF4B
+local DISK_GAP  = 12            -- frames of silence that end one operation
+local cur_frame = 0             -- kept by tick: calling frame_number() per byte is
+                                -- tens of thousands of calls and needlessly slow
+local disk_runs, disk_cur = {}, nil
+_G._fdc_tap = mem:install_read_tap(FDC_DATA, FDC_DATA, "fdc_time", function(off, data, mask)
+    if disk_cur and (cur_frame - disk_cur.last) <= DISK_GAP then
+        disk_cur.last = cur_frame
+        disk_cur.n = disk_cur.n + 1
+    else
+        if disk_cur then disk_runs[#disk_runs + 1] = disk_cur end
+        disk_cur = { first = cur_frame, last = cur_frame, n = 1 }
+    end
+    return data
+end)
+
+-- ...and the DRIVE-ENGAGED time, which is what the machine actually waits for. The
+-- transfer is only part of it: the WD1773 paces the 6809 with HALT, so from
+-- load_tracks starting to `clr DSKREG` releasing the drive, the CPU is stopped --
+-- through seek, head settle and rotational latency as well as the bytes.
+local DSKREG = 0xFF40
+local motor_on, motor_frames, motor_spans = nil, 0, {}
+_G._dsk_tap = mem:install_write_tap(DSKREG, DSKREG, "dskreg", function(off, data, mask)
+    local on = (data ~= 0)
+    if on and not motor_on then
+        motor_on = cur_frame
+    elseif not on and motor_on then
+        motor_frames = motor_frames + (cur_frame - motor_on)
+        motor_spans[#motor_spans + 1] = { first = motor_on, last = cur_frame }
+        motor_on = nil
+    end
+    return data
+end)
+
 local checks = {}
 local function check(name, ok, detail)
     checks[#checks+1] = { name = name, ok = ok }
@@ -164,6 +203,23 @@ local function finish(reason)
     log("# " .. reason)
     local failed = 0
     for _, c in ipairs(checks) do if not c.ok then failed = failed + 1 end end
+    if disk_cur then disk_runs[#disk_runs + 1] = disk_cur; disk_cur = nil end
+    local tot_f, tot_b = 0, 0
+    log("# --- actual disk time (WD1773 data-register tap) ---")
+    for i, r in ipairs(disk_runs) do
+        local d = r.last - r.first + 1
+        tot_f = tot_f + d; tot_b = tot_b + r.n
+        log(string.format("#   op %d  frames %5d..%-5d  %5.2f s  %6d bytes",
+                          i, r.first, r.last, d / 60, r.n))
+    end
+    log(string.format("# TOTAL transfer %.2f s over %d bursts, %d bytes",
+                      tot_f / 60, #disk_runs, tot_b))
+    for i, s in ipairs(motor_spans) do
+        log(string.format("#   drive engaged %d  frames %5d..%-5d  %5.2f s",
+                          i, s.first, s.last, (s.last - s.first) / 60))
+    end
+    log(string.format("# TOTAL drive-engaged %.2f s over %d operations",
+                      motor_frames / 60, #motor_spans))
     log(string.format("# checks=%d passed=%d failed=%d", #checks, #checks - failed, failed))
     local verdict = (failed == 0 and #checks > 0) and "PASS" or "FAIL"
     log("# VERDICT: " .. verdict)
@@ -206,6 +262,7 @@ local last_st, last_ph = -1, -1
 
 local function tick()
     local fn = manager.machine.screens:at(1):frame_number()
+    cur_frame = fn
 
     if state == "boot" then
         if fn >= BOOT_FRAME then
