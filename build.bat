@@ -138,8 +138,16 @@ call :size build/obj/intro_splash.o
 
 echo --- Assemble: P3.3 intro sequencer (both credits, one mechanism) ---
 lwasm --obj -DOBJTARGET -DDR_VARBASE=0x6A00 -I . -o build/obj/intro_seq.o src/engine/intro_seq.s
+
 if errorlevel 1 goto :error
+
 lwasm --obj -DOBJTARGET -I . -o build/obj/lz_unpack.o src/engine/lz_unpack.s
+
+if errorlevel 1 goto :error
+
+echo --- Assemble: P3.17 princess room (4-colour, static) ---
+
+lwasm --obj -DOBJTARGET -DDR_VARBASE=0x6A00 -I . -o build/obj/cutscene_room.o src/engine/cutscene_room.s
 if errorlevel 1 goto :error
 call :size build/obj/intro_seq.o
 
@@ -195,6 +203,16 @@ REM of a program loaded at $0200 (P3.5). The probes keep $0200 -- they are pinne
 REM there by the P1.1 harness contract and are small enough to stay under $02DC.
 lwlink --decb --script=link/pop_engine.link --entry=intro_seq_entry --map=build/obj/introseq.map ^
        -o build/intro_seq.bin build/obj/intro_seq.o build/obj/lz_unpack.o build/obj/hal_build.o
+
+if errorlevel 1 goto :error
+
+call :size build/intro_seq.bin
+
+
+
+echo --- Link: princess room + HAL kernel ---
+
+lwlink --decb --script=link/pop_engine.link --entry=room_entry --map=build/obj/room.map -o build/cutscene_room.bin build/obj/cutscene_room.o build/obj/lz_unpack.o build/obj/hal_build.o
 if errorlevel 1 goto :error
 call :size build/intro_seq.bin
 
@@ -220,6 +238,8 @@ if errorlevel 1 goto :error
 if errorlevel 1 goto :error
 "%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\intro_seq.bin INTROSEQ.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
+"%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\cutscene_room.bin ROOM.BIN --ftype=binary --ascii=binary
+if errorlevel 1 goto :error
 echo --- Raw intro assets onto whole tracks ---
 REM The screen is NOT a DECB file. disk_read_range reads whole tracks and knows
 REM nothing about directories, and a program at $0200 cannot LOADM past one
@@ -239,6 +259,9 @@ REM works on a 128 KB machine. lz_pack.py verifies each blob by decoding it out 
 REM a single buffer exactly as lz_unpack does.
 python harness/tools/lz_pack.py build/assets/intro_screen.raw build/assets/prolog1.raw build/assets/prolog2.raw --out-dir build/assets
 if errorlevel 1 goto :error
+REM The princess room is 4-colour: 15,360 B raw, one track packed.
+python harness/tools/lz_pack.py content/cutscene/princess_room.raw --out-dir build/assets
+if errorlevel 1 goto :error
 
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/intro_screen.lz --track 27 --tracks 2 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
@@ -250,6 +273,8 @@ REM freed tracks 11-15 and 20-24, which nothing claims yet.
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/prolog1.lz --track 9 --tracks 2 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/prolog2.lz --track 18 --tracks 2 --reserve --imgtool "%IMGTOOL%"
+if errorlevel 1 goto :error
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/princess_room.lz --track 29 --tracks 1 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 
 "%IMGTOOL%" dir coco_dmk_rsdos build\probe.dmk
