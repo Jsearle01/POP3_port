@@ -75,8 +75,8 @@ local FB_BASE   = 0x8000        -- the MMU draw window
 local FB_SIZE   = 30720         -- 160 B/row x 192 rows, 16-colour mode
 local MMU       = 0xFFA4        -- GFX_DB_MMU
 local BLOCKS    = 4             -- GFX_DB_BLOCKS
-local BLOCK_A   = 0x10          -- GFX_DB_A_BLOCK, physical $20000
-local BLOCK_B   = 0x18          -- GFX_DB_B_BLOCK, physical $30000
+local BLOCK_A   = tonumber(os.getenv("P_BLK_A") or "0x10")
+local BLOCK_B   = tonumber(os.getenv("P_BLK_B") or "0x14")
 
 local BOOT_FRAME = 300
 local SETTLE     = 1200

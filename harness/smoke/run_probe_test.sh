@@ -88,8 +88,16 @@ export P_EXPECT_B="$EXPECT_B"
 # (observed here as status=0, PC=$CFFD). idiom §12's quick-command line omits
 # it; karateka docs/project/disk-boot-decb-overlap.md:67 has the correct form.
 # disk11.rom (Disk Extended Color BASIC) ships inside coco3.zip.
+# MAME_RAM=128K runs this on a 128 KB CoCo3. The framebuffer blocks are chosen
+# so both sizes work (P3.10): the GIME masks a block number to the RAM actually
+# installed, so on 128 KB every number aliases mod 16, and buffer B at $18 used
+# to land straight on top of the program. Default is MAME 512K.
+RAMOPT=""
+[ -n "${MAME_RAM:-}" ] && RAMOPT="-ramsize $MAME_RAM"
+
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
+    $RAMOPT \
     -cfg_directory dist/mame-cfg/rgb \
     -ext fdc \
     -flop1 "$DSK" \

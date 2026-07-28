@@ -62,11 +62,30 @@ export P_DUMP="$DUMP"
 export P_PASS="$PASS"
 export P_FAIL="$FAIL"
 export P_CURBACK="0x$CURBACK"
+# The framebuffer block numbers come from the MAP, not from constants copied into
+# this script. They moved in P3.10 (buffer B $18 -> $14, so the two buffers stay
+# adjacent and clear of the CPU map on a 128 KB machine) and a stale copy here
+# dumps the WRONG buffer -- which passes every capture check and then fails the
+# byte comparison, pointing at the engine instead of at the harness.
+CODEBASE=$(grep -E "^Symbol: .02code " "$MAP" | sed -E 's/.*= *//')
+BLK_A=$(grep -E "^Symbol: GFX_DB_A_BLOCK " "$MAP" | sed -E 's/.*= *//')
+BLK_B=$(grep -E "^Symbol: GFX_DB_B_BLOCK " "$MAP" | sed -E 's/.*= *//')
+export P_BLK_A=$(printf '0x%02X' $(( 0x$BLK_A - 0x$CODEBASE )))
+export P_BLK_B=$(printf '0x%02X' $(( 0x$BLK_B - 0x$CODEBASE )))
+echo "[run_introseq_test] framebuffer blocks A=$P_BLK_A B=$P_BLK_B (from $MAP)"
 export P_NOBORROW="${NOBORROW:-0}"
 export P_SWAPS="0x$(grep -E "^Symbol: HAL_gfx_swaps_hi " "$MAP" | sed -E "s/.*= *//")"
 
+# MAME_RAM=128K runs this on a 128 KB CoCo3. The framebuffer blocks are chosen
+# so both sizes work (P3.10): the GIME masks a block number to the RAM actually
+# installed, so on 128 KB every number aliases mod 16, and buffer B at $18 used
+# to land straight on top of the program. Default is MAME 512K.
+RAMOPT=""
+[ -n "${MAME_RAM:-}" ] && RAMOPT="-ramsize $MAME_RAM"
+
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
+    $RAMOPT \
     -cfg_directory dist/mame-cfg/rgb \
     -ext fdc \
     -flop1 "$DSK" \

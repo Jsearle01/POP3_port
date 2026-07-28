@@ -401,10 +401,22 @@ GFX_MODE_ENTSZ      equ 7           ; bytes per mode-descriptor row
 GFX_DB_WINDOW       equ $8000       ; CPU address the BACK buffer is mapped at
 GFX_DB_MMU          equ $FFA4       ; first MMU reg covering the window
 GFX_DB_BLOCKS       equ 4           ; 4 x 8 KB = 32 KB window
-GFX_DB_A_BLOCK      equ $10         ; buffer A, physical $20000
-GFX_DB_B_BLOCK      equ $18         ; buffer B, physical $30000
+* THE TWO BUFFERS ARE ADJACENT, AND THAT IS A 128 KB REQUIREMENT (P3.10).
+* The GIME masks a block number to the RAM actually installed, so on a 128 KB
+* machine only $00-$0F exist and every number aliases mod 16:
+*
+*     CPU map   $38-$3B  ->  $08-$0B      (sys.s sets $FFA0-$FFA7 = $38-$3F)
+*     buffer A  $10-$13  ->  $00-$03      clear
+*     buffer B  $18-$1B  ->  $08-$0B      ON TOP OF THE PROGRAM AND KERNEL
+*
+* B at $18 is fine on 512 KB and fatal on 128 KB: the port loaded, started, and
+* died at the first framebuffer access. $14 aliases to $04-$07 instead, so the
+* two buffers sit adjacent in both configurations and nothing overlaps the code.
+* On 128 KB that leaves $0C-$0F -- 32 KB, exactly one screen -- free.
+GFX_DB_A_BLOCK      equ $10         ; buffer A, physical $20000 (128K: $00000)
+GFX_DB_B_BLOCK      equ $14         ; buffer B, physical $28000 (128K: $08000)
 GFX_DB_A_VOFF       equ $4000       ; $20000 / 8
-GFX_DB_B_VOFF       equ $6000       ; $30000 / 8
+GFX_DB_B_VOFF       equ $5000       ; $28000 / 8
 
 HAL_gfx_set_mode:
         pshs    u,y                     ; preserve U, Y per contract

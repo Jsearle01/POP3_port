@@ -1788,3 +1788,64 @@ beat may only inherit from a caption beat.
 
 *Established:* P3.9. *Candidate:*
 `an-invariant-in-a-comment-decays-silently-when-an-optimisation-narrows-it`.
+
+---
+
+## 35. The GIME masks block numbers to installed RAM — 128 KB aliases mod 16 (P3.10)
+
+**A block number is not an address; it is an index the GIME masks to the RAM that
+is actually fitted.** On a 128 KB CoCo3 only blocks `$00-$0F` exist, so every number
+aliases **mod 16** — and a layout that is correct on 512 KB can put two things on top
+of each other on 128 KB with no warning:
+
+| | assigned | 512 KB physical | 128 KB alias | |
+|---|---|---|---|---|
+| CPU map (`sys.s` sets `$FFA0-$FFA7`) | `$38-$3F` | `$70000` | `$08-$0F` | |
+| buffer A | `$10-$13` | `$20000` | `$00-$03` | ok |
+| buffer B **(was)** | `$18-$1B` | `$30000` | `$08-$0B` | **on the program + kernel** |
+| buffer B **(now)** | `$14-$17` | `$28000` | `$04-$07` | ok |
+
+**The symptom was silent:** on 128 KB the port `LOADM`ed fine, started, reported
+`status=0`, and then never advanced — dead at the first framebuffer access, with no
+error anywhere. `-ramsize 128K` is a one-flag test and worth running on any layout
+change.
+
+**VOFFSET follows the same masking.** `GFX_DB_B_VOFF` is `physical / 8`
+(`$28000/8 = $5000`); on 128 KB the GIME masks the video address exactly as it masks
+the block number, so the displayed buffer stays consistent with the mapped one.
+Verified by the screens being byte-identical at both sizes, not by argument.
+
+**What 128 KB leaves free.** 16 blocks: 4 for the low 32 KB (program, kernel, stack,
+runtime data), 4 for buffer A, 4 for buffer B — **12 used, 4 free = 32 KB**, which
+is exactly one 30,720-byte screen. Enough to bank the splash (read four times today)
+and remove three of the intro's seven disk reads.
+
+**`MAME_RAM=128K` now runs any `run_*_test.sh` at 128 KB.** Verified at both sizes:
+probe, mode, anim, and the full six-beat intro (16/16 checks, 11/11 screens
+byte-identical).
+
+*Established:* P3.10.
+
+---
+
+## 36. `cp` is the WRONG way to mirror a sync-bridged HAL file (P3.10)
+
+The bridge reports *"HAL source aligned … EOL/guard/export-placement normalised"*.
+**Normalised is not identical.** POP's `gfx.s` and karateka's differ by six `export`
+lines — karateka exports the blit-sprite entry points, POP keeps them dormant behind
+a guard — and the bridge is written to look past exactly that.
+
+So copying POP's file over karateka's to propagate a two-constant change **deleted
+those exports** and karateka's build died with six
+`Undefined symbol HAL_gfx_blit_sprite`. The bridge still said OK, because the copy
+had made the files *more* identical than they are supposed to be.
+
+**Mirror by applying the same EDIT to both files, never by copying one over the
+other.** `git checkout` the clobbered file, re-apply the change, rebuild the sibling,
+and check its prod SHA — `88eba89b15cdf17c8d25e082d2d3e1f3cce57d38` here, byte-identical,
+which is what proves the change is inert on that side.
+
+(P3.4's `disk_read.s` mirror was a `cp` and was *safe* only because that file had no
+divergence yet. The technique was wrong both times; the first one got away with it.)
+
+*Established:* P3.10.
