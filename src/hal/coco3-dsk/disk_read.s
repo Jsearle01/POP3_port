@@ -87,6 +87,29 @@ DR_NMI_HDLR equ $FE20        ; our NMI handler (installed by disk_read_init)
 DR_NMI_VEC  equ $FEFD        ; NMI secondary vector ($FFFC[ROM]->$FEFD->handler)
 
 * ---------------------------------------------------------------
+* OBJECT-TARGET WRAPPER (P3.4). INERT unless OBJTARGET is defined.
+*
+* This file was written as a plain `include` for an ABSOLUTE build -- karateka's
+* bootloader.s pulls it in under `org $8000`. POP's kernel is a LINKED object
+* (P2.4), so it needs the file to open `section code` and export its entry
+* points. Both builds are served from one source by the same guard pattern
+* HAL_gfx_set_mode uses: karateka does not define OBJTARGET here, so every
+* directive below vanishes and its binary is byte-identical.
+*
+* Only the three ENTRY POINTS are exported. The dr_* parameters are absolute `equ`
+* symbols, and lwasm's `export` carries labels, not absolutes -- linking against
+* them fails with "External symbol dr_status not found". A client therefore
+* derives them from DR_VARBASE exactly as this file does, and the build passes the
+* SAME -DDR_VARBASE to both assemblies so the two cannot drift apart.
+* ---------------------------------------------------------------
+        ifdef   OBJTARGET
+        section code
+        export  disk_read_init
+        export  disk_read
+        export  disk_read_range
+        endc
+
+* ---------------------------------------------------------------
 * disk_read_init — install our NMI vector + handler in the constant page.
 *   Call ONCE after the GIME is in MC3=1 (constant $FExx). M1 lesson: our own
 *   vector, sited above the game load ($4823) and the framebuffer loader ($FBFF).
@@ -276,3 +299,7 @@ dr_su1:
         bne     dr_su1
         puls    x
         rts
+
+        ifdef   OBJTARGET
+        endsection
+        endc

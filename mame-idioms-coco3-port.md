@@ -1357,3 +1357,67 @@ and `/build/` is gitignored, so the scratch images cost nothing. **Verified:** t
 *together*, and a rebuild clearing it. That is the fixture, not the code.
 
 *Established:* P3.3.
+
+---
+
+## 25. `lwasm -D` takes a C literal — `-DSYM=$1F00` silently defines SYM as ZERO (P3.4)
+
+**No warning, no error, exit 0.** lwasm's `--define` parses a C-style literal, so a
+`$`-prefixed hex value is accepted and evaluates to **0**. Measured three ways on the
+same source:
+
+```
+-DDR_VARBASE=$1F00   ->  dr_status equ 0004     WRONG (base = 0)
+-DDR_VARBASE=0x1F00  ->  dr_status equ 1F04     right
+-DDR_VARBASE=7936    ->  dr_status equ 1F04     right
+```
+
+`$` is correct **inside** the source and wrong **on the command line** — which is
+exactly the kind of inconsistency that survives review, because every other hex
+number in the project is written `$`.
+
+**What it cost:** POP passes one `-DDR_VARBASE` to both the kernel and the engine so
+caller and primitive agree on where the disk primitive's parameter block lives. With
+the value silently 0, *both* agreed on `$0000` — inside the HAL's DP scratch band
+(`$00-$07`). The first disk read after any HAL call therefore read a track number
+some other routine had overwritten, and failed with **RNF** — a completely plausible
+disk error pointing nowhere near the actual fault.
+
+**Check it, do not trust it:** `lwasm --list=x.lst` and read the `equ` back. A
+symbol that should be `$1F00` and lists as `0000` is this bug.
+
+*Established:* P3.4.
+
+---
+
+## 26. RELEASE THE DRIVE after every transfer — the primitive does not (P3.4)
+
+`disk_read.s` disarms HALT at the end of each track but leaves the **drive selected
+and the motor running**. That is harmless for the caller it was written for —
+karateka's `bootloader.s` loads the game and `jmp`s into it, so nothing of the
+loader's ever executes again — and **fatal for a caller that returns**. POP's intro
+returns to a normal VBL loop with interrupts enabled; several seconds later the CPU
+derailed with `S=$0000` and a free-running PC, in rendering code that never touches
+the disk.
+
+**The fix is one instruction at the I/O-CALLER layer**, where the speed bracket
+already lives (§8):
+
+```asm
+lt_ok   clr     DSKREG          ; motor off, no drive selected, HALT disarmed
+        sta     SAM_FAST        ; ... then restore speed
+```
+
+**The oracle does exactly this, explicitly, and always.** Every load in `MASTER.S`
+is bracketed `jsr driveon` … `jmp driveoff` — `LoadStage1A`, `LoadStage1B`,
+`LoadStage2A/B`, `LoadStage3`, `ReloadStuff`, `loadch7`. That housekeeping reads as
+boilerplate when you are reading the original for structure, and it is the answer to
+a bug you have not hit yet.
+
+**The general shape:** a resource-acquiring routine written for a fire-and-forget
+caller carries an implicit "and then the process exits" in its contract. Ask of any
+inherited primitive not "is it correct" but **"what did its previous caller do next,
+and am I doing that?"**
+
+*Established:* P3.4. *Candidate:*
+`a-primitive-proven-where-nothing-returns-leaks-state`.

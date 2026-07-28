@@ -7,12 +7,15 @@
 # five states of the two credits, records the frame of every transition, and
 # checks each capture byte-for-byte against an offline replay of the same assets.
 #
-# THE IMAGE IS POKED IN, NOT LOADMed. A program loading at $0200 fills its first
-# granule across $0200-$0AFF and overwrites DECB's DBUF0/DBUF1/FAT/FCB workspace
-# mid-load, so LOADM raises ?FS ERROR before the second granule. Measured, and
-# ground-truthed in karateka_coco3 docs/project/decb-loadm-boot-gates.md. The
-# proper fix is Karateka's bootloader; it is a task of its own, and P3.2 shipped
-# the same way. See the header of introseq_test.lua.
+# THE IMAGE IS LOADMed FROM DISK -- the real path, first time in the project.
+# P3.4 took the screen out of the program image (it lives on raw tracks 27..33 and
+# the program reads it itself), which drops INTROSEQ.BIN to one granule and puts
+# it back inside what DECB can carry. `-ext fdc` is MANDATORY: a bare coco3 has no
+# disk controller, LOADM does nothing, and the program silently never runs.
+#
+# The disk is mounted as a SCRATCH COPY -- MAME opens a floppy read-write and JVC
+# saves back (idiom 24). Doubly important now: the raw asset tracks share the
+# image, so a write-back would corrupt the screen as well as the files.
 #
 # `-cfg_directory dist/mame-cfg/rgb` forces Monitor Type = RGB; MAME's own
 # default is Composite, in which the same palette byte is a different colour.
@@ -28,6 +31,8 @@ cd "$(dirname "$0")/../.." || exit 1
 MAME="${MAME:-/c/mame/mame.exe}"
 MAME_ROMS="${MAME_ROMS:-C:/mame/roms}"
 
+SRC_DSK="build/probe.dsk"
+DSK="build/run_introseq.dsk"
 BIN="build/intro_seq.bin"
 MAP="build/obj/introseq.map"
 LOG="build/introseq_test.log"
@@ -35,11 +40,14 @@ PASS="build/introseq_test_PASS"
 FAIL="build/introseq_test_FAIL"
 DUMP="build/introseq_dumps"
 
+[ -f "$SRC_DSK" ] || { echo "[run_introseq_test] missing $SRC_DSK — run build.bat first"; exit 1; }
 [ -f "$BIN" ] || { echo "[run_introseq_test] missing $BIN — run build.bat first"; exit 1; }
 [ -f "$MAP" ] || { echo "[run_introseq_test] missing $MAP — run build.bat first"; exit 1; }
 
 CURBACK=$(grep -E "^Symbol: HAL_gfx_cur_back " "$MAP" | sed -E 's/.*= *//')
 [ -n "$CURBACK" ] || { echo "[run_introseq_test] HAL_gfx_cur_back not in $MAP"; exit 1; }
+
+cp -f "$SRC_DSK" "$DSK" || exit 1
 
 rm -f "$LOG" "$PASS" "$FAIL"
 rm -rf "$DUMP"; mkdir -p "$DUMP"
@@ -54,10 +62,14 @@ export P_DUMP="$DUMP"
 export P_PASS="$PASS"
 export P_FAIL="$FAIL"
 export P_CURBACK="0x$CURBACK"
+export P_NOBORROW="${NOBORROW:-0}"
+export P_SWAPS="0x$(grep -E "^Symbol: HAL_gfx_swaps_hi " "$MAP" | sed -E "s/.*= *//")"
 
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     -cfg_directory dist/mame-cfg/rgb \
+    -ext fdc \
+    -flop1 "$DSK" \
     -window -nomaximize \
     -nothrottle -sound none \
     -seconds_to_run 200 \

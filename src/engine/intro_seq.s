@@ -2,82 +2,63 @@
 *
 * POP CoCo3 — THE INTRO SCREEN SEQUENCER.
 *
-* One mechanism, driven by data, running both opening credits. P3.2 put a single
-* still picture on screen; this turns it into the intro's structure.
+* One mechanism, driven by data, running both opening credits. P3.3 built the
+* sequencer with every asset poked in and resident; P3.4 takes the screen off the
+* program image entirely and reads it from disk into the framebuffer.
 *
 * ---------------------------------------------------------------
-* WHAT THE ORACLE ACTUALLY DOES (traced, not assumed — P3.3)
+* WHAT THE ORACLE ACTUALLY DOES (traced — P3.3 for the beats, P3.4 for the loads)
 * ---------------------------------------------------------------
-* The dispatch's model was that PubCredit and AuthorCredit are the same routine
-* with different content. Reading MASTER.S:693-820 says otherwise, and the
-* difference is the whole reason this file is shaped the way it is:
+* PubCredit unpacks the splash and copies it to both pages; AuthorCredit does
+* NOT — it has no unpacksplash and no copy1to2, and draws its byline straight onto
+* the picture PubCredit left behind, which CleanScreen had restored to both pages.
+* **The two credits are not two screens. They are one screen with two captions.**
+* TitleScreen is AuthorCredit's shape again. [MASTER.S:693-830]
 *
-*   PubCredit      unpacksplash / setdhires / copy1to2 / tpause 44 /
-*                  DeltaExpPop delPresents / PlaySongI / CleanScreen
-*   AuthorCredit                            tpause 42 /
-*                  DeltaExpPop delByline    / PlaySongI / CleanScreen
+* Both caption transitions are PAGE FLIPS, and so is the drawing: the oracle flips
+* to the clean page, draws on the now-hidden one, and flips back — the caption
+* appears in a single frame and the screen checksum does not move once across the
+* four frames of drawing. Same on the way out.
 *
-* AuthorCredit does NOT load a picture. It has no unpacksplash and no copy1to2 --
-* it draws its byline straight onto the splash PubCredit left behind, which
-* CleanScreen had restored to both pages. **The two credits are not two screens
-* with different content. They are one screen with two different captions.**
-*
-* That is a stronger result than "same structure, different data", because it
-* means the base image is stored ONCE. It is also why the descriptor below has a
-* base pointer that is allowed to be zero: beat 2 genuinely has no picture of its
-* own, and modelling it as though it did would have been a faithful-looking lie
-* costing 26,880 bytes the machine does not have.
-*
-* TitleScreen (MASTER.S:823) is AuthorCredit's shape again -- tpause 38,
-* DeltaExpPop delTitle, PlaySongI, CleanScreen. Three beats, one mechanism. The
-* generalisation the dispatch asked for exists; it just isn't where the dispatch
-* expected to find it.
+* AND IT DOES NOT TOUCH THE DISK WHILE ANY OF THAT HAPPENS. A write tap on the
+* card window across the whole intro shows three bursts and two long silences:
+*   f7..f196      boot + LoadStage1A       <- the entire stage, in one batch
+*   f196..f2581   SILENT (39.8 s)          <- both credits, the title, the prologue
+*   f2581..f2641  PrincessScene            <- ReloadStuff + LoadStage2
+*   f2641..f5600  SILENT (49.3 s)
+*   f5600..f5654  the second SetupDHires
+* So the cadence is **batch the whole stage, then run many beats with no I/O at
+* all** — not one-screen-at-a-time, not load-ahead. This file matches that: every
+* asset is read before the first beat, and nothing touches the disk afterwards.
 *
 * ---------------------------------------------------------------
-* HOW THE CAPTION APPEARS AND DISAPPEARS (traced from the running oracle)
+* WHERE THE SCREEN LIVES, AND WHY IT IS NOT IN THIS FILE ANY MORE
 * ---------------------------------------------------------------
-* Both transitions are PAGE FLIPS. Neither is a draw the player can see:
+* The oracle expands its compressed screen STRAIGHT INTO the display pages and
+* never holds an uncompressed copy anywhere. P3.3 did the opposite — 26,880 bytes
+* resident, then blitted — and that is what put the program at 94% of its region.
 *
-*   f401  flip to page 2 (the clean copy)   -- the visible page becomes the spare
-*   f401-404  the caption is drawn onto page 1, now hidden
-*   f405  flip to page 1                    -- the caption APPEARS, in one frame
-*   f686  flip to page 2                    -- the caption VANISHES, in one frame
-*   f686-697  page 1 is restored underneath (copy2to1)
-*   f698  flip to page 1                    -- invisible; the pages are identical
+* So the screen is stored on raw tracks in the shape it is displayed in (a full
+* 160x192 framebuffer) and read directly into the back buffer. The asset's
+* destination IS the framebuffer: no blit, no resident copy, and the +20 px
+* centring of the virtual-resolution contract is baked into the stored image
+* rather than applied at draw time. [harness/tools/make_intro_assets.py]
 *
-* The screen checksum does not move once between f401 and f405 while four frames
-* of drawing go on. That is textbook double buffering and it is exactly what P2.6
-* built, so this file spends its flips rather than reinventing them.
+*   P3.3   packed, resident, blitted     26,880 B of program memory
+*   P3.4   framebuffer, on disk, direct        0 B of program memory
 *
-* ONE DEVIATION, deliberate: the oracle restores the hidden page with copy2to1, a
-* 16 KB two-bank copy taking 12 frames. Here the caption's own run list is
-* replayed against the base image, which touches ~750 bytes and finishes inside a
-* frame. Identical result, and it needs no second asset -- see patch_blit.
+* Resident now: this code, plus the caption patches and the palette (1,588 B read
+* off disk into $0A00 at start-up, because they are consulted per-beat).
 *
-* ---------------------------------------------------------------
-* TIMING — measured on screen, not derived from tpause
-* ---------------------------------------------------------------
-* tpause's units are a doubly-nested delay loop around a keyboard poll; converting
-* them to frames means counting cycles through code the port does not run. The
-* visible transitions are what has to match, so they were measured directly, and
-* the beat table below carries those frame counts. Both machines are 60 Hz NTSC,
-* so the numbers transfer 1:1.
-*
-*   f306 base appears   f405 "Presents" in   f686 out
-*                       f782 "Mechner" in    f1065 out
-*
-* ---------------------------------------------------------------
-* THE MEMORY WALL, stated because it shaped the design
-* ---------------------------------------------------------------
-* Program space is $0200..$77FF, 30,208 bytes. The base image is 26,880 of them.
-* Bounding-rectangle captions (2,430 + 1,400) put the assets at 30,710 -- over
-* budget before any code. The captions are therefore stored as sparse run lists
-* (885 + 687 = 1,572), which is both what fits and what a delta actually is.
-* [harness/tools/dhr_delta.py carries the arithmetic]
-*
-* The next beat, the title, is a much larger patch. This map does not have room
-* for the whole intro and is not meant to: assets belong in high physical RAM,
-* mapped through the MMU, which is a task of its own.
+* AND IT RESOLVES THE LOADM CEILING (idioms §23) WITHOUT A BOOTLOADER. A program
+* loading at $0200 fills its first granule across $0200-$0AFF, straight through
+* DECB's DBUF0/DBUF1/FAT/FCB, and dies with ?FS ERROR before granule 2. With the
+* screen gone the program is a few hundred bytes — one granule, ending below
+* $0600 — so LOADM"INTROSEQ":EXEC works, and the program then reads its own assets
+* with the HAL's WD1773 primitive, long after DECB has finished with those
+* buffers. Small resident program, data loaded by its own reader: the oracle's
+* shape, and the reason the ceiling stops mattering rather than being worked
+* around.
 * ---------------------------------------------------------------
 
                 include "src/hal.inc"
@@ -85,6 +66,8 @@
                 ifdef   OBJTARGET
                 section prog
                 export  intro_seq_entry
+                import  disk_read_init
+                import  disk_read_range
                 else
                 org     $0200
                 endc
@@ -94,19 +77,68 @@
                 setdp   0
                 endc
 
+* --- the disk primitive's parameter block. These are absolute addresses, and
+* --- lwasm's `export` carries labels but not absolute `equ` symbols, so they
+* --- cannot be imported -- they are derived here from the SAME -DDR_VARBASE the
+* --- kernel is assembled with. build.bat passes one value to both, which is what
+* --- keeps caller and primitive pointing at the same seven bytes.
+* ---
+* --- AND THE VALUE MUST BE WRITTEN 0x1F00, NOT $1F00. lwasm's -D takes a C-style
+* --- literal; a `$`-prefixed one is silently accepted and defined as ZERO, with
+* --- no warning. That put this block at $0000, on top of the HAL's DP scratch,
+* --- and produced a disk read that failed with RNF on a track number some other
+* --- routine had overwritten.
+                ifndef  DR_VARBASE
+DR_VARBASE      equ     $1F00
+                endc
+dr_track        equ     DR_VARBASE+0
+dr_sector       equ     DR_VARBASE+1
+dr_dest         equ     DR_VARBASE+2
+dr_status       equ     DR_VARBASE+4
+dr_r_track      equ     DR_VARBASE+5
+dr_r_count      equ     DR_VARBASE+6
+
 * ---------------------------------------------------------------
 STACK_TOP       equ     $7F00           ; below the $8000 draw window, above the kernel
 FB_STRIDE       equ     160             ; 320x192x16: 2 px/byte
-SCREEN_ROWS     equ     192
-SRC_STRIDE      equ     140             ; 280 virtual px at 4 bits = 140 bytes
-LEFT_MARGIN     equ     10              ; 20 px / 2 px-per-byte -> the 280->320 centring
 BEAT_SIZE       equ     8
 BEAT_COUNT      equ     2
-SEQ_MAGIC       equ     $5E92           ; "seq" done
+SEQ_MAGIC       equ     $5E92
+
+* --- the disk layout. Raw whole tracks, above the track-17 directory, with the
+* --- granules reserved in the FAT so DECB will not allocate over them.
+* --- [harness/tools/raw_tracks.py; karateka decb-loadm-boot-gates.md gate G1]
+SECS_PER_TRACK  equ     18
+DISK_SCREEN_TRK equ     27              ; tracks 27..33 — the 30,720 B framebuffer
+DISK_SCREEN_SEC equ     7*SECS_PER_TRACK
+DISK_BUNDLE_TRK equ     34              ; one track — palette + both caption patches
+DISK_BUNDLE_SEC equ     SECS_PER_TRACK
+
+* --- runtime RAM, all of it ABOVE the LOADM image on purpose. DECB's DBUF0
+* --- ($0600), DBUF1 ($0700), FAT ($0800) and FCBs ($094A) sit under $0A00, and
+* --- writing over them is only safe once DECB has finished — which it has, by the
+* --- time this code is executing. That is exactly why the assets are READ here
+* --- rather than LOADED here.
+BUNDLE          equ     $0A00
+BUNDLE_PAL      equ     BUNDLE+$000     ; 16 B
+BUNDLE_PRESENTS equ     BUNDLE+$040
+BUNDLE_BYLINE   equ     BUNDLE+$400
+SAVE_BUF        equ     $1C00           ; = BUNDLE + one track
+SAVE_MAX        equ     768             ; largest patch is 747 pixel bytes
+
+* --- SAM speed latches. The FDC cannot keep up at 1.78 MHz and HAL_gfx_init has
+* --- already set it, so every transfer is bracketed slow/fast (idiom §8:
+* --- force-slow -> do-I/O -> restore-speed, owned at the I/O-CALLER layer, not
+* --- inside the primitive). CLAUDE.md §2G calls this rule PROVISIONAL, carried
+* --- from karateka; POP is the first project to exercise it for real.
+DSKREG          equ     $FF40           ; FDC control latch (write-only)
+SAM_SLOW        equ     $FFD8
+SAM_FAST        equ     $FFD9
 
 * Beat descriptor — 8 bytes. The intro is DATA in this table, not code.
-BEAT_BASE       equ     0               ; base image, or 0 = keep what is on the pages
-BEAT_PATCH      equ     2               ; sparse caption patch
+BEAT_TRACK      equ     0               ; raw track of this beat's screen, 0 = inherit
+BEAT_RSVD       equ     1
+BEAT_PATCH      equ     2               ; sparse caption patch, in the bundle
 BEAT_PRE        equ     4               ; frames the clean base is held first
 BEAT_HOLD       equ     6               ; frames the caption stays up
 
@@ -117,6 +149,8 @@ probe_status    fcb     0               ; $0203  0=boot 1=base up 2=beat1 3=beat
 probe_beat      fcb     0               ; $0204  beat index currently running
 probe_phase     fcb     0               ; $0205  0=pre 1=caption up 2=cleared
 probe_magic     fdb     0               ; $0206
+probe_loads     fcb     0               ; $0208  successful disk reads so far
+probe_dskerr    fcb     0               ; $0209  WD1773 status of the first failure
 
 * ---------------------------------------------------------------
 seq_start
@@ -126,9 +160,8 @@ seq_start
                 tfr     a,dp            ; DP = 0
 
 * --- the canonical boot prefix, in order, before anything else ---
-* [idioms §21a] Step 0 first, always. Skipping it is the P2.6 interrupt storm;
-* hand-rolling any of it is the whole P2.5/P2.6/P2.7 family of failures.
-                jsr     HAL_sys_init            ; step 0 — PIAs, MMU
+* [idioms §21a] Step 0 first, always. Skipping it is the P2.6 interrupt storm.
+                jsr     HAL_sys_init            ; step 0 — PIAs, MMU, MC3=1
                 jsr     HAL_mem_size_detect     ; step 1 — discover before allocating
                 jsr     HAL_time_init           ; step 2 — $010C VBL handler, VBORD
                 andcc   #$EF                    ; opt in to real VBL waits (E1.c)
@@ -137,21 +170,28 @@ seq_start
                 lda     #GFX_MODE_320x192x16
                 jsr     HAL_gfx_set_mode        ; clears both buffers, maps back @ draw_base
 
-* --- the artwork's palette ---------------------------------------
-* set_mode installs a diagnostic palette (P2.5) chosen to make the colour COUNT
-* visible; this screen needs the Apple DHR palette the art was drawn against.
-* Written from engine code because HAL_gfx_set_palette is still a P3 stub -- a
-* layering compromise, flagged rather than hidden.
-*
-* MASKED (idioms §22): sixteen consecutive hardware writes are one logical update
-* and an interrupt can observe them half-applied. Same rule that made
-* gfx_map_blocks a critical section in P2.9.
-*
-* AFTER the mode registers, never before: palette writes do not latch until
-* $FF98/$FF99 hold their final values (HAL_gfx_init Constraint B).
+* --- the disk reader ---------------------------------------------
+* AFTER HAL_sys_init, which is what puts the GIME in MC3=1 and so makes
+* $FE00-$FEFF constant — the primitive lands its NMI handler and completion flag
+* there precisely because that page survives every MMU remap the draw window does.
+                jsr     disk_read_init
+
+* --- everything the beats will need, in one batch, before the first beat -------
+* The oracle's cadence, matched: one burst of I/O up front, then silence.
+                ldx     #BUNDLE
+                lda     #DISK_BUNDLE_TRK
+                ldb     #DISK_BUNDLE_SEC
+                jsr     load_tracks
+                bne     seq_disk_fail
+
+* --- the artwork's palette, now that it is in memory --------------
+* set_mode installs a diagnostic palette (P2.5); this screen needs the Apple DHR
+* palette the art was drawn against. MASKED (idioms §22): sixteen consecutive
+* hardware writes are one logical update. AFTER the mode registers, never before
+* (HAL_gfx_init Constraint B / idiom §9).
                 pshs    cc
                 orcc    #$50
-                ldx     #splash_palette
+                ldx     #BUNDLE_PAL
                 ldu     #$FFB0
                 ldb     #16
 sq_pal          lda     ,x+
@@ -160,7 +200,6 @@ sq_pal          lda     ,x+
                 bne     sq_pal
                 puls    cc
 
-* --- run the intro -----------------------------------------------
                 jsr     seq_run
                 lda     #4
                 sta     probe_status
@@ -168,13 +207,69 @@ sq_pal          lda     ,x+
                 std     probe_magic
 sq_hold         bra     sq_hold         ; the clean splash stays up; Jay observes here
 
+seq_disk_fail
+* No screen, and no pretending. Leave the status readable and stop — running the
+* beats over a half-loaded framebuffer would present as a rendering bug.
+                lda     dr_status
+                sta     probe_dskerr
+                lda     #$FF
+                sta     probe_status
+sq_dead         bra     sq_dead
+
+* ---------------------------------------------------------------
+* load_tracks — A = first track, B = sector count, X = destination.
+* Returns Z set on success (Z clear = failed); dr_status holds the WD1773 status.
+*
+* Three things this wrapper owns that the primitive deliberately does not:
+*   * SPEED. The FDC cannot keep up at 1.78 MHz, which HAL_gfx_init has already
+*     set. Force slow, transfer, restore (idiom §8).
+*   * INTERRUPTS. disk_read_range requires IRQ+FIRQ masked and NMI live: the
+*     transfer blocks on the HALT line and the completion signal IS an NMI. By
+*     this point the caller has CC.I clear for VBL waits, so mask and restore
+*     exactly rather than assuming either state.
+*   * The carry. It has to survive the speed restore, so it is captured first.
+* Clobbers: A, B, X, U
+* ---------------------------------------------------------------
+load_tracks
+                pshs    cc
+                orcc    #$50
+                sta     dr_r_track
+                stb     dr_r_count
+                stx     dr_dest
+                clr     lt_err
+                sta     SAM_SLOW        ; value irrelevant — the SAM latches on the write
+                jsr     disk_read_range
+                bcc     lt_ok
+                com     lt_err
+lt_ok
+                clr     DSKREG          ; RELEASE THE DRIVE: motor off, no drive
+*                                       ; selected, HALT disarmed. The primitive
+*                                       ; leaves it spinning because karateka's only
+*                                       ; client jumps straight into the game and
+*                                       ; never runs another frame. The oracle does
+*                                       ; the same thing explicitly -- every load in
+*                                       ; MASTER.S is bracketed driveon..driveoff.
+                sta     SAM_FAST
+                puls    cc
+                tst     lt_err
+                bne     lt_done
+                inc     probe_loads
+lt_done
+* Re-test as the LAST thing before returning. The first `tst` above is not enough:
+* INC sets Z from its own result, so bumping the success counter to 1 cleared the
+* Z this routine returns its verdict in, and every successful read reported
+* failure. It presented as a disk error -- complete with a plausible WD1773 status
+* byte, which was the expected end-of-track RNF terminator all along.
+                tst     lt_err
+                rts
+
 * ---------------------------------------------------------------
 * seq_run — walk the beat table.
 *
-* THE INVARIANT, which is what makes a beat composable: on entry to every beat
-* and on exit from every beat, BOTH buffers hold the clean base image. That is
-* what lets beat 2 carry no picture at all — it inherits a guaranteed state
-* rather than a hopeful one, exactly as AuthorCredit inherits PubCredit's.
+* THE INVARIANT, which is what makes a beat composable: on entry to every beat and
+* on exit from every beat, BOTH buffers hold the clean base image. That is what
+* lets beat 2 carry no screen of its own — it inherits a guaranteed state rather
+* than a hopeful one, exactly as AuthorCredit inherits PubCredit's.
 * Clobbers: everything
 * ---------------------------------------------------------------
 seq_run
@@ -182,60 +277,72 @@ seq_run
                 clrb
 sq_beat
                 stb     probe_beat
-                pshs    b,x
+                stx     seq_beat        ; the beat pointer lives in ONE place
+                pshs    b
 
-* -- the base picture, if this beat brings one --------------------
-* Drawn into the back buffer, shown, then drawn into the other one, so both
-* pages hold it. The oracle's copy1to2; cheaper here because the source is
-* resident rather than freshly decompressed.
-                ldd     BEAT_BASE,x
+* -- this beat's screen, if it brings one --------------------------
+* Read into the back buffer, show it, read again into the other one, so both pages
+* hold it. The oracle's copy1to2 is a memory copy; here it is a second read,
+* because only ONE buffer is CPU-addressable at a time — the $8000 window maps
+* four 8 KB blocks and a 30,720-byte framebuffer needs all four. A chunked
+* front-to-back copy through the spare MMU slots would be faster, and is the
+* obvious move if this ever happens in front of the player. It does not: both
+* reads finish before the first beat is visible.
+                lda     BEAT_TRACK,x
                 beq     sq_nobase
-                std     seq_base
-                jsr     blit_base
+                jsr     load_screen
+                bne     seq_disk_fail
                 jsr     HAL_gfx_swap
-                jsr     blit_base
+                ldx     seq_beat
+                lda     BEAT_TRACK,x
+                jsr     load_screen
+                bne     seq_disk_fail
                 lda     #1
                 sta     probe_status
 sq_nobase
 
 * -- hold the clean base ------------------------------------------
-                clr     probe_phase
-                ldx     1,s             ; the beat pointer. PSHS B,X lays the
-*                                       ; stack out low-to-high as B then X, so
-*                                       ; the pointer is at 1,S and NOT at ,S.
+* probe_phase is deliberately NOT cleared here. Phase 2 from the previous beat and
+* phase 0 of this one describe the same visible state -- clean base, no caption --
+* and clearing it made phase 2 last only as long as the repair, well under a frame.
+* A once-per-frame observer then caught it or missed it by luck; P3.3 got lucky and
+* P3.4 did not. Every state a watcher is expected to see now persists for the hold
+* that belongs to it.
+                ldx     seq_beat
                 ldd     BEAT_PRE,x
                 jsr     hold_frames
 
 * -- draw the caption on the HIDDEN page, then reveal it ----------
-                ldx     1,s
+                ldx     seq_beat
                 ldd     BEAT_PATCH,x
                 std     seq_patch
-                clr     seq_undo
-                jsr     patch_blit
+                clr     seq_restore
+                jsr     patch_blit      ; saves the clean bytes, then applies
                 jsr     HAL_gfx_swap    ; the caption APPEARS, in one frame
 * status before phase, so a per-frame observer never samples the pair mid-update
-* and see a beat that has not started showing a phase that has.
+* and sees a beat that has not started showing a phase that has.
                 ldb     probe_beat
                 addb    #2
                 stb     probe_status
                 lda     #1
                 sta     probe_phase
 
-                ldx     1,s
+                ldx     seq_beat
                 ldd     BEAT_HOLD,x
                 jsr     hold_frames
 
 * -- hide it, then repair the page that carries it ----------------
-* The flip is the disappearance. The repair happens afterwards, on the page
-* nobody is looking at, which is why it can take as long as it likes.
+* The flip is the disappearance. The repair happens afterwards, on the page nobody
+* is looking at, which is why it can take as long as it likes.
                 jsr     HAL_gfx_swap    ; the caption VANISHES, in one frame
                 lda     #2
                 sta     probe_phase
                 lda     #1
-                sta     seq_undo
-                jsr     patch_blit      ; same runs, read from the base instead
+                sta     seq_restore
+                jsr     patch_blit      ; same runs, from the saved bytes
 
-                puls    b,x
+                puls    b
+                ldx     seq_beat
                 leax    BEAT_SIZE,x
                 incb
                 cmpb    #BEAT_COUNT
@@ -243,12 +350,21 @@ sq_nobase
                 rts
 
 * ---------------------------------------------------------------
+* load_screen — A = raw track; reads the framebuffer into the BACK buffer.
+* Returns Z set on success. Clobbers: A, B, X, U
+* ---------------------------------------------------------------
+load_screen
+                ldx     HAL_gfx_draw_base
+                ldb     #DISK_SCREEN_SEC
+                jmp     load_tracks
+
+* ---------------------------------------------------------------
 * hold_frames — wait D frames.
 *
-* 16-bit because the captions hold for 281 and 283 frames and HAL_time_delay
-* takes a byte. Every wait is a real VBL: CC.I was cleared at boot, without which
-* HAL_time_vbl_wait returns immediately and synthesises the count (Q001 N3=beta)
-* — the loop still runs, the counters still advance, and the timing is fiction.
+* 16-bit because the captions hold for 281 and 283 frames and HAL_time_delay takes
+* a byte. Every wait is a real VBL: CC.I was cleared at boot, without which
+* HAL_time_vbl_wait returns immediately and synthesises the count (Q001 N3=beta) —
+* the loop still runs, the counters still advance, and the timing is fiction.
 * Clobbers: A, B, CC
 * ---------------------------------------------------------------
 hold_frames
@@ -262,51 +378,30 @@ hf_lp           cmpy    #0
 hf_done         puls    y,pc
 
 * ---------------------------------------------------------------
-* blit_base — the base picture into the back buffer, centred.
+* patch_blit — apply a sparse caption patch, or take it back off.
 *
-* Under the display-faithful asset the virtual-resolution contract collapses to a
-* straight copy: a source row is 140 bytes = 280 virtual pixels at 4 bits, and the
-* 16-colour mode packs 2 pixels per byte, so 280 virtual pixels are also 140
-* framebuffer bytes. The row lands on bytes 10..149 — the +20 px centring — with
-* no expansion and no rounding. Margins are left alone; set_mode cleared them.
-* Clobbers: A, B, X, Y, U, CC
-* ---------------------------------------------------------------
-blit_base
-                ldx     seq_base
-                ldu     HAL_gfx_draw_base
-                leau    LEFT_MARGIN,u
-                ldy     #SCREEN_ROWS
-bb_row          pshs    y
-                ldy     #SRC_STRIDE/2   ; 140 bytes = 70 word moves
-bb_px           ldd     ,x++
-                std     ,u++
-                leay    -1,y
-                bne     bb_px
-                leau    (FB_STRIDE-SRC_STRIDE),u
-                puls    y
-                leay    -1,y
-                bne     bb_row
-                rts
-
-* ---------------------------------------------------------------
-* patch_blit — apply a sparse caption patch, or undo it.
-*
-* ONE ROUTINE, TWO SOURCES. seq_undo=0 fills each run from the patch's own pixel
-* bytes; seq_undo=1 fills it from the base image instead and steps over them. The
-* geometry is walked identically either way, so the repair is guaranteed to cover
+* ONE ROUTINE, ONE GEOMETRY, TWO DIRECTIONS. Applying, it first copies the bytes
+* it is about to overwrite into SAVE_BUF and then writes the patch; restoring, it
+* copies those bytes back. Both directions walk the run list identically and
+* advance the save pointer identically, so the restore reads back exactly what the
+* apply wrote out, in the same order. The repair is therefore guaranteed to cover
 * exactly what the caption covered — no second asset, no rectangle to keep in
-* sync, and nothing to get wrong independently.
+* sync, nothing to get wrong independently.
+*
+* P3.3 read the repair bytes from the resident base image instead. That worked and
+* cost 26,880 bytes; saving 747 bytes at apply time gets the same result from the
+* buffer the caption is being drawn into. It also makes the routine independent of
+* where the base came from, which is what let the screen move to disk at all.
 *
 * Format [harness/tools/dhr_delta.py]:
 *     fdb first_row / fcb n_rows / per row: fcb n_runs, per run: fcb col, len, data*
-*
-* Base source for framebuffer column C at row R:
-*     seq_base + R*SRC_STRIDE + (C - LEFT_MARGIN)
-* which is why pb_src is biased by -LEFT_MARGIN once per row and then simply
-* indexed by the run's framebuffer column.
+* Coordinates are framebuffer coordinates — a screen patch has no placement
+* freedom; it registers against the base picture and nowhere else.
 * Clobbers: everything
 * ---------------------------------------------------------------
 patch_blit
+                ldd     #SAVE_BUF
+                std     pb_save
                 ldx     seq_patch
                 ldd     ,x++            ; first row, 16-bit; A is always 0 here
                 stb     pb_row          ; rows are 0..191, so the low byte is the row
@@ -318,45 +413,40 @@ pb_rowlp
                 mul                     ; 191*160 = 30,560, comfortably 16-bit
                 addd    HAL_gfx_draw_base
                 std     pb_dst
-                lda     pb_row
-                ldb     #SRC_STRIDE
-                mul
-                addd    seq_base
-                subd    #LEFT_MARGIN    ; pre-bias: pb_src + framebuffer col = base byte
-                std     pb_src
                 lda     ,x+             ; runs in this row
                 beq     pb_rownext
                 sta     pb_nruns
 pb_runlp
                 clra
                 ldb     ,x+             ; col, 0..159
-                stb     pb_col
                 addd    pb_dst
                 tfr     d,u             ; U = destination
                 ldb     ,x+
                 stb     pb_len
-                tst     seq_undo
-                bne     pb_frombase
+                ldy     pb_save
+                tst     seq_restore
+                bne     pb_restore
 
-                ldb     pb_len          ; --- fill from the patch ---
-pb_dcp          lda     ,x+
+                pshs    u               ; --- save the clean bytes, then apply ---
+pb_sv           lda     ,u+
+                sta     ,y+
+                decb
+                bne     pb_sv
+                sty     pb_save
+                puls    u
+                ldb     pb_len
+pb_ap           lda     ,x+
                 sta     ,u+
                 decb
-                bne     pb_dcp
+                bne     pb_ap
                 bra     pb_runnext
 
-pb_frombase                             ; --- fill from the base image ---
-                clra
-                ldb     pb_col
-                addd    pb_src
-                pshs    x               ; keep the patch stream pointer
-                tfr     d,x
-                ldb     pb_len
-pb_ucp          lda     ,x+
+pb_restore                              ; --- put the saved bytes back ---
+pb_rs           lda     ,y+
                 sta     ,u+
                 decb
-                bne     pb_ucp
-                puls    x
+                bne     pb_rs
+                sty     pb_save
                 ldb     pb_len
                 abx                     ; step over the patch's pixel bytes.
 *                                       ; ABX is UNSIGNED. `leax b,x` is SIGNED
@@ -374,16 +464,21 @@ pb_rownext
 * ---------------------------------------------------------------
 * State
 * ---------------------------------------------------------------
-seq_base        fdb     0               ; base image in force for the current beat
+seq_beat        fdb     0               ; the beat under way. Held in a variable
+*                                       ; rather than re-read from 1,S after every
+*                                       ; call: the stack offset was correct but it
+*                                       ; made every routine in between part of the
+*                                       ; contract, and debugging that cost more
+*                                       ; than the two bytes this costs.
 seq_patch       fdb     0
-seq_undo        fcb     0
+seq_restore     fcb     0
+lt_err          fcb     0
 pb_row          fcb     0
 pb_nrows        fcb     0
 pb_nruns        fcb     0
-pb_col          fcb     0
 pb_len          fcb     0
 pb_dst          fdb     0
-pb_src          fdb     0
+pb_save         fdb     0
 
 * ---------------------------------------------------------------
 * THE INTRO, AS DATA
@@ -392,43 +487,26 @@ pb_src          fdb     0
 *   beat 1  base up f306, caption in f405 (+99), out f686 (+281)
 *   beat 2  caption in f782 (+96 from the clear), out f1065 (+283)
 *
-* Beat 2's base pointer is 0 on purpose. It is not an omission and not an
-* optimisation — AuthorCredit has no unpacksplash. The Mechner byline is a second
-* caption on the Broderbund picture.
+* Beat 2's track is 0 on purpose. It is not an omission and not an optimisation —
+* AuthorCredit has no unpacksplash. The Mechner byline is a second caption on the
+* Broderbund picture.
 *
-* The third beat is TitleScreen, structurally identical (fdb 0 / delta_title /
-* 73 / 536). It is not here because the title patch does not fit in this memory
-* map, not because the mechanism cannot express it.
+* The third beat is TitleScreen, structurally identical: track 0 (it reuses the
+* splash), its own patch, 73 and 536. It is not here because its patch has not
+* been converted — no longer because it does not fit, which was the point of P3.4.
 * ---------------------------------------------------------------
 beat_table
-                fdb     splash_data     ; BEAT_BASE   the Broderbund splash
-                fdb     delta_presents  ; BEAT_PATCH  "Broderbund Software Presents"
+                fcb     DISK_SCREEN_TRK ; BEAT_TRACK   the Broderbund splash
+                fcb     0               ; BEAT_RSVD
+                fdb     BUNDLE_PRESENTS ; BEAT_PATCH   "Broderbund Software Presents"
                 fdb     99              ; BEAT_PRE
                 fdb     281             ; BEAT_HOLD
 
-                fdb     0               ; BEAT_BASE   none — inherit beat 1's picture
-                fdb     delta_byline    ; BEAT_PATCH  "A Game by Jordan Mechner"
+                fcb     0               ; BEAT_TRACK   none — inherit beat 1's picture
+                fcb     0               ; BEAT_RSVD
+                fdb     BUNDLE_BYLINE   ; BEAT_PATCH   "A Game by Jordan Mechner"
                 fdb     96              ; BEAT_PRE
                 fdb     283             ; BEAT_HOLD
-
-* ---------------------------------------------------------------
-* Assets. All three came out of the RUNNING oracle rather than POP's crunch
-* format: CLAUDE.md §2 ranks the trace above the source, and it means UNPACK.S's
-* 883 lines never have to be ported.
-*   splash   — the unpacked double-hires page, converted by dhr_convert.py
-*   patches  — the byte differences against it, encoded by dhr_delta.py
-* ---------------------------------------------------------------
-splash_palette
-                includebin "content/intro/broderbund_splash.pal"
-
-splash_data
-                includebin "content/intro/broderbund_splash.bin"
-
-delta_presents
-                includebin "content/intro/delta_presents.bin"
-
-delta_byline
-                includebin "content/intro/delta_byline.bin"
 
                 ifdef   OBJTARGET
                 endsection

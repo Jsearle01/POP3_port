@@ -34,29 +34,26 @@
 -- DEBUGGER can borrow, provided it is given back.
 --
 -- ---------------------------------------------------------------------------
--- WHY THIS POKES THE IMAGE IN INSTEAD OF USING LOADM
+-- THIS LOADS FROM DISK. THE REAL PATH, FOR THE FIRST TIME.
 -- ---------------------------------------------------------------------------
--- LOADM cannot load this program, and the reason is structural rather than a
--- size limit. DECB's own storage sits at DBUF0=$0600, DBUF1=$0700, the FAT RAM
--- at $0800 and the FCBs at $094A; it zeroes $0600-$0989 at init.
--- [karateka_coco3 docs/project/decb-loadm-boot-gates.md, from Disk Basic
---  Unravelled II]  A program loading at $0200 fills its FIRST granule across
--- $0200-$0AFF, which lands squarely on all four -- so DECB loses the granule
--- chain it is in the middle of following and raises ?FS ERROR before granule 2.
+-- P3.2 and P3.3 both poked the image into memory and set PC, because LOADM could
+-- not carry them: a program at $0200 fills its first granule across $0200-$0AFF,
+-- straight through DECB's DBUF0 ($0600), DBUF1 ($0700), FAT RAM ($0800) and FCBs
+-- ($094A), and dies with ?FS ERROR before granule 2.
+-- [karateka_coco3 docs/project/decb-loadm-boot-gates.md; measured in P3.3]
 --
--- Measured here rather than assumed: single-granule files at $0200 load fine
--- (that is why PROBE/MODE/ANIM all work); multi-granule files at $0200 fail;
--- the SAME multi-granule file at $4000 loads perfectly. Size is incidental --
--- the collision is with DECB's workspace.
+-- P3.4 removed the reason rather than the symptom. The screen is no longer in the
+-- program image at all -- it sits on raw tracks 27..33 and the program reads it
+-- into the back buffer itself. What is left to LOADM is 1,369 bytes: one granule,
+-- ending below $0600, which DECB carries without complaint.
 --
--- P3.2's splash was never LOADMed either (build/introrun.lua pokes it), so this
--- is not a regression; it is the disk-boot arc surfacing. Karateka already
--- solved it -- src/boot/bootloader.s runs from framebuffer space, masks
--- interrupts, takes its own stack and raw-reads whole tracks into low RAM,
--- entered by LOADM"BOOT":EXEC -- and porting that is its own task.
+-- So this script drives LOADM"INTROSEQ" + EXEC, and the interesting check is not
+-- that a picture appears but that it appears AT ALL: the loaded file provably
+-- does not contain it.
 --
--- IDIOMS USED: §10 keep the notifier in _G._; §12 forward slashes, io.open not
--- print, -seconds_to_run is emulated seconds.
+-- IDIOMS USED: §1 no autoboot -> DECB is the entry point; §2 natkeyboard:post
+-- after boot settles; §10 keep the notifier in _G._; §12 forward slashes, io.open
+-- not print, -seconds_to_run is emulated seconds.
 
 local BIN       = os.getenv("P_BIN")  or "build/intro_seq.bin"
 local OUT       = os.getenv("P_OUT")  or "build/introseq_test.log"
@@ -64,6 +61,8 @@ local DUMP      = os.getenv("P_DUMP") or "build/introseq_dumps"
 local PASS_PATH = os.getenv("P_PASS") or "build/introseq_test_PASS"
 local FAIL_PATH = os.getenv("P_FAIL") or "build/introseq_test_FAIL"
 local CUR_BACK  = tonumber(os.getenv("P_CURBACK") or "0x7B06")
+local SWAPS     = tonumber(os.getenv("P_SWAPS") or "0x7B07")
+local NO_BORROW = (os.getenv("P_NOBORROW") == "1")
 
 local ADDR_STATUS = 0x0203
 local ADDR_BEAT   = 0x0204
@@ -79,32 +78,36 @@ local BLOCK_A   = 0x10          -- GFX_DB_A_BLOCK, physical $20000
 local BLOCK_B   = 0x18          -- GFX_DB_B_BLOCK, physical $30000
 
 local BOOT_FRAME = 300
+local SETTLE     = 1200
 local TIMEOUT    = 7200
 
 local cpu = manager.machine.devices[":maincpu"]
 local mem = cpu.spaces["program"]
+local nk  = manager.machine.natkeyboard
+nk.in_use = true
 
--- Load the linked image the way P3.2 did: parse the DECB segment table and poke
--- each segment in, then set PC to the transfer address. Same bytes LOADM would
--- have placed, same entry -- only the courier differs.
-local function decb_image(path)
+-- Parse the DECB segment table without writing (P2.4): a linked binary has two
+-- segments and $0200 lands FIRST, so gating on $0200 alone posts EXEC into a
+-- still-running LOADM.
+local function decb_segments(path)
     local f = io.open(path, "rb"); if not f then return nil end
     local d = f:read("*a"); f:close()
-    local segs, i, exec = {}, 1, nil
+    local segs, i = {}, 1
     while i <= #d do
         local t = string.byte(d, i)
         if t == 0 then
             local n = string.byte(d, i+1) * 256 + string.byte(d, i+2)
             local a = string.byte(d, i+3) * 256 + string.byte(d, i+4)
-            segs[#segs+1] = { addr = a, len = n, data = d:sub(i + 5, i + 4 + n) }
+            segs[#segs+1] = { addr = a, len = n,
+                              first = string.byte(d, i + 5),
+                              last  = string.byte(d, i + 5 + n - 1) }
             i = i + 5 + n
-        elseif t == 0xFF then
-            exec = string.byte(d, i+3) * 256 + string.byte(d, i+4); break
+        elseif t == 0xFF then break
         else return nil end
     end
-    return segs, exec
+    return segs, #d
 end
-local SEGS, EXEC = decb_image(BIN)
+local SEGS, BIN_BYTES = decb_segments(BIN)
 
 local log_file = io.open(OUT, "w")
 local function log(s) if log_file then log_file:write(s .. "\n"); log_file:flush() end end
@@ -128,10 +131,10 @@ local function dump_front(tag)
     local back = rd8(CUR_BACK)
     local back_blk  = (back == 0) and BLOCK_A or BLOCK_B
     local front_blk = (back == 0) and BLOCK_B or BLOCK_A
-    map_blocks(front_blk)
+    if not NO_BORROW then map_blocks(front_blk) end
     local t = {}
     for i = 0, FB_SIZE - 1 do t[#t+1] = string.char(rd8(FB_BASE + i)) end
-    map_blocks(back_blk)                       -- give it back, immediately
+    if not NO_BORROW then map_blocks(back_blk) end
     local path = string.format("%s/%s.bin", DUMP, tag)
     local f = io.open(path, "wb")
     if not f then log("# could not open " .. path); return false end
@@ -178,51 +181,65 @@ local WANT = {
 }
 local want_i = 1
 
-local state, started = "boot", nil
+local state, loaded_at, started = "boot", nil, nil
+local loads_seen, last_load = 0, nil
+local last_st, last_ph = -1, -1
 
 local function tick()
     local fn = manager.machine.screens:at(1):frame_number()
 
     if state == "boot" then
-        -- Let DECB finish coming up first. The program takes the machine over
-        -- completely (its own stack, its own $FF90), but starting it mid-boot
-        -- would race DECB's own initialisation.
         if fn >= BOOT_FRAME then
-            if not SEGS then
-                check("image_readable", false, "could not parse " .. BIN)
-                finish("bad image")
-                return
-            end
-            for _, sg in ipairs(SEGS) do
-                for j = 0, sg.len - 1 do
-                    mem:write_u8(sg.addr + j, string.byte(sg.data, j + 1))
+            nk:post('LOADM"INTROSEQ"\n')
+            log(string.format("# disk: posted LOADM\"INTROSEQ\" at frame %d", fn))
+            state = "loadm"
+        end
+        return
+    end
+
+    if state == "loadm" then
+        if nk.empty and not loaded_at then
+            loaded_at = fn
+        elseif loaded_at then
+            local all_in, bad = (rd8(0x0200) == 0x7E), nil
+            if all_in and SEGS then
+                for _, sg in ipairs(SEGS) do
+                    local g0, g1 = rd8(sg.addr), rd8(sg.addr + sg.len - 1)
+                    if g0 ~= sg.first or g1 ~= sg.last then
+                        bad = string.format("$%04X..$%04X (%d B): got %02X..%02X want %02X..%02X",
+                                            sg.addr, sg.addr + sg.len - 1, sg.len, g0, g1,
+                                            sg.first, sg.last)
+                        all_in = false; break
+                    end
                 end
-                log(string.format("# poked %6d bytes -> $%04X..$%04X",
-                                  sg.len, sg.addr, sg.addr + sg.len - 1))
             end
-            -- read it back before trusting it; a short poke would look like a
-            -- rendering bug several hundred frames later
-            local bad = nil
-            for _, sg in ipairs(SEGS) do
-                if rd8(sg.addr) ~= string.byte(sg.data, 1)
-                   or rd8(sg.addr + sg.len - 1) ~= string.byte(sg.data, sg.len) then
-                    bad = string.format("$%04X..$%04X", sg.addr, sg.addr + sg.len - 1)
-                end
+            if all_in then
+                check("loadm_from_disk", true,
+                      string.format("%d B, %d segments, at frame %d — the real path",
+                                    BIN_BYTES, #SEGS, fn))
+                nk:post('EXEC\n')
+                state = "running"
+                started = fn
+            elseif fn >= loaded_at + SETTLE then
+                check("loadm_from_disk", false,
+                      string.format("$0200 = %02X after %d frames; %s", rd8(0x0200),
+                                    SETTLE, bad or "segment table unreadable"))
+                finish("LOADM failed")
             end
-            check("image_in_memory", bad == nil,
-                  bad and ("segment " .. bad .. " did not stick")
-                       or string.format("%d segments verified at both ends", #SEGS))
-            if bad then finish("poke failed"); return end
-            cpu.state["PC"].value = EXEC
-            log(string.format("# PC <- $%04X", EXEC))
-            state = "running"
-            started = fn
         end
         return
     end
 
     if state == "running" then
         local st, ph = rd8(ADDR_STATUS), rd8(ADDR_PHASE)
+        -- time each disk read as it lands. The load cost is a number this task
+        -- owes, not something to eyeball from when the picture turns up.
+        local n = rd8(0x0208)
+        if n > (loads_seen or 0) then
+            log(string.format("# frame %5d  disk read %d complete (+%d frames, %.1f s)",
+                              fn, n, fn - (last_load or started), (fn - (last_load or started)) / 60))
+            loads_seen, last_load = n, fn
+        end
         local w = WANT[want_i]
         if w and st == w.st and ph == w.ph then
             mark(w.tag, fn)
@@ -234,13 +251,34 @@ local function tick()
                       string.format("$%04X (want $%04X)", magic, SEQ_MAGIC))
                 check("beats_completed", rd8(ADDR_BEAT) == 1,
                       string.format("last beat index %d", rd8(ADDR_BEAT)))
+                -- THE PROOF: three successful reads (bundle + the screen, twice),
+                -- and a program image far too small to have carried the screen.
+                check("disk_reads_completed", rd8(0x0208) == 3,
+                      string.format("probe_loads = %d (want 3: bundle + screen x2); "
+                                    .. "WD1773 status $%02X", rd8(0x0208), rd8(0x0209)))
+                check("image_cannot_contain_screen", BIN_BYTES < 30720,
+                      string.format("INTROSEQ.BIN is %d B; the framebuffer it put on "
+                                    .. "screen is 30,720 B", BIN_BYTES))
                 finish("both credits ran")
             end
         end
+        -- a heartbeat while running: is the program advancing at all, and are
+        -- VBLs still arriving? "stalled" without those two is not a diagnosis.
+        if st ~= (last_st or -1) or ph ~= (last_ph or -1) then
+            last_st, last_ph = st, ph
+
+            log(string.format("# frame %5d  status=%d phase=%d swaps=%d",
+                              fn, st, ph, rd8(SWAPS) * 256 + rd8(SWAPS + 1)))
+        end
         if fn > (started or 0) + TIMEOUT then
             check("sequence_completed", false,
-                  string.format("stalled at status %d phase %d, %d of %d states seen",
-                                st, ph, want_i - 1, #WANT))
+                  string.format("stalled at status %d phase %d, %d of %d states seen; "
+                                .. "disk reads done=%d WD1773 status=$%02X nmi_done=%d "
+                                .. "dr_track=%d dr_r_count=%d dr_dest=$%04X",
+                                st, ph, want_i - 1, #WANT,
+                                rd8(0x0208), rd8(0x0209), rd8(0xFE00),
+                                rd8(0x1F00), rd8(0x1F06),
+                                rd8(0x1F02) * 256 + rd8(0x1F03)))
             finish("timeout")
         end
     end

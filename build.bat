@@ -105,7 +105,14 @@ REM Every HAL module opens `section code` and exports its hal.inc entry points
 REM under -DOBJTARGET. The six runtime-blit entry points stay DORMANT in POP
 REM (PA.6 / P1.3) and are deliberately NOT exported: a POP call to one is now a
 REM link error naming the symbol. Add -DPOP_HAL_RUNTIME_BLIT to enable them.
-lwasm --obj -DOBJTARGET -DHAL_GFX_MODE_SERVICE -I . -o build/obj/hal_build.o src/harness/hal_build.s
+REM 0x1F00, NOT $1F00: lwasm's -D takes a C-style literal and silently defines a
+REM `$`-prefixed value as ZERO. It does not warn. Both sides then put the disk
+REM parameter block at $0000 -- inside the HAL's DP scratch band -- and the first
+REM read that follows any HAL call reads a clobbered track number.
+REM DR_VARBASE relocates disk_read.s's 7 scratch bytes off its $2100 default,
+REM which is inside POP's program region. $1F00 clears the intro's runtime asset
+REM bundle ($0A00-$1BFF) and its patch save buffer ($1C00-$1EFF).
+lwasm --obj -DOBJTARGET -DHAL_GFX_MODE_SERVICE -DDR_VARBASE=0x1F00 -I . -o build/obj/hal_build.o src/harness/hal_build.s
 if errorlevel 1 goto :error
 call :size build/obj/hal_build.o
 
@@ -130,7 +137,7 @@ if errorlevel 1 goto :error
 call :size build/obj/intro_splash.o
 
 echo --- Assemble: P3.3 intro sequencer (both credits, one mechanism) ---
-lwasm --obj -DOBJTARGET -I . -o build/obj/intro_seq.o src/engine/intro_seq.s
+lwasm --obj -DOBJTARGET -DDR_VARBASE=0x1F00 -I . -o build/obj/intro_seq.o src/engine/intro_seq.s
 if errorlevel 1 goto :error
 call :size build/obj/intro_seq.o
 
@@ -201,6 +208,20 @@ if errorlevel 1 goto :error
 if errorlevel 1 goto :error
 "%IMGTOOL%" put coco_jvc_rsdos build\probe.dsk build\intro_seq.bin INTROSEQ.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
+echo --- Raw intro assets onto whole tracks ---
+REM The screen is NOT a DECB file. disk_read_range reads whole tracks and knows
+REM nothing about directories, and a program at $0200 cannot LOADM past one
+REM granule anyway (idioms 23). Tracks 27-34 sit above the track-17 directory;
+REM the granules are reserved in the FAT with no directory entry, which DECB
+REM tolerates exactly (karateka decb-loadm-boot-gates.md gate G1).
+if not exist build\assets mkdir build\assets
+python harness/tools/make_intro_assets.py --out-screen build/assets/intro_screen.raw --out-bundle build/assets/intro_bundle.raw
+if errorlevel 1 goto :error
+python harness/tools/raw_tracks.py --dsk build/probe.dsk --asset build/assets/intro_screen.raw --track 27 --tracks 7 --reserve
+if errorlevel 1 goto :error
+python harness/tools/raw_tracks.py --dsk build/probe.dsk --asset build/assets/intro_bundle.raw --track 34 --tracks 1 --reserve
+if errorlevel 1 goto :error
+
 "%IMGTOOL%" dir coco_jvc_rsdos build\probe.dsk
 if errorlevel 1 goto :error
 

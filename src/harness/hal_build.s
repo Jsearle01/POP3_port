@@ -28,4 +28,7 @@
                 include "src/hal/coco3-dsk/sound.s"
                 include "src/hal/coco3-dsk/file.s"
                 include "src/hal/coco3-dsk/mem.s"
+* The WD1773 read primitive, shared byte-for-byte with karateka. P3.4 gave it
+* its first POP client: the intro loads its screen straight off raw tracks.
+                include "src/hal/coco3-dsk/disk_read.s"
                 end
