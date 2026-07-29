@@ -446,6 +446,97 @@ decision. Left in place with the correction attached rather than edited away.
 
 ---
 
+### 3K — The startup delay, and the two test defects it uncovered
+
+Jay, watching the port: *"it takes like 2 seconds between the static screen being
+rendered and the torches to be drawn and start animating."* Then, after the first fix:
+*"there's still a visible delay but not horrible."* Then, after the second:
+*"i see no visible delay."*
+
+**Measured across the three states:**
+
+| state | room visible → flames moving | cause |
+|---|---|---|
+| as reported | ~2 s | two disk track reads, after the reveal |
+| after the reorder | 15 frames (0.25 s) | one LZ expand, after the reveal |
+| after the mirror | 1–2 frames (0.02 s) | nothing; both buffers ready before the reveal |
+
+**Why the work was after the reveal.** The room was swapped into view the moment it
+existed, and only then did the engine read a second room track (to fill the other
+buffer) and the flame track. Jay was watching a finished picture during reads that had
+not happened yet. Moving the blob to main RAM at `$3000` let one blob expand twice —
+it had been living high in the draw window, which the buffer swap remaps out from
+under it, which is precisely why the track was being re-read.
+
+**Why the last 15 frames needed a HAL routine.** `HAL_gfx_mirror` copies the finished
+picture into the other buffer instead of expanding it a second time, BEFORE the first
+swap, so it happens against a black screen. Both buffers can be mapped at once only
+because a 4-colour framebuffer is 15,360 B — under half the 32 KB window. It refuses
+in 16-colour rather than corrupting, and the old double-expand is kept as the fallback.
+
+**The governance block, and how it resolved.** The HAL-sync bridge fails BOTH builds on
+any ABI difference between the two copies of the kernel, by design and with no
+exemption mechanism. Every route through it required editing Karateka, which §2G
+designates read-only. Surfaced to Jay with the change already written, built and
+measured; he authorized the back-port. The routine and its contract landed in
+`karateka_coco3` (`efa5107`, pushed to its `wip` on Jay's instruction, `main`
+untouched, builds clean, no call sites). **The guard was satisfied, not exempted.**
+
+**Two test defects, and the second is the more valuable finding.**
+
+1. `P_SWAPS` was the one HAL address hardcoded in `room_test.lua` while the runner
+   derives every other from the link map. Adding the routine moved all three HAL data
+   symbols by `$89` at once and the check silently read the wrong byte. Now derived.
+
+2. The motion check compared captures **4 frames apart** and reported "a still picture"
+   for flames animating correctly. It had never been testing motion — it was testing
+   that the phase was lucky, and the startup fix moved the phase by 13 frames. Now 12
+   frames, derived from the measured step period rather than picked.
+
+**The near-miss worth recording.** Defect 2 presented as *"the mirror broke the
+flames"*, with the new routine sitting right there as the obvious suspect. What
+separated them was forcing the old path while still CALLING the mirror — the routine
+ran either way, so the difference had to be in how the buffer got filled. Reverting
+would have changed two things at once and proved less.
+
+### 3L — The flames ran at half the rate I reported, and the suite could not tell
+
+Deriving the capture separation in §3K required the loop's real rate, and that
+arithmetic exposed a defect nothing was looking for.
+
+`room_loop` called `HAL_time_vbl_wait` and then `HAL_gfx_swap`, which opens with its
+**own** `HAL_time_vbl_wait`. Two waits, two frame boundaries per iteration:
+
+```
+before:  mean 6.00 video frames between flame updates = 10.0 Hz
+after:   mean 3.00                                    = 20.0 Hz
+oracle:  mean 2.6                                     = 22.8 Hz
+```
+
+`FLAME_DIV=3` was chosen believing the loop ran at 60 Hz. It ran at 30
+(`probe_frames` reached 152 over 298 video frames), so the delivered rate was off by
+exactly the factor the extra wait introduced — and **§3G's "~20 Hz, the oracle's
+SPEED-7 cadence" was wrong when written.** Jay approved the look on the strength of
+that number; the picture he approved was real, the number attached to it was not. He
+called for the change once it was measured.
+
+Removing the wait does not reopen the tear fixed earlier in this dispatch. That bug was
+**ordering** — VOFFSET moved mid-frame because the swap ran before any wait. The wait
+that prevents it is the one inside `swap`, which still runs first. Draw → wait → move
+VOFFSET is unchanged; it is counted once now.
+
+A constant 3 frames is not the oracle's cadence exactly (it varies 2–3 under
+`PlayCut0`'s SPEED 7), but 3 sits inside that range where 6 sat outside it entirely.
+Closing the last 2.8 Hz needs the variable cadence — a sequence-VM question (P3.16
+piece C), not a divider one.
+
+**The pattern across this dispatch is now unmistakable.** Every defect Jay found by eye
+was in TIME, not in pixels: the rate (twice), the tear, the startup delay. Every check
+this suite had compared settled framebuffers. That is the same blind spot P3.13
+identified when the wipe went missing, and it has now cost four separate findings.
+
+---
+
 ### 4 — Verification (AC-by-AC) — **mostly NOT MET**
 
 - **AC1 — 4c mode + palette.** *Partially met, and by pre-existing work:* both exist in
