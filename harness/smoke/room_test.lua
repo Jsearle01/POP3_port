@@ -65,7 +65,7 @@ local state, t0, started, shot1, loaded = "boot", nil, nil, nil, nil
 -- star_off from the engine: rows 98/101/109/114 at bytes 9/8/8/9, stride 80
 -- measured on the running oracle, not derived: mono px 20/14/16/19 on rows
 -- 98/101/109/114 -> bytes 10/8/9/9 under the +20 centring
-local STAR_OFF = { 98*80+10, 101*80+9, 109*80+9, 114*80+9 }
+local STAR_OFF = { 98*80+10, 101*80+8, 109*80+9, 114*80+9 }
 local star_watch, star_seen, star_prev, star_checked = nil, 0, nil, false
 local star_each = {}
 

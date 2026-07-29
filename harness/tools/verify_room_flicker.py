@@ -28,7 +28,7 @@ BOXES = [(26, 31, 99, 115),     # torch 0: true px 111 -> byte 27.75
          # ...and the four stars. They are OUTSIDE the torches, so without these a lit
          # star reads as damage to the room — the check would fail for the scene
          # working correctly.
-         (10, 10, 98, 98), (9, 9, 101, 101),
+         (10, 10, 98, 98), (8, 8, 101, 101),
          (9, 9, 109, 109), (9, 9, 114, 114)]
 
 

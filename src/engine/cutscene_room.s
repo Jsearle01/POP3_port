@@ -468,8 +468,7 @@ ps_dloop
                 lda     star_bg,x               ; the room, under this star
                 ldb     star_cnt,x
                 beq     ps_dark
-                anda    star_and,x              ; lit: set THIS star's sub-pixel,
-                ora     star_or,x               ; which differs per star
+                eora    star_eor,x              ; lit: TOGGLE this star's sub-pixel
 ps_dark
                 sta     ps_val
                 pshs    x
@@ -614,23 +613,23 @@ rnd_seed        fdb     $ACE1           ; 16-bit; any non-zero seed (0 is a fixe
 * The stars. starx=2 is an Apple BYTE column, so mono px 14 -> CoCo px 34; cel $2A
 * trims one leading byte and $2B does not, which puts them at framebuffer bytes 9 and
 * 8. stari 2a,2b,2b,2a and stary $62,$65,$6D,$72. [GAMEBG.S:113-115]
-* MOVED OFF THE PAINTED ART, on Jay's instruction, and this is a DELIBERATE
-* DEPARTURE from the oracle's exact pixels. Measured, the oracle's twinkle touches
-* CoCo px 40/34/36/39 -- and three of those are painted art in this room: white,
-* blue, white. So the oracle's stars TOGGLE AN EXISTING PIXEL's colour rather than
-* appearing out of black, and reproducing that faithfully gives three stars that
-* barely read as anything and one that clearly blinks. Which is what Jay saw.
+* BACK TO THE ORACLE, and the EOR was right all along. Measured across six captures,
+* the oracle's star 0 at row 98 px 40 reads WHITE unlit and BLUE lit -- so its twinkle
+* really does toggle the colour of an already-painted star rather than lighting a dot
+* in empty sky. Jay's "its blue now instead of red" was describing correct behaviour,
+* and removing the EOR in response made this LESS faithful, not more.
 *
-*   r 98  ..B........WW........   px40 = WHITE   -> moved to px42 (black)
-*   r101  ..B...B.........BBBBB   px34 = BLUE    -> moved to px36 (black)
-*   r109  ..B....WW.......BBBBB   px36 = WHITE   -> moved to px38 (black)
-*   r114  ..B.........B........   px39 = black   -> unchanged, the one that worked
+* Applying EOR at each star's own sub-pixel reproduces all four:
+*     r 98 px 40  white -> BLUE   (confirmed against the oracle)
+*     r101 px 34  blue  -> white
+*     r109 px 36  white -> BLUE
+*     r114 px 39  black -> red    (the one that reads as a classic twinkle)
 *
-* Each star is a single masked write, so any sub-pixel is reachable -- this needs no
-* pre-shifted variants and is unrelated to the flames' byte-granularity problem.
-star_off        fdb     98*80+10,101*80+9,109*80+9,114*80+9
-star_and        fcb     $F3,$3F,$F3,$FC ; clear that star's sub-pixel...
-star_or         fcb     $04,$40,$04,$01 ; ...and set it to colour 1
+* The interim version -- moved onto black and written rather than toggled -- made all
+* four obvious, which is how the RNG bug was cornered. It was a diagnostic that earned
+* its keep, not a design.
+star_off        fdb     98*80+10,101*80+8,109*80+9,114*80+9
+star_eor        fcb     $40,$04,$40,$01 ; toggle that star's sub-pixel, as TWINKLE does
 star_cnt        fcb     0,0,0,0         ; frames left lit
 star_bg         fcb     0,0,0,0         ; the room byte under each, saved once
 ps_dur          fcb     0
