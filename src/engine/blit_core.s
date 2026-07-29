@@ -225,30 +225,32 @@ blit_save
                 pshs    cc,x,y,u
                 sta     bc_prows
                 stb     bc_width
-bs_row
-                pshs    x,y                     ; keep this row's two origins
-                tfr     x,u                     ; U = framebuffer row (source)
+                lsrb                            ; hoisted: pairs = width/2
+                stb     bc_pairs
                 lda     bc_width
-                lsra
-                beq     bs_odd
+                anda    #1
+                sta     bc_odd                  ; hoisted: is there a trailing byte
+bs_row
+                tfr     x,u                     ; U = framebuffer row (source)
+* THE PAIR COUNTER LIVES IN MEMORY, and `decb` is not an option: `ldd ,u++`
+* clobbers B. The shipped version used memory for exactly this reason and a first
+* attempt at hoisting moved the counter into B, which decremented a pixel byte
+* instead of the counter and hung the room. The win here is hoisting the WIDTH
+* arithmetic out of the row loop, not the counter.
+                lda     bc_pairs
                 sta     bc_count
 bs_pair
                 ldd     ,u++                    ; 8   forward read
                 std     ,y++                    ; 8   forward write — a true COPY
-                dec     bc_count
-                bne     bs_pair
-bs_odd
-                lda     bc_width
-                anda    #1
+                dec     bc_count                ; NOT decb — ldd ,u++ clobbers B
+                bne     bs_pair                 ; 3
+                lda     bc_odd
                 beq     bs_next
-                lda     ,u                      ; odd trailing byte
-                sta     ,y
+                lda     ,u                      ; the odd trailing byte
+                sta     ,y+                     ; Y advances past it too
 bs_next
-                puls    x,y
-                leax    FB_STRIDE,x
-                lda     bc_width
-                leay    a,y
-                dec     bc_prows
+                leax    FB_STRIDE,x             ; next framebuffer row
+                dec     bc_prows                ; Y is ALREADY on the next peel row
                 bne     bs_row
                 puls    cc,x,y,u
                 rts
@@ -257,29 +259,39 @@ blit_erase
                 pshs    cc,x,y,u
                 sta     bc_prows
                 stb     bc_width
-be_row
-                pshs    x,y
-                tfr     y,u                     ; U = peel row (source)
-                lda     bc_width
-                lsra
-                beq     be_odd
-                sta     bc_count
-be_pair
-                ldd     ,u++
-                std     ,x++                    ; back into the framebuffer
-                dec     bc_count
-                bne     be_pair
-be_odd
+                lsrb                            ; hoisted, as in blit_save
+                stb     bc_pairs
                 lda     bc_width
                 anda    #1
+                sta     bc_odd
+be_row
+                tfr     y,u                     ; U = peel row (source)
+* THE PAIR COUNTER LIVES IN MEMORY, and `decb` is not an option: `ldd ,u++`
+* clobbers B. The shipped version used memory for exactly this reason and a first
+* attempt at hoisting moved the counter into B, which decremented a pixel byte
+* instead of the counter and hung the room. The win here is hoisting the WIDTH
+* arithmetic out of the row loop, not the counter.
+                lda     bc_pairs
+                sta     bc_count
+be_pair
+                ldd     ,u++                    ; from the peel
+                std     ,x++                    ; back into the framebuffer
+                dec     bc_count                ; NOT decb — ldd ,u++ clobbers B
+                bne     be_pair
+                lda     bc_odd
                 beq     be_next
                 lda     ,u
-                sta     ,x
+                sta     ,x+
 be_next
-                puls    x,y
-                leax    FB_STRIDE,x
+* X has walked exactly `width` bytes across this row, so it needs the REMAINDER of
+* the stride, not the whole of it. Y is advanced explicitly because the source
+* pointer here is U (a copy of Y), so Y itself never moved.
                 lda     bc_width
-                leay    a,y
+                leay    a,y                     ; next peel row
+                ldd     #FB_STRIDE
+                subb    bc_width
+                sbca    #0
+                leax    d,x                     ; next framebuffer row
                 dec     bc_prows
                 bne     be_row
                 puls    cc,x,y,u
@@ -317,4 +329,6 @@ bc_prows        rmb     1
 bc_width        rmb     1
 bc_count        rmb     1
 bc_tmp          rmb     1
+bc_pairs        rmb     1       ; hoisted width/2 — recomputing these per
+bc_odd          rmb     1       ;   row cost 127 cy/row instead of ~83
 bb_ret          rmb     2       ; software return — S is busy being the destination
