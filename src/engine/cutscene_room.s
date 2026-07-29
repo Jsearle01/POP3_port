@@ -236,10 +236,22 @@ room_hold
 * a continuous tear — and a tear in 4-colour is not merely a shifted image, it lands
 * the raster on different bit pairs and reads as colours that are in NEITHER buffer.
 * That is the shape of what Jay reported: blue in flames whose cels contain no blue.
+* ONE VBL WAIT PER FRAME, NOT TWO.
+*
+* This loop used to wait here AND inside HAL_gfx_swap, which opens with its own
+* HAL_time_vbl_wait before moving VOFFSET. Two waits meant two frame boundaries per
+* iteration, so the loop ran at 30 Hz and FLAME_DIV=3 stepped the flames every SIX
+* video frames -- 10.0 Hz, measured, against the oracle's 22.8. The divider was chosen
+* believing this loop ran at 60 Hz, so the rate was off by exactly the factor the
+* extra wait introduced.
+*
+* Removing this wait does NOT reopen the tear that P3.17 fixed. That bug was ordering:
+* VOFFSET moved mid-frame because the swap happened before any wait. The wait that
+* prevents it is the one INSIDE swap, which is still there and still runs first. The
+* order is unchanged -- draw, wait, move VOFFSET -- it is only counted once now.
 room_loop
                 jsr     flicker                 ; into the back buffer
-                jsr     HAL_time_vbl_wait       ; then the frame boundary
-                jsr     HAL_gfx_swap            ; and only then move VOFFSET
+                jsr     HAL_gfx_swap            ; waits for VBL, THEN moves VOFFSET
 * The probes must name what is DISPLAYED, not what was last drawn. flicker draws into
 * the back buffer; only the swap makes it the front. Publishing the cel numbers here
 * -- after the swap -- is what makes them describe the buffer the test actually reads.

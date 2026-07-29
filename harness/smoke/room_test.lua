@@ -151,15 +151,16 @@ local function tick()
         -- capture proves a picture; two prove MOTION, which is the whole of phase B's
         -- claim -- but only if the pair is guaranteed to straddle a state change.
         --
-        -- It was 4, and 4 is not enough. room_loop waits for VBL and then calls
-        -- HAL_gfx_swap, which waits again, so the loop runs at 30 Hz: probe_frames
-        -- reached 152 over 298 video frames. At FLAME_DIV=3 a flame step is therefore
-        -- 3 iterations = 6 VIDEO frames, and a 4-frame separation lands inside one
-        -- step whenever the phase happens to fall that way. It passed for months on
-        -- luck and failed the moment the startup fix moved the phase by 13 frames --
+        -- It was 4, and 4 was never enough. The loop now runs at 60 Hz and a
+        -- FLAME_DIV=3 step is 3 video frames (measured: mean 3.00), so 4 frames
+        -- straddles a change only when the phase falls right. It was worse before the
+        -- rate fix -- a doubled VBL wait made the loop 30 Hz and a step SIX frames --
+        -- and that is how the fragility surfaced: the check passed for months on luck
+        -- and failed the moment the startup fix moved the phase by 13 frames,
         -- reporting "a still picture" for flames that were animating correctly.
         --
-        -- 12 = two full steps, so the pair straddles a change at ANY phase.
+        -- 12 = four full steps at the current rate and two at the old one, so it holds
+        -- at any phase and would have held across the rate change itself.
         if fn >= shot1 + 12 then
             check("second_capture", dump_front(DUMP2),
                   string.format("frames %d and %d", shot1, fn))
