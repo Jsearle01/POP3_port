@@ -24,7 +24,12 @@ import sys
 
 STRIDE = 80                     # 320 px at 4 px/byte
 BOXES = [(26, 31, 99, 115),     # torch 0: true px 111 -> byte 27.75
-         (48, 53, 99, 115)]     # torch 1: true px 201 -> byte 50.25
+         (48, 53, 99, 115),     # torch 1: true px 201 -> byte 50.25
+         # ...and the four stars. They are OUTSIDE the torches, so without these a lit
+         # star reads as damage to the room — the check would fail for the scene
+         # working correctly.
+         (10, 10, 98, 98), (9, 9, 101, 101),
+         (9, 9, 109, 109), (9, 9, 114, 114)]
 
 
 def inside(i):

@@ -200,6 +200,15 @@ room_loop
                 jsr     flicker                 ; into the back buffer
                 jsr     HAL_time_vbl_wait       ; then the frame boundary
                 jsr     HAL_gfx_swap            ; and only then move VOFFSET
+* The probes must name what is DISPLAYED, not what was last drawn. flicker draws into
+* the back buffer; only the swap makes it the front. Publishing the cel numbers here
+* -- after the swap -- is what makes them describe the buffer the test actually reads.
+* Before this they were set during the draw, so a sample taken between the VBL wait
+* and the swap compared the NEW cel numbers against the OLD picture.
+                lda     pend_cel0
+                sta     probe_cel0
+                lda     pend_cel1
+                sta     probe_cel1
                 inc     probe_frames
                 bra     room_loop
 
@@ -268,7 +277,7 @@ fl_nostep
                 sta     fl_state0
 fl_keep0
                 jsr     torch_step
-                sta     probe_cel0
+                sta     pend_cel0
                 ldb     fl_slot
                 ldx     #fl_prev
                 abx
@@ -292,7 +301,7 @@ fl_keep0
                 sta     fl_state1
 fl_keep1
                 jsr     torch_step
-                sta     probe_cel1
+                sta     pend_cel1
                 ldb     fl_slot
                 incb
                 ldx     #fl_prev
@@ -391,8 +400,16 @@ torch_call
 * packed 4-colour space the same operation is arithmetic on a 2-bit colour index --
 * and the art under two of the stars is white (3), so EOR $01 gives 2, which IS blue.
 * The faithful result is "the star pixel takes the star's colour", so set it.
-STAR_MASK       equ     $FC             ; clear sub-pixel 3 (bits 1-0)...
-STAR_LIT        equ     $01             ; ...and set it to colour 1, as the cel says
+* AND THE POSITIONS ARE MEASURED, not derived. Deriving them from starx=2 plus the
+* cel's lit bit gives only TWO distinct columns, because stari is 2a,2b,2b,2a. The
+* running oracle shows FOUR: mono px 20, 14, 16, 19 on rows 98, 101, 109, 114
+* [harness/tools/oracle_window_stars.lua]. Two of my four therefore landed on a white
+* pixel that is already part of the window art, turning it orange instead of adding a
+* star -- which reads as nothing happening, and is why Jay saw only one blink.
+*
+* Under the +20 centring those are CoCo px 40, 34, 36, 39 -> byte 10 sub-pixel 0,
+* byte 8 sub-pixel 2, byte 9 sub-pixel 0, byte 9 sub-pixel 3. So the mask and value
+* are PER STAR; a single pair cannot express four different sub-pixels.
 
 * ps_savebg — capture the room byte under each star. Called once, after the room is
 * up and before any star is drawn, so "erase" is exact rather than approximate.
@@ -451,8 +468,8 @@ ps_dloop
                 lda     star_bg,x               ; the room, under this star
                 ldb     star_cnt,x
                 beq     ps_dark
-                anda    #STAR_MASK              ; lit: SET the pixel to the star colour
-                ora     #STAR_LIT
+                anda    star_and,x              ; lit: set THIS star's sub-pixel,
+                ora     star_or,x               ; which differs per star
 ps_dark
                 sta     ps_val
                 pshs    x
@@ -577,11 +594,29 @@ rnd_seed        fcb     $A5             ; any non-zero seed; the shift register 
 * The stars. starx=2 is an Apple BYTE column, so mono px 14 -> CoCo px 34; cel $2A
 * trims one leading byte and $2B does not, which puts them at framebuffer bytes 9 and
 * 8. stari 2a,2b,2b,2a and stary $62,$65,$6D,$72. [GAMEBG.S:113-115]
-star_off        fdb     98*80+9,101*80+8,109*80+8,114*80+9
+* MOVED OFF THE PAINTED ART, on Jay's instruction, and this is a DELIBERATE
+* DEPARTURE from the oracle's exact pixels. Measured, the oracle's twinkle touches
+* CoCo px 40/34/36/39 -- and three of those are painted art in this room: white,
+* blue, white. So the oracle's stars TOGGLE AN EXISTING PIXEL's colour rather than
+* appearing out of black, and reproducing that faithfully gives three stars that
+* barely read as anything and one that clearly blinks. Which is what Jay saw.
+*
+*   r 98  ..B........WW........   px40 = WHITE   -> moved to px42 (black)
+*   r101  ..B...B.........BBBBB   px34 = BLUE    -> moved to px36 (black)
+*   r109  ..B....WW.......BBBBB   px36 = WHITE   -> moved to px38 (black)
+*   r114  ..B.........B........   px39 = black   -> unchanged, the one that worked
+*
+* Each star is a single masked write, so any sub-pixel is reachable -- this needs no
+* pre-shifted variants and is unrelated to the flames' byte-granularity problem.
+star_off        fdb     98*80+10,101*80+9,109*80+9,114*80+9
+star_and        fcb     $F3,$3F,$F3,$FC ; clear that star's sub-pixel...
+star_or         fcb     $04,$40,$04,$01 ; ...and set it to colour 1
 star_cnt        fcb     0,0,0,0         ; frames left lit
 star_bg         fcb     0,0,0,0         ; the room byte under each, saved once
 ps_dur          fcb     0
 ps_val          fcb     0
+pend_cel0       fcb     0
+pend_cel1       fcb     0
 fl_div          fcb     FLAME_DIV
 fl_step         fcb     0
 

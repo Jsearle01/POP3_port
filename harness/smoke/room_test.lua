@@ -63,8 +63,11 @@ end
 
 local state, t0, started, shot1, loaded = "boot", nil, nil, nil, nil
 -- star_off from the engine: rows 98/101/109/114 at bytes 9/8/8/9, stride 80
-local STAR_OFF = { 98*80+9, 101*80+8, 109*80+8, 114*80+9 }
+-- measured on the running oracle, not derived: mono px 20/14/16/19 on rows
+-- 98/101/109/114 -> bytes 10/8/9/9 under the +20 centring
+local STAR_OFF = { 98*80+10, 101*80+9, 109*80+9, 114*80+9 }
 local star_watch, star_seen, star_prev, star_checked = nil, 0, nil, false
+local star_each = {}
 
 local function finish(reason)
     log(string.format("# checks=%d passed=%d failed=%d", #checks, #checks - failed, failed))
@@ -147,10 +150,17 @@ local function tick()
     -- why the flicker checks below say nothing about them. Watch instead: the back
     -- buffer is mapped at $8000, and pstars redraws all four into it every frame.
     if star_watch == nil then star_watch, star_seen, star_prev = fn, 0, {} end
-    if fn < star_watch + 240 then
+    -- PER STAR, not lumped. Jay reports seeing only one blink and asks whether a star
+    -- might be drawn and then lost before it reaches the displayed buffer. That
+    -- predicts something different from a biased RNG: if stars are LOST, all four
+    -- change in the back buffer and only one survives to the front; if the SELECTION
+    -- is biased, only one ever changes anywhere. A lumped count cannot tell those
+    -- apart, which is why it has been reporting a healthy-looking 22 all along.
+    if fn < star_watch + 600 then
         for i, off in ipairs(STAR_OFF) do
             local v = rd8(0x8000 + off)
             if star_prev[i] ~= nil and star_prev[i] ~= v then
+                star_each[i] = (star_each[i] or 0) + 1
                 star_seen = star_seen + 1
             end
             star_prev[i] = v
@@ -159,8 +169,13 @@ local function tick()
     end
     if not star_checked then
         star_checked = true
-        check("stars_twinkle", star_seen > 0,
-              string.format("%d changes across 4 stars in 240 frames", star_seen))
+        local parts = {}
+        for i = 1, 4 do parts[#parts + 1] = string.format("star%d=%d", i - 1, star_each[i] or 0) end
+        local lit = 0
+        for i = 1, 4 do if (star_each[i] or 0) > 0 then lit = lit + 1 end end
+        check("stars_twinkle", lit == 4,
+              string.format("%d of 4 stars ever changed in 600 frames (%s)",
+                            lit, table.concat(parts, " ")))
     end
     if magic == ROOM_MAGIC then
         check("room_reached_screen", true,
