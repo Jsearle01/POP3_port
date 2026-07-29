@@ -49,6 +49,11 @@ export P_BLK_A=$(printf '0x%02X' $(( 0x$BLK_A - 0x$CODEBASE )))
 export P_BLK_B=$(printf '0x%02X' $(( 0x$BLK_B - 0x$CODEBASE )))
 export P_CURMODE="0x$(grep -E "^Symbol: HAL_gfx_cur_mode " "$MAP" | sed -E 's/.*= *//')"
 export P_SWAPS="0x$(grep -E "^Symbol: HAL_gfx_swaps " "$MAP" | sed -E 's/.*= *//')"
+# The character slot records live in the disk-resident bundle (P3.22), so their
+# addresses come from the FLAMES map, not the room map.
+FMAP="build/obj/flames.map"
+export P_VIZ="0x$(grep -E "^Symbol: viz_slot " "$FMAP" | sed -E 's/.*= *//')"
+export P_PRI="0x$(grep -E "^Symbol: pri_slot " "$FMAP" | sed -E 's/.*= *//')"
 export P_OUT="$LOG"
 export P_DUMP="$GOT"
 export P_DUMP2="build/room_front2.bin"

@@ -42,6 +42,22 @@ local f = io.open(OUT, "w")
 local function log(s) if f then f:write(s .. "\n"); f:flush() end end
 local function rd8(a) return mem:read_u8(a) end
 
+-- The characters can MOVE, so a pixel check cannot assume where they are. Their x/y
+-- are read out of the slot records at each capture and handed to the verifier, which
+-- composites at the position the machine actually used. Without this, a correct move
+-- reads as 231 wrong bytes.
+local VIZ = tonumber(os.getenv("P_VIZ") or "0")
+local PRI = tonumber(os.getenv("P_PRI") or "0")
+local function log_positions(tag)
+    if VIZ == 0 then return end
+    local f2 = io.open("build/room_chars_pos.txt", "a")
+    if not f2 then return end
+    f2:write(string.format("%s %d %d %d %d\n", tag,
+                           rd8(VIZ), rd8(VIZ + 1), rd8(PRI), rd8(PRI + 1)))
+    f2:close()
+end
+
+
 local checks, failed = {}, 0
 local function check(name, ok, detail)
     checks[#checks + 1] = name
@@ -162,6 +178,7 @@ local function tick()
         -- 12 = four full steps at the current rate and two at the old one, so it holds
         -- at any phase and would have held across the rate change itself.
         if fn >= shot1 + 12 then
+            log_positions("second")
             check("second_capture", dump_front(DUMP2),
                   string.format("frames %d and %d", shot1, fn))
             check("flicker_running", rd8(ENGINE + 8) > 0,
@@ -273,6 +290,7 @@ local function tick()
             log(string.format("# pages differ in %d of 52 flame bytes (expected, one step apart)%s",
                               diff, first and ("; " .. first) or ""))
         end
+        log_positions("first")
         check("front_buffer_dumped", dump_front(DUMP), "")
         shot1 = fn
         state = "second"

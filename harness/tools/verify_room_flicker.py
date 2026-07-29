@@ -36,8 +36,12 @@ BOXES = [(26, 31, 99, 115),     # torch 0: true px 111 -> byte 27.75
          # knows where things may change. verify_room_chars.py compares the pixels
          # against an offline replay of the same baked cels, which is the check that
          # can actually see a wrong one.
-         (54, 58, 104, 151),          # vizier   px 217 -> byte 54, phase 1
-         (35, 39, 109, 151)]          # princess px 140 -> byte 35, phase 0
+         # The vizier MOVES (P3.22), so his box is the range of the motion, not one
+         # position. The demo oscillates x over 189..205 in 8 px steps — 8 px keeps
+         # him on phase 1, which one baked cel can serve — so with +20 centring and
+         # width 5 he occupies byte columns 52..60.
+         (52, 60, 104, 151),          # vizier   x 189..205, phase 1
+         (35, 39, 109, 151)]          # princess x 120 static, phase 0
 
 
 def inside(i):

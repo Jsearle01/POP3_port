@@ -211,11 +211,13 @@ call :size build/intro_seq.bin
 
 
 echo --- Assemble+link: torch-flame code bundle (disk-resident) ---
+lwasm --obj -DOBJTARGET -I . -o build/obj/char_draw.o src/engine/char_draw.s
+if errorlevel 1 goto :error
 lwasm --obj -DOBJTARGET -I . -o build/obj/blit_core.o src/engine/blit_core.s
 if errorlevel 1 goto :error
 lwasm --obj -DOBJTARGET -I . -o build/obj/flame_cels.o src/engine/flame_cels.s
 if errorlevel 1 goto :error
-lwlink --decb --script=link/pop_flames.link --map=build/obj/flames.map -o build/flame_cels.bin build/obj/flame_cels.o build/obj/blit_core.o
+lwlink --decb --script=link/pop_flames.link --map=build/obj/flames.map -o build/flame_cels.bin build/obj/flame_cels.o build/obj/blit_core.o build/obj/char_draw.o
 if errorlevel 1 goto :error
 python harness/tools/decb_to_raw.py --bin build/flame_cels.bin --out build/assets/flames.raw --base 0x0A00
 if errorlevel 1 goto :error

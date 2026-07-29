@@ -97,6 +97,13 @@ DISK_ROOM_SEC   equ     ROOM_TRACKS*SECS_PER_TRACK
 * blob at $3000. That is not a margin worth trusting to future edits, and an
 * overlap would present as a corrupt room rather than as a link error. $4000 is
 * clear of prog, of the trace ring at $7800 and of the stack at $7F00.
+* Bundle entry points, at fixed offsets from FLAME_BASE. The room reaches everything
+* disk-resident through these rather than by link-time symbol, because the bundle and
+* the program are separate images.
+FLAME_BASE_TAB  equ     $0A00
+BLIT_TAB        equ     FLAME_BASE_TAB+58       ; blit_cel / blit_save / blit_erase
+CHARS_TAB       equ     FLAME_BASE_TAB+64       ; chars_frame (piece D)
+
 ROOM_BLOB       equ     $3000
 
 SAM_SLOW        equ     $FFD8           ; the FDC needs normal speed (§2G disk rule)
@@ -201,13 +208,11 @@ room_mirror_slow
                 jsr     lz_unpack
 
 room_ready
-                ldx     #CHAR_TAB               ; the bundle is on disk, so the cel
-                ldd     ,x                      ; addresses are read from its table
-                std     viz_desc+6
-                ldd     2,x
-                std     pri_desc+6
-                lda     #1
-                sta     ch_ready                ; piece D may draw from here on
+* No cel-pointer patching any more: the slot records and the cel data are in the
+* same object now, so the linker resolves them and char_tab is vestigial.
+* ch_ready is gone: it guarded the draw against running before the room was up, but
+* room_loop is only reached from here anyway, so the flag was checking a condition
+* the control flow already guaranteed.
                 lda     #2
                 sta     probe_status
                 ldd     #ROOM_MAGIC
@@ -263,7 +268,18 @@ room_hold
 * order is unchanged -- draw, wait, move VOFFSET -- it is only counted once now.
 room_loop
                 jsr     flicker                 ; into the back buffer
-                jsr     chars_frame             ; P3.20 piece D — the real blit path
+* PIECE D lives in the disk-resident bundle, not in ROOM.BIN. Three dispatches have
+* now hit the LOADM ceiling by growing this program (P3.20 twice, P3.22 once), and
+* P3.22 proved it is SIZE alone: the green baseline plus 175 bytes of dead `rmb`
+* reproduces the failure exactly (status $40, no disk reads). So the character code
+* went the same way the blit core and the cels did.
+*
+* The two HAL values it needs are passed as ARGUMENTS rather than linked, which is
+* what lets it live in a bundle that has no HAL: A = which buffer, X = its address.
+                lda     HAL_gfx_cur_back
+                anda    #1
+                ldx     HAL_gfx_draw_base
+                jsr     [CHARS_TAB]             ; chars_frame, in the bundle
                 jsr     HAL_gfx_swap            ; waits for VBL, THEN moves VOFFSET
 * The probes must name what is DISPLAYED, not what was last drawn. flicker draws into
 * the back buffer; only the swap makes it the front. Publishing the cel numbers here
@@ -589,180 +605,6 @@ nf_done
 *
 * Widening to 16 bits is not by itself the fix; a Galois-16 read from its low byte is
 * just as skewed (star 3 never chosen). Taking the HIGH byte decorrelates the
-* ---------------------------------------------------------------
-* PIECE D — THE CHARACTER DRAW, exercised by HARDCODED position.
-*
-* No VM, no sequence data: the cel and its (x,y) are written here by hand, which is
-* the whole point of building D before C. The draw path is the high-risk piece and
-* it is independently testable; the VM has nothing to call until it works.
-*
-* PLACEMENT, from the oracle:
-*   startV0  CharX=197, startP0 CharX=120        [SUBS.S:1131,1147]
-*   floorY = 151, and CharY is the BASELINE       [SUBS.S:1040]
-* so a cel's top row is floorY - height + 1, the same convention P3.17 confirmed
-* for the torches (a 13-row flame ending at 113 starts at 101).
-*
-* The +20 px centring makes CoCo x = oracle x + 20. 20 is a multiple of 4, so it
-* does NOT change the sub-byte phase — the vizier is phase 1 at 197 and still
-* phase 1 at 217, which is the phase baked into vstand.s.
-*
-*   vizier   px 217 -> byte 54, phase 1, 48 rows -> top 104
-*   princess px 140 -> byte 35, phase 0, 43 rows -> top 109
-*
-* PEEL IS PER BUFFER. The page flips every frame, so each character needs its own
-* saved background IN EACH BUFFER -- the same slot discipline the flames already
-* use, and for the same reason: an erase must restore what was saved INTO THAT
-* buffer, not into its twin. Four slots, two per character.
-* ---------------------------------------------------------------
-VIZ_COL         equ     54
-VIZ_TOP         equ     104
-PRI_COL         equ     35
-PRI_TOP         equ     109
-VIZ_PEEL        equ     48*5            ; 240 B — rows x width of the baked cel
-PRI_PEEL        equ     43*5            ; 215 B
-* PEEL BUFFERS AND CEL DATA LIVE OUTSIDE ROOM.BIN.
-* Both were briefly inside it, and that is what broke LOADM: `prog` reached ~$2E70,
-* the first segment loaded, and $7900 stayed $FF -- the kernel segment never
-* arrived. link/pop_flames.link already documents the rule ("a LOADM'd engine must
-* stay under $25FF"); this is the same wall, hit from the other side.
-*
-* The cels ride the flame track (char_tab at FLAME_BASE+54). The peel buffers are
-* just scratch RAM and need no load at all, so they are fixed addresses in the
-* free space above the blob.
-CHAR_TAB        equ     FLAME_BASE+54
-BLIT_TAB        equ     FLAME_BASE+58   ; blit_cel / blit_save / blit_erase
-VIZ_PEEL_BASE   equ     $5200
-PRI_PEEL_BASE   equ     $5200+VIZ_PEEL*2
-
-chars_frame
-                lda     ch_ready
-                bne     cf_go
-                rts                             ; room not up yet
-cf_go
-* --- which buffer are we drawing into? -----------------------------------
-                lda     HAL_gfx_cur_back
-                anda    #1
-                sta     ch_slot
-* Erase only what THIS buffer has actually had saved. The flag is per buffer
-* because the page flips every frame: the first pass over each buffer has nothing
-* to restore, and erasing then would stamp uninitialised peel data onto the room.
-                ldb     #1
-                tsta
-                beq     cf_bit0
-                ldb     #2
-cf_bit0
-                stb     ch_bit
-                andb    ch_saved
-                stb     ch_erase_ok
-
-* --- MOVE, slowly, so the peel has something to prove --------------------
-* The vizier steps two byte columns and back on a 64-frame cycle. Byte-column
-* motion keeps him on phase 1, so one baked cel covers the whole demonstration;
-* proving SUB-byte motion needs a second phase variant and belongs with the VM
-* (piece C/E), not here. What this does prove is the peel: if the restore is
-* wrong the room smears behind him, which is exactly the failure to look for.
-                inc     ch_tick
-                lda     ch_tick
-                anda    #$3F
-                bne     cf_nomove
-                lda     ch_dir
-                eora    #$FF
-                inca                            ; negate: +2 <-> -2
-                sta     ch_dir
-cf_nomove
-                lda     ch_tick
-                anda    #$1F
-                bne     cf_draw
-                lda     ch_vizcol
-                adda    ch_dir
-                sta     ch_vizcol
-
-cf_draw
-* --- ERASE, SAVE, DRAW, per character, in that order ---------------------
-* Erase restores what THIS buffer had under the character last frame; save then
-* records what is under the NEW position; draw composites the cel over it. Doing
-* it in any other order either smears the old position or peels the character
-* back out from under itself.
-                ldx     #viz_desc
-                jsr     char_one
-                ldx     #pri_desc
-                jsr     char_one
-                lda     ch_saved                ; this buffer now has a peel
-                ora     ch_bit
-                sta     ch_saved
-                rts
-
-* char_one — erase/save/draw one character from its descriptor.
-*   X -> descriptor: dest-offset hi/lo, rows, width, peel base hi/lo, cel ptr hi/lo
-char_one
-                pshs    x
-                ldd     ,x                      ; framebuffer offset of the top-left
-                addd    HAL_gfx_draw_base
-                std     ch_dest
-                lda     ch_slot                 ; peel slot = which buffer
-                ldb     3,x                     ; width
-                stb     ch_w
-                lda     2,x                     ; rows
-                sta     ch_h
-
-* peel address = base + slot * (rows * width)
-                lda     ch_slot
-                beq     co_slot0
-                lda     ch_h
-                ldb     ch_w
-                mul                             ; D = the per-slot footprint
-                addd    4,x
-                bra     co_peel
-co_slot0
-                ldd     4,x
-co_peel
-                std     ch_peel
-
-                ldx     ch_dest
-                ldy     ch_peel
-                lda     ch_erase_ok
-                beq     co_save                 ; nothing saved in THIS buffer yet
-                lda     ch_h
-                ldb     ch_w
-                jsr     [BLIT_TAB+4]
-co_save
-                ldx     ch_dest
-                ldy     ch_peel
-                lda     ch_h
-                ldb     ch_w
-                jsr     [BLIT_TAB+2]
-
-                ldx     ch_dest
-                puls    y                       ; Y -> descriptor
-                ldu     6,y                     ; the baked cel
-                jsr     [BLIT_TAB]
-                rts
-
-* Descriptors. The vizier's column is patched in place by the move above, so the
-* offset here is the START of the oscillation, not a fixed truth.
-viz_desc        fdb     VIZ_TOP*80+VIZ_COL
-                fcb     48,5
-                fdb     VIZ_PEEL_BASE
-                fdb     0       ; cel ptr, patched from char_tab at run time
-pri_desc        fdb     PRI_TOP*80+PRI_COL
-                fcb     43,5
-                fdb     PRI_PEEL_BASE
-                fdb     0       ; cel ptr, patched from char_tab at run time
-
-ch_ready        fcb     0
-ch_saved        fcb     0               ; bit per buffer: has a peel been taken?
-ch_erase_ok     fcb     0
-ch_bit          fcb     0
-ch_slot         fcb     0
-ch_tick         fcb     0
-ch_dir          fcb     2
-ch_vizcol       fcb     VIZ_COL
-ch_dest         fdb     0
-ch_peel         fdb     0
-ch_h            fcb     0
-ch_w            fcb     0
-
-
 rnd
                 lsr     rnd_seed                ; 16-bit shift right; carry = old bit 0
                 ror     rnd_seed+1
