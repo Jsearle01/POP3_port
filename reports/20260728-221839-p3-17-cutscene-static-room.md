@@ -379,12 +379,12 @@ read from its LOW byte still never picks star 3. Reading the HIGH byte does.
 this USE, three correlated draws deep, which is why it was found by simulating against
 `pstars`' exact call pattern rather than by testing the generator.
 
-Two positioning corrections came out of the same pass. Three of the four stars were
-landing on painted window art (white, blue, white), so lighting them recoloured an
-existing pixel instead of adding a dot; they moved two pixels each onto black. **That
-is a deliberate departure from the oracle** — the original positions were measured off
-it and are right, which means its twinkle toggles an already-painted star. Faithful
-looks worse. Recorded as a choice, not a fix.
+Two positioning corrections came out of the same pass, and **both were later reverted
+as wrong — see §3J.** Three of the four stars land on painted window art, so lighting
+them recolours an existing pixel rather than adding a dot to black sky; I moved them
+two pixels each onto black and swapped the toggle for a write. It made all four
+unmistakable, which is how the RNG defect above was cornered — but it was a diagnostic,
+not a design, and I had started describing it as a deliberate departure worth keeping.
 
 **What this says about the suite.** Every check compared settled framebuffers, which is
 the exact blind spot P3.13 identified when the wipe went missing — and I rebuilt it
@@ -392,6 +392,57 @@ here without noticing. The checks added in response (a mid-sweep composite, a
 frame-to-frame motion pair, a per-star breakdown, an opaque pixel comparison, a rate
 histogram measured with the SAME instrument on both machines) are the useful output of
 this stretch, more than the fixes are.
+
+---
+
+### 3J — The correction I made was itself the defect: measuring beat reasoning
+
+Jay: *"change the colors and positions back to oracle."* Reverting exposed that one of
+the four §3I fixes had been a mistake, and the way it was caught is the point.
+
+Earlier in the pass Jay reported *"the blue is correct everywhere else, so its not the
+color value... its blue now instead of red."* I read that as a defect and removed the
+EOR the oracle uses, on the reasoning that a bit-toggle in Apple hires is not a
+bit-toggle in a packed 2-bit palette index — true in general, and the wrong call here.
+
+The measurement settles it. Across six oracle captures, star 0 at row 98 px 40 reads
+**white unlit and BLUE lit**:
+
+```
+  star 0 row  98 px 40 : [white, white, white, white, white, blue]  -> off=white on=blue
+  star 1 row 101 px 34 : [blue,  ...]     never caught lit in these six
+  star 2 row 109 px 36 : [white, ...]     never caught lit
+  star 3 row 114 px 39 : [black, ...]     never caught lit
+```
+
+So the oracle's twinkle really does toggle the colour of an already-painted star, and
+white→blue is its own behaviour. **Jay's "it's blue instead of red" was an accurate
+description of correct output**, and my fix moved the port away from the oracle. Restored
+at each star's own sub-pixel (`$40,$04,$40,$01` — the mask differs because the stars sit
+at different positions within their bytes):
+
+| star | row | px | unlit | lit |
+|---|---|---|---|---|
+| 0 | 98 | 40 | white | **blue** — confirmed against the oracle |
+| 1 | 101 | 34 | blue | white |
+| 2 | 109 | 36 | white | blue |
+| 3 | 114 | 39 | black | red — the one that reads as a classic twinkle |
+
+Only star 3 looks like a twinkle. The other three are colour shifts inside already-lit
+window art, which is why one appeared to blink and, separately, why the real RNG defect
+hid behind that appearance for as long as it did — two different causes producing one
+symptom.
+
+**What generalises.** An opacity MODE does not survive a colour-space change unaltered.
+`sta` ports directly because a store is a store. `eor` ports only if it is applied to
+the same thing. Here the two coincide — a single-bit toggle of a 2-bit index moves
+white↔blue and black↔red — but that is a fact to be *measured*, not deduced, and I
+deduced it in the wrong direction. Six captures and eight lines of Python would have
+answered it before the change rather than after.
+
+**On the report itself:** §3I above stated the departure as a considered choice while
+the analysis backing it was untested. A confident framing made a guess read as a
+decision. Left in place with the correction attached rather than edited away.
 
 ---
 
