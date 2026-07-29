@@ -386,7 +386,13 @@ torch_call
 * mono px 14+1=15 ($2B) and 14+5=19 ($2A); under the +20 centring those are CoCo px 35
 * and 39, i.e. sub-pixel 3 of bytes 8 and 9 -- not sub-pixel 1. The mask is the low
 * bit pair.
-STAR_EOR        equ     $01             ; toggle sub-pixel 3 (bits 1-0)
+* AND EOR IS WRONG HERE, which Jay saw before I did: "its blue now instead of red".
+* The oracle EORs in APPLE bit space, where toggling a bit lights a star. In our
+* packed 4-colour space the same operation is arithmetic on a 2-bit colour index --
+* and the art under two of the stars is white (3), so EOR $01 gives 2, which IS blue.
+* The faithful result is "the star pixel takes the star's colour", so set it.
+STAR_MASK       equ     $FC             ; clear sub-pixel 3 (bits 1-0)...
+STAR_LIT        equ     $01             ; ...and set it to colour 1, as the cel says
 
 * ps_savebg — capture the room byte under each star. Called once, after the room is
 * up and before any star is drawn, so "erase" is exact rather than approximate.
@@ -445,7 +451,8 @@ ps_dloop
                 lda     star_bg,x               ; the room, under this star
                 ldb     star_cnt,x
                 beq     ps_dark
-                eora    #STAR_EOR               ; lit: TOGGLE the pixel, as TWINKLE does
+                anda    #STAR_MASK              ; lit: SET the pixel to the star colour
+                ora     #STAR_LIT
 ps_dark
                 sta     ps_val
                 pshs    x

@@ -40,18 +40,15 @@ def load_cel(n):
 
 
 def composite(room, cel, col):
-    """lay the cel over the room, keying index-0 pixels"""
+    """lay the cel over the room, OPAQUELY.
+
+    The oracle's PSETUPFLAME sets OPACITY = sta -- a plain store -- so every pixel of
+    the flame is written, black included. The cels are compiled with an all-opaque
+    sidecar to match, so the expected image is a straight overwrite, not a key."""
     fb = bytearray(room)
     for r, row in enumerate(cel):
         for c, cb in enumerate(row):
-            o = (FLAME_TOP + r) * STRIDE + col + c
-            keep = fb[o]
-            out = 0
-            for k in range(4):
-                sh = 6 - 2 * k
-                v = (cb >> sh) & 3
-                out |= ((v if v else (keep >> sh) & 3) << sh)
-            fb[o] = out
+            fb[(FLAME_TOP + r) * STRIDE + col + c] = cb
     return fb
 
 
