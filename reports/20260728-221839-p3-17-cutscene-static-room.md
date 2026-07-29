@@ -335,6 +335,66 @@ anyway and the flames can then share it.
 
 ---
 
+### 3I — Four defects Jay found by eye that the suite could not, and why
+
+Everything in §3G passed its tests and was still wrong on screen. The chain is worth
+recording as a whole, because each defect was invisible to the checks that existed and
+each was found by a person watching the machine.
+
+| # | Jay saw | actually was | why the suite missed it |
+|---|---|---|---|
+| 1 | flames "too fast" | 60 Hz vs the oracle's 22.8 | nothing measured rate at all |
+| 2 | blue in the flames | the swap tore every frame | every check read ONE settled buffer |
+| 3 | "fine in a still, not live" | black pixels KEYED, not stored | endpoint checks cannot see compositing |
+| 4 | "only one star blinks" | the RNG never picked stars 1-3 | a lumped counter summed four things |
+
+**1 — the rate.** `play` runs `pause SPEED` then NextFrame/FrameAdv, so an engine frame
+spans several video frames and everything the engine animates steps at THAT rate.
+Measured on the oracle: 2-3 frame gaps under SPEED 7, 6 under SPEED 12, mean 2.6 =
+22.8 Hz. The port redrew every frame. The state now advances on a divider while the
+draw still happens every frame — those must stay separate, because the page flips every
+frame and a buffer that is not redrawn shows a stale flame.
+
+**2 — the tear.** `HAL_gfx_swap` writes VOFFSET; the loop called it BEFORE the VBL
+wait, so the display base moved mid-frame, 60 times a second. The intro swaps once per
+caption and never showed it. **A mid-frame VOFFSET change in 4-colour is not a shifted
+image** — it lands the raster on different bit pairs and reads as colours in NEITHER
+buffer, which is precisely "blue in flames whose cels contain no blue". The measurement
+that proved it is the DISTRIBUTION, not the mean: a rigid 2.00-frame period before,
+2/4/6 after.
+
+**3 — opacity.** Jay asked directly whether the flames were transparent or opaque.
+`PSETUPFLAME` sets `OPACITY = sta`, a plain store: the oracle writes every pixel
+including black. Ours keyed them. Harmless only while the background is black. It is
+also FASTER opaque — 5.33 cy/byte against 8.49 — because opaque bytes are stores that
+join PSHU runs while keyed ones are read-modify-write.
+
+**4 — the RNG, and this is the sharpest one.** `pstars` draws three times per decision.
+In an 8-bit LFSR consecutive outputs share bits by construction, and after the `< 10`
+gate the low two bits are always zero, so `anda #3` returned 0 EVERY time: 496
+lightings simulated, 100% star 0. Widening to 16 bits does not fix it — a Galois-16
+read from its LOW byte still never picks star 3. Reading the HIGH byte does.
+
+**The generator is fine in isolation** — it cycles all 255 states. It is broken only in
+this USE, three correlated draws deep, which is why it was found by simulating against
+`pstars`' exact call pattern rather than by testing the generator.
+
+Two positioning corrections came out of the same pass. Three of the four stars were
+landing on painted window art (white, blue, white), so lighting them recoloured an
+existing pixel instead of adding a dot; they moved two pixels each onto black. **That
+is a deliberate departure from the oracle** — the original positions were measured off
+it and are right, which means its twinkle toggles an already-painted star. Faithful
+looks worse. Recorded as a choice, not a fix.
+
+**What this says about the suite.** Every check compared settled framebuffers, which is
+the exact blind spot P3.13 identified when the wipe went missing — and I rebuilt it
+here without noticing. The checks added in response (a mid-sweep composite, a
+frame-to-frame motion pair, a per-star breakdown, an opaque pixel comparison, a rate
+histogram measured with the SAME instrument on both machines) are the useful output of
+this stretch, more than the fixes are.
+
+---
+
 ### 4 — Verification (AC-by-AC) — **mostly NOT MET**
 
 - **AC1 — 4c mode + palette.** *Partially met, and by pre-existing work:* both exist in
