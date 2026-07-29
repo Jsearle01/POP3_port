@@ -71,8 +71,20 @@ FLAME_BASE      equ     $4200
 * The derivation was cross-checked to reproduce the retired numbers exactly:
 *   x=197 y=151 h=48 -> top 104 col 54 phase 1
 *   x=120 y=151 h=43 -> top 109 col 35 phase 0
-VIZ_PEEL        equ     48*5            ; 240 B — rows x width of the baked cel
-PRI_PEEL        equ     43*5            ; 215 B
+* PEEL BUFFERS ARE SIZED TO EACH CHARACTER'S WIDEST CEL, not to the one currently
+* drawn. They were sized to the single baked cel (48x5 and 43x5), which is correct
+* only while the cel never changes — and the VM's whole job is changing it. Measured
+* across the cutscene set, converting each cel at its own parity and allowing the one
+* byte a sub-byte phase adds:
+*
+*     vizier   widest 48 x 10 = 480 B   (cel 62, vturn-10)
+*     princess widest 43 x  8 = 344 B   (cel 7,  pturn-9)
+*
+* Undersized peels do not fail loudly: save writes past its buffer into whatever
+* follows, and erase restores garbage. Sizing them here is a Phase 3 prerequisite
+* that would otherwise have been found by corruption.
+VIZ_PEEL        equ     48*10           ; 480 B — widest vizier cel (62)
+PRI_PEEL        equ     43*8            ; 344 B — widest princess cel (7)
 * PEEL BUFFERS AND CEL DATA LIVE OUTSIDE ROOM.BIN.
 * Both were briefly inside it, and that is what broke LOADM: `prog` reached ~$2E70,
 * the first segment loaded, and $7900 stayed $FF -- the kernel segment never
@@ -87,6 +99,9 @@ BLIT_TAB        equ     FLAME_BASE+58   ; blit_cel / blit_save / blit_erase
 * MOVED at P3.25: the peel buffers were at $5200, which is inside the two-track
 * bundle's new extent ($4200..$65FF). $6C00 is clear of the bundle, of the disk
 * parameter block at $6A00, and of the trace ring at $7800.
+*   viz 2 slots x 480 = 960 B   $6C00..$6FBF
+*   pri 2 slots x 344 = 688 B   $6FC0..$727F
+* 1,648 B total, ending well short of the trace ring.
 VIZ_PEEL_BASE   equ     $6C00
 PRI_PEEL_BASE   equ     $6C00+VIZ_PEEL*2
 
@@ -110,7 +125,12 @@ PRI_PEEL_BASE   equ     $6C00+VIZ_PEEL*2
 *   +4  h       rows
 *   +5  w       width in bytes
 *   +6  ptr     2 B  resolved cel data address (patched from char_tab at startup)
-*   +8  peel    2 B  peel base for slot 0; slot 1 sits at +h*w
+*   +8  peel    2 B  peel base for slot 0; slot 1 sits at +PEEL (the widest cel)
+*  +10  fdx     the frame's own x offset, signed — ALTSET2's Fdx. The cel table
+*               carries it per cel (-1..5 across the cutscene set) and the VM writes
+*               it here when it selects a cel. Zero for every cel drawn so far, so
+*               applying it is currently a no-op — but a cel with Fdx=3 drawn without
+*               it lands three pixels off, and P3.24 flagged that.
 *
 * WHAT IS DELIBERATELY *NOT* IN THE RECORD: where each buffer last drew this
 * character. That is double-buffer bookkeeping, not character state — POP's model is
@@ -130,9 +150,10 @@ CH_FACE         equ     2
 CH_CEL          equ     3
 CH_H            equ     4
 CH_W            equ     5
+CH_FDX          equ     10              ; per-frame x offset, from the cel table
 CH_PTR          equ     6
 CH_PEEL         equ     8
-CH_SIZE         equ     10
+CH_SIZE         equ     11
 
 * Motion step. MUST be a multiple of 4 px: the phase is baked into the cel data
 * (P3.19/P3.20), so moving by anything else would need the phase variant for the
@@ -297,6 +318,8 @@ co_here
                 sta     ch_tx
                 lda     CH_Y,x
                 sta     ch_ty
+                lda     CH_FDX,x
+                sta     ch_fdx
                 rts
 
 * ---------------------------------------------------------------
@@ -317,9 +340,10 @@ co_setup
                 mul                             ; D = top * 80
                 std     ch_tmp16
                 lda     ch_tx
+                adda    ch_fdx                  ; the frame's own offset (signed)
                 adda    #20                     ; the centring
                 lsra
-                lsra                            ; col = (x+20)/4
+                lsra                            ; col = (x + Fdx + 20)/4
                 tfr     a,b
                 clra
                 addd    ch_tmp16
@@ -351,10 +375,12 @@ viz_slot        fcb     197,151,-1,54           ; x, y, face, cel id (chtab6.A #
                 fcb     48,5                    ; h, w
                 fdb     vstand                  ; resolved at link time now
                 fdb     VIZ_PEEL_BASE
+                fcb     0                       ; Fdx — the VM writes this per cel
 pri_slot        fcb     120,151,-1,25           ; x, y, face, cel id (chtab6.A #25)
                 fcb     43,5
                 fdb     pstand
                 fdb     PRI_PEEL_BASE
+                fcb     0                       ; Fdx
 
 ch_base         fdb     0
 ch_slot         fcb     0
@@ -373,6 +399,7 @@ ch_tx           fcb     0
 ch_ty           fcb     0
 ch_h            fcb     0
 ch_w            fcb     0
+ch_fdx          fcb     0
 ch_tmp          fcb     0
 ch_rec          fdb     0
 ch_dest         fdb     0
