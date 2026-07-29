@@ -619,17 +619,25 @@ rnd_seed        fdb     $ACE1           ; 16-bit; any non-zero seed (0 is a fixe
 * in empty sky. Jay's "its blue now instead of red" was describing correct behaviour,
 * and removing the EOR in response made this LESS faithful, not more.
 *
-* Applying EOR at each star's own sub-pixel reproduces all four:
-*     r 98 px 40  white -> BLUE   (confirmed against the oracle)
-*     r101 px 34  blue  -> white
-*     r109 px 36  white -> BLUE
-*     r114 px 39  black -> red    (the one that reads as a classic twinkle)
+* But a UNIFORM single-bit toggle is not the rule -- that was a guess that happened to
+* fit star 0. Measured on the running oracle (oracle_star_colors.lua, f2750-4400, the
+* only nine positions in the window that change at all):
+*
+*     r 98  white -> pale violet     -> blue in our palette
+*     r101  black/blue -> WHITE
+*     r109  white -> magenta / black -> blue
+*     r114  black/blue -> WHITE      <-- NOT red; a 1-bit toggle would have said red
+*
+* The oracle toggles 2-3 adjacent MONO pixels per star, so what a single CoCo pixel
+* becomes is an artifact-colour question and has to be measured per star, not derived.
+* The EOR values below are those measurements, which is why star 3's is $03 (black ->
+* white) rather than the $01 the uniform rule predicted.
 *
 * The interim version -- moved onto black and written rather than toggled -- made all
 * four obvious, which is how the RNG bug was cornered. It was a diagnostic that earned
 * its keep, not a design.
 star_off        fdb     98*80+10,101*80+8,109*80+9,114*80+9
-star_eor        fcb     $40,$04,$40,$01 ; toggle that star's sub-pixel, as TWINKLE does
+star_eor        fcb     $40,$04,$40,$03 ; per-star, MEASURED off the oracle (see above)
 star_cnt        fcb     0,0,0,0         ; frames left lit
 star_bg         fcb     0,0,0,0         ; the room byte under each, saved once
 ps_dur          fcb     0
