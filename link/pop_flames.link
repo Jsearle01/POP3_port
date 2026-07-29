@@ -1,0 +1,21 @@
+; link/pop_flames.link — the torch-flame code bundle (P3.17 phase B).
+;
+; A SEPARATE IMAGE, loaded from a raw track at run time rather than carried inside
+; the program. The reason is the one link/pop_engine.link already documents: a
+; LOADM'd engine must stay under $25FF, because above that is BASIC's program and
+; variable area — DECB's own workspace — and a load that runs through it clobbers
+; the loader. Nine compiled flames are ~3.1 KB, which puts the program at $2C5A and
+; breaks LOADM outright (measured: no "OK" after the command, second segment absent).
+;
+; $0A00 is the intro's asset-bundle region, and it is used the same way here: the
+; room reads one track into it and indexes the pointer tables at the head.
+;
+;   $0A00-$0A35   three 9-entry dispatch tables (draw / save / erase)
+;   $0A36-...     the compiled cels
+;
+; Nothing else may live at $0A00 while the room is running. The intro's bundle uses
+; the same region, but the two programs never run at once.
+
+section prog load 0A00
+
+entry flame_draw

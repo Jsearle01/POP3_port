@@ -92,6 +92,7 @@ probe_status    fcb     0               ; $0203  0=boot 1=mode set 2=room up 3=h
 probe_loads     fcb     0               ; $0204  successful disk reads
 probe_dskerr    fcb     0               ; $0205  WD1773 status of the first failure
 probe_magic     fdb     0               ; $0206  set once the room is on screen
+probe_frames    fcb     0               ; $0208  frames of flicker completed
 
 ROOM_MAGIC      equ     $4B00
 
@@ -128,24 +129,219 @@ room_start
                 jsr     lz_unpack               ; expands down over itself
 
                 jsr     HAL_gfx_swap            ; the room appears, in one frame
+
+* AND AGAIN INTO THE OTHER BUFFER. The flames are drawn per frame and the page is
+* flipped per frame, so BOTH buffers have to hold the room -- otherwise every other
+* frame shows a cleared screen. The oracle avoids this by drawing its flames straight
+* onto the displayed page (`lay`, a direct hires call) and never flipping for them;
+* our HAL maps only the back buffer, so the port flips instead and pays one extra
+* one-track read (~1.3 s, once) to make that legal.
+                ldx     HAL_gfx_draw_base
+                leax    ROOM_LOAD_OFF,x
+                lda     #DISK_ROOM_TRK
+                ldb     #DISK_ROOM_SEC
+                jsr     load_tracks
+                bne     room_failed
+                ldx     HAL_gfx_draw_base
+                leau    ROOM_LOAD_OFF,x
+                jsr     lz_unpack
+
                 lda     #2
                 sta     probe_status
                 ldd     #ROOM_MAGIC
                 std     probe_magic
 
-* Hold. Phase B's torch flicker becomes a per-frame body here; until then the room is
-* simply displayed, which is the whole of what phase A claims.
+* ---------------------------------------------------------------
+* PHASE B — the torch flicker.
+*
+* The room is a still picture; the two torch flames are the only thing that moves,
+* and they move EVERY frame. In the oracle `pburn` is called twice per frame and
+* advances one torch each time, round-robin over a 2-entry table:
+*
+*     ptorchx     db 13,25,-1     ; byte columns, -1 ends the list
+*     ptorchoff   db 0,6          ; SUB-BYTE offsets
+*     ptorchy     db 113,113
+*     ptorchstate db 1,6          ; initial flame frames
+*
+* Pixel X = ptorchx*7 + ptorchoff = 91 and 181, which under the 280->320 centring
+* land at CoCo pixel 111 and 201 -- byte 27.75 and byte 50.25. MEASURED against the
+* running oracle, the flames flicker in columns 27-29 and 50-51 and in rows 104-113,
+* which confirms both the arithmetic and that ptorchy is the BASELINE: a 13-row cel
+* ending at 113 starts at 101.
+*
+* SUB-BYTE IS ROUNDED, DELIBERATELY AND VISIBLY. A compiled sprite is byte-granular
+* by construction, so torch 0 is placed at byte 28 (1 px right of true) and torch 1
+* at byte 50 (1 px right). One pixel each. Doing better means pre-shifted phase
+* variants, which is exactly what the parallel sub-byte recon exists to cost -- this
+* does not pre-empt it.
+* ---------------------------------------------------------------
+                ldx     #FLAME_BASE             ; the flame code, off its own track
+                lda     #DISK_FLAME_TRK
+                ldb     #DISK_FLAME_SEC
+                jsr     load_tracks
+                bne     room_failed
+
 room_hold
                 lda     #3
                 sta     probe_status
 room_loop
+                jsr     flicker
                 jsr     HAL_time_vbl_wait
+                inc     probe_frames
                 bra     room_loop
 
 room_failed
                 lda     dr_status
                 sta     probe_dskerr
-                bra     room_loop
+room_dead
+                jsr     HAL_time_vbl_wait
+                bra     room_dead
+
+* ---------------------------------------------------------------
+* flicker — advance and redraw both torches, once per frame.
+*
+* Unrolled rather than looped over a table. There are exactly two torches, at fixed
+* positions, forever; a loop here buys nothing and costs index arithmetic on every
+* access, which is precisely where a first draft of this went wrong.
+*
+* Per torch the order is ERASE(previous) -> SAVE(new) -> DRAW(new). The save cannot
+* be hoisted out of the loop even though the background never changes, because each
+* cel has its OWN footprint: erase_flameN restores exactly the bytes save_flameN
+* captured, so a save taken for one cel does not serve another.
+* ---------------------------------------------------------------
+flicker
+* slot = buffer parity * 2 + torch. Each of the four slots owns a peel buffer and a
+* "cel last drawn there", because a buffer is redrawn only every other frame and its
+* erase must restore what was saved INTO IT, not into its twin.
+                ldb     fl_buf
+                lslb                            ; slot base for this buffer
+                stb     fl_slot
+
+                ldd     #TORCH0_OFF
+                std     t_off
+                lda     fl_slot
+                jsr     slot_peel
+                std     t_peel
+                lda     fl_slot
+                ldx     #fl_prev
+                lda     a,x
+                sta     t_prev
+                lda     fl_state0
+                jsr     next_flame
+                sta     fl_state0
+                jsr     torch_step
+                ldb     fl_slot
+                ldx     #fl_prev
+                abx
+                sta     ,x
+
+                ldd     #TORCH1_OFF
+                std     t_off
+                lda     fl_slot
+                inca
+                jsr     slot_peel
+                std     t_peel
+                lda     fl_slot
+                inca
+                ldx     #fl_prev
+                lda     a,x
+                sta     t_prev
+                lda     fl_state1
+                jsr     next_flame
+                sta     fl_state1
+                jsr     torch_step
+                ldb     fl_slot
+                incb
+                ldx     #fl_prev
+                abx
+                sta     ,x
+
+                jsr     HAL_gfx_swap            ; show this frame's flames
+                lda     fl_buf
+                eora    #1
+                sta     fl_buf
+                rts
+
+* slot_peel — A = slot 0..3; returns D = that slot's peel buffer address.
+slot_peel
+                ldb     #PEEL_BYTES
+                mul                             ; D = slot * PEEL_BYTES
+                addd    #peel_base
+                rts
+
+* torch_step — A = the new STATE (0..17). Erases whatever is there, then draws the
+* cel this state selects. Returns A = the cel number, for the caller to remember as
+* the next frame's "previous".
+torch_step
+                pshs    a
+                ldy     #ptorchflame
+                lda     a,y                     ; state -> cel number 1..9
+                sta     t_cel
+                puls    a
+
+                lda     t_prev                  ; erase what the last frame drew
+                beq     ts_nosave               ; 0 = nothing drawn yet
+                ldx     #erase_tab      ; a disk-resident table
+                jsr     torch_call
+ts_nosave
+                lda     t_cel
+                sta     t_prev
+                ldx     #save_tab               ; capture the background this cel covers
+                jsr     torch_call
+                ldx     #draw_tab
+                jsr     torch_call
+                lda     t_cel
+                rts
+
+* torch_call — X = one of the three dispatch tables; t_cel selects the entry.
+* The compiled routines take U = the cel origin in the framebuffer and Y = the peel
+* cursor, so placing a sprite is setting U. [harness/tools/sprite_compiler.py]
+torch_call
+                pshs    x
+                ldd     HAL_gfx_draw_base
+                addd    t_off
+                tfr     d,u                     ; U -> the cel origin
+                ldy     t_peel                  ; Y -> this torch's peel slot
+                puls    x
+                lda     t_cel
+                deca                            ; cels are 1..9; the tables are 0-based
+                lsla                            ; two bytes per entry
+                ldx     a,x
+                jmp     ,x                      ; tail-call; the cel routine rts's
+
+* ---------------------------------------------------------------
+* next_flame — the oracle's GETFLAMEFRAME, ported. [MOVER.S:1084]
+* A = current state; returns the next. A random draw below torchLast+1 JUMPS to that
+* state (18 of 256 draws); otherwise it steps by one and wraps. So the flicker is
+* mostly the designed 18-entry pattern with occasional jumps -- which is what makes
+* it read as fire rather than as noise.
+* ---------------------------------------------------------------
+next_flame
+                sta     fl_tmp
+                jsr     rnd
+                cmpa    fl_tmp
+                beq     nf_step
+                cmpa    #TORCHLAST+1
+                blo     nf_done                 ; use the random state directly
+                lda     fl_tmp
+nf_step
+                inca
+                cmpa    #TORCHLAST+1
+                blo     nf_done
+                clra                            ; wrap
+nf_done
+                rts
+
+* rnd — 8-bit xorshift. The oracle has its own generator and nothing here depends on
+* matching its sequence, only on the jump happening at about the same RATE.
+rnd
+                lda     rnd_seed
+                lsla
+                bcc     rnd_no
+                eora    #$1D
+rnd_no
+                sta     rnd_seed
+                rts
 
 * ---------------------------------------------------------------
 * load_tracks — A = first track, B = sector count, X = destination.
@@ -176,3 +372,53 @@ lt_done
                 rts
 
 lt_err          fcb     0
+
+* ---------------------------------------------------------------
+* Torch data and state
+* ---------------------------------------------------------------
+TORCHLAST       equ     17              ; states 0..17 [MOVEDATA.S:42 torchLast]
+FB_STRIDE_4C    equ     80              ; 320 px at 4 px/byte
+FLAME_TOP       equ     101             ; ptorchy 113 is the BASELINE; 13 rows up
+TORCH0_COL      equ     28              ; true px 111 -> byte 27.75, rounded
+TORCH1_COL      equ     50              ; true px 201 -> byte 50.25, rounded
+TORCH0_OFF      equ     FLAME_TOP*FB_STRIDE_4C+TORCH0_COL
+TORCH1_OFF      equ     FLAME_TOP*FB_STRIDE_4C+TORCH1_COL
+PEEL_BYTES      equ     26              ; 13 rows x 2 bytes — one cel's footprint
+
+* The flames are a DISK-RESIDENT code bundle, not part of this program. A LOADM'd
+* engine has to stay under $25FF -- above it is BASIC's program/variable area, which
+* is DECB's own workspace -- and nine compiled cels put the image at $2C5A, at which
+* point LOADM never returns. Measured: the text screen showed the command with no
+* "OK", first segment in memory, second absent. So the flames go on a raw track and
+* are read at run time, exactly as the intro reads every screen it shows.
+* [src/engine/flame_cels.s, link/pop_flames.link]
+FLAME_BASE      equ     $0A00
+draw_tab        equ     FLAME_BASE+0
+save_tab        equ     FLAME_BASE+18
+erase_tab       equ     FLAME_BASE+36
+DISK_FLAME_TRK  equ     30
+DISK_FLAME_SEC  equ     1*SECS_PER_TRACK
+
+* The oracle's flame pattern, verbatim. 18 states over 9 cels; the repeats and the
+* out-of-order tail are what give the flicker its rhythm. [GAMEBG.S:150 ptorchflame]
+ptorchflame     fcb     1,2,3,4,5,6,7,8,9,3,5,7,1,4,9,2,8,6
+
+* Initial states are the oracle's too [SUBS.S:309 ptorchstate db 1,6] — the two
+* torches start out of phase, which is why they never flicker in lockstep.
+fl_state0       fcb     1
+fl_state1       fcb     6
+fl_buf          fcb     0               ; which buffer this frame draws into
+fl_slot         fcb     0
+fl_prev         fcb     0,0,0,0         ; cel last drawn, per (buffer, torch) slot
+fl_tmp          fcb     0
+rnd_seed        fcb     $A5             ; any non-zero seed; the shift register dies at 0
+
+t_off           fdb     0               ; the torch being stepped: framebuffer offset,
+t_peel          fdb     0               ;   peel slot,
+t_cel           fcb     0               ;   cel to draw,
+t_prev          fcb     0               ;   cel to erase
+
+peel_base       rmb     PEEL_BYTES*4    ; one per (buffer, torch) slot
+
+
+

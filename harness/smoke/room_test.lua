@@ -19,6 +19,7 @@ local BLOCK_A = tonumber(os.getenv("P_BLK_A") or "0x10")
 local BLOCK_B = tonumber(os.getenv("P_BLK_B") or "0x14")
 local OUT     = os.getenv("P_OUT") or "build/room_test.log"
 local DUMP    = os.getenv("P_DUMP") or "build/room_front.bin"
+local DUMP2   = os.getenv("P_DUMP2") or "build/room_front2.bin"
 local CURMODE = tonumber(os.getenv("P_CURMODE") or "0x7AFE")
 
 local FB_BASE, FB_SIZE = 0x8000, 15360
@@ -45,7 +46,7 @@ local function map_blocks(first)
     for i = 0, 3 do mem:write_u8(0xFFA4 + i, first + i) end
 end
 
-local function dump_front()
+local function dump_front(path)
     local back = rd8(CUR_BACK)
     local back_blk  = (back == 0) and BLOCK_A or BLOCK_B
     local front_blk = (back == 0) and BLOCK_B or BLOCK_A
@@ -53,14 +54,14 @@ local function dump_front()
     local t = {}
     for i = 0, FB_SIZE - 1 do t[#t + 1] = string.char(rd8(FB_BASE + i)) end
     map_blocks(back_blk)
-    local o = io.open(DUMP, "wb")
+    local o = io.open(path, "wb")
     if not o then return false end
     o:write(table.concat(t)); o:close()
-    log(string.format("# displayed buffer %s -> %s", (back == 0) and "B" or "A", DUMP))
+    log(string.format("# displayed buffer %s -> %s", (back == 0) and "B" or "A", path))
     return true
 end
 
-local state, t0, started = "boot", nil, nil
+local state, t0, started, shot1, loaded = "boot", nil, nil, nil, nil
 
 local function finish(reason)
     log(string.format("# checks=%d passed=%d failed=%d", #checks, #checks - failed, failed))
@@ -80,28 +81,94 @@ local function tick()
         return
     end
     if state == "loadm" then
-        if fn > t0 + 500 then
+        -- OBSERVE THE LOAD, THEN SETTLE. A fixed delay is a bet on how long DECB
+        -- takes, and phase B lost that bet: ROOM.BIN grew from 1,239 to 4,369 bytes
+        -- when the compiled flames landed in it, the load ran past the old 500-frame
+        -- delay, and EXEC was posted while DECB was still busy — P3.6's bug exactly,
+        -- which presents as the program simply never running. $2000 holds
+        -- `jmp room_start` once the image is placed, so the load is observable.
+        -- ...but $2000 holding the jmp only means DECB wrote the FIRST byte, and
+        -- ROOM.BIN is 4.4 KB now, so the load runs on well past that. Detecting it
+        -- and settling 90 frames posted EXEC EARLIER than the old blind delay did,
+        -- and the keystroke was swallowed mid-load. Jay saw it from the outside:
+        -- "all i see is the load command and then it closes" — EXEC never typed.
+        --
+        -- This test runs under -nothrottle, so waiting costs nothing: wait out any
+        -- plausible load, then post. (The LIVE runner cannot afford this and needs a
+        -- real completion signal instead.)
+        if loaded == nil and rd8(0x2000) == 0x7E then
+            loaded = fn
+            log("# LOADM first byte landed at frame " .. fn)
+        end
+        if fn > t0 + 900 then
+            -- Is the image still intact at the moment we hand over? This separates
+            -- "the program was clobbered" from "EXEC never reached BASIC" — two very
+            -- different bugs that present identically as "nothing happened".
+            log(string.format("# at EXEC: $2000=%02X %02X %02X, $7900=%02X, text row0=%s",
+                              rd8(0x2000), rd8(0x2001), rd8(0x2002), rd8(0x7900),
+                              (function()
+                                  local s = ""
+                                  for i = 0, 31 do
+                                      local c = rd8(0x0400 + i) & 0x7F
+                                      s = s .. ((c >= 32 and c < 127) and string.char(c) or ".")
+                                  end
+                                  return s
+                              end)()))
             nk:post('EXEC\n')
+            log("# posted EXEC at frame " .. fn)
             state, started = "running", fn
         end
         return
     end
-    -- running
+    -- running / second
     local magic = rd8(ENGINE + 6) * 256 + rd8(ENGINE + 7)
+    if state == "second" then
+        -- FOUR FRAMES LATER. One capture proves a picture; two prove MOTION, and
+        -- motion is the whole of phase B's claim. A still picture passes every other
+        -- check in this file and cannot pass the pair.
+        if fn >= shot1 + 4 then
+            check("second_capture", dump_front(DUMP2),
+                  string.format("frames %d and %d", shot1, fn))
+            check("flicker_running", rd8(ENGINE + 8) > 0,
+                  string.format("probe_frames=%d", rd8(ENGINE + 8)))
+            finish("room displayed, two captures")
+        end
+        return
+    end
+    if magic == ROOM_MAGIC and rd8(ENGINE + 8) == 0 then
+        return          -- room is up, but the flame bundle is still loading
+    end
     if magic == ROOM_MAGIC then
         check("room_reached_screen", true,
               string.format("magic $%04X at frame %d", magic, fn))
-        check("disk_read_ok", rd8(ENGINE + 4) == 1,
-              string.format("loads=%d, WD1773 status $%02X",
+        -- THREE reads: the room twice (the flames flip the page every frame, so both
+        -- buffers must hold it) and the flame code bundle once. Waiting for
+        -- probe_frames to move is what makes this check meaningful — the bundle read
+        -- is a whole track, ~78 frames, and sampling before it finishes reports a
+        -- count that is merely early rather than wrong.
+        check("disk_reads_ok", rd8(ENGINE + 4) == 3,
+              string.format("loads=%d (want 3: room x2 + flame bundle), status $%02X",
                             rd8(ENGINE + 4), rd8(ENGINE + 5)))
         -- The GIME's VRES register is write-only: reading $FF99 returns bus noise,
         -- not what was written ($1B came back for a register set to $15). Check the
         -- HAL's own record of the active mode instead — real state, and readable.
         check("mode_is_4_colour", rd8(CURMODE) == 0,
               string.format("HAL_gfx_cur_mode=%d (want 0 = 320x192x4)", rd8(CURMODE)))
-        check("front_buffer_dumped", dump_front(), "")
-        finish("room displayed")
+        check("front_buffer_dumped", dump_front(DUMP), "")
+        shot1 = fn
+        state = "second"
     elseif fn > started + 1800 then
+        -- What is BASIC actually showing? Jay watching from outside said the load
+        -- command appears and nothing follows, which is worth confirming from the
+        -- text screen rather than inferring from silence.
+        for row = 0, 15 do
+            local s = ""
+            for i = 0, 31 do
+                local c = rd8(0x0400 + row * 32 + i) & 0x7F
+                s = s .. ((c >= 32 and c < 127) and string.char(c) or ".")
+            end
+            if s:gsub("%.", "") ~= "" then log(string.format("# text %2d |%s|", row, s)) end
+        end
         check("room_reached_screen", false,
               string.format("magic $%04X, status %d, loads %d, dskerr $%02X after 30 s",
                             magic, rd8(ENGINE + 3), rd8(ENGINE + 4), rd8(ENGINE + 5)))

@@ -34,7 +34,7 @@ GOT="build/room_front.bin"
 [ -f "$MAP" ] || { echo "[run_room_test] missing $MAP — run build.bat first"; exit 1; }
 [ -f "$SRC_DSK" ] || { echo "[run_room_test] missing $SRC_DSK — run build.bat first"; exit 1; }
 cp -f "$SRC_DSK" "$DSK" || exit 1
-rm -f "$LOG" "$PASS" "$FAIL" "$GOT"
+rm -f "$LOG" "$PASS" "$FAIL" "$GOT" build/room_front2.bin
 
 export P_ENGINE="0x$(grep -E "^Symbol: room_entry " "$MAP" | sed -E "s/.*= *//")"
 export P_CURBACK="0x$(grep -E "^Symbol: HAL_gfx_cur_back " "$MAP" | sed -E "s/.*= *//")"
@@ -50,6 +50,7 @@ export P_BLK_B=$(printf '0x%02X' $(( 0x$BLK_B - 0x$CODEBASE )))
 export P_CURMODE="0x$(grep -E "^Symbol: HAL_gfx_cur_mode " "$MAP" | sed -E 's/.*= *//')"
 export P_OUT="$LOG"
 export P_DUMP="$GOT"
+export P_DUMP2="build/room_front2.bin"
 
 RAMOPT=""
 [ -n "${MAME_RAM:-}" ] && RAMOPT="-ramsize $MAME_RAM"
@@ -78,24 +79,9 @@ if [ ! -f "$PASS" ]; then
     exit 1
 fi
 
-# THE CHECK THAT MATTERS: the displayed buffer IS the converted room, byte for byte.
-python - "$WANT" "$GOT" <<'PY'
-import pathlib, sys
-want = pathlib.Path(sys.argv[1]).read_bytes()
-got  = pathlib.Path(sys.argv[2]).read_bytes()
-if len(got) != len(want):
-    print("  FAIL room framebuffer: %d bytes, expected %d" % (len(got), len(want)))
-    sys.exit(1)
-bad = [i for i, (a, b) in enumerate(zip(got, want)) if a != b]
-if not bad:
-    print("  PASS displayed buffer == converted princess room: %d bytes byte-identical"
-          % len(got))
-    sys.exit(0)
-i = bad[0]
-print("  FAIL room framebuffer: %d bytes differ; first at row %d col %d (got $%02X want $%02X)"
-      % (len(bad), i // 80, i % 80, got[i], want[i]))
-sys.exit(1)
-PY
+# THE CHECKS THAT MATTER, and phase B needs TWO captures: a still picture passes
+# every in-emulator check above, so stillness has to be refuted explicitly.
+python harness/tools/verify_room_flicker.py --room "$WANT" --first "$GOT" --second "build/room_front2.bin"
 rc=$?
 echo "[run_room_test] --------------------------------"
 [ $rc -eq 0 ] && echo "[run_room_test] PASS" || echo "[run_room_test] FAIL (asset comparison)"
