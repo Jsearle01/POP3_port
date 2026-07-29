@@ -512,13 +512,33 @@ nf_done
 
 * rnd — 8-bit xorshift. The oracle has its own generator and nothing here depends on
 * matching its sequence, only on the jump happening at about the same RATE.
+* AN 8-BIT LFSR IS NOT ENOUGH STATE HERE, and the failure was total rather than
+* subtle: pstars draws THREE times per decision (gate, duration, which star), and in
+* an 8-bit LFSR consecutive outputs share bits by construction -- bit0 of one output
+* is bit7 of the previous, bit1 is bit0. After the `< 10` gate both are always zero,
+* so `anda #3` returned 0 EVERY TIME and star 0 was the only one ever lit. Simulated
+* over 20,000 engine frames: 496 lightings, 100% star 0, the other three never.
+*
+* That is exactly what Jay saw -- "the top most star is working, the three below are
+* not" -- and why holding them all lit made all four appear: the DRAW was always
+* correct, the SELECTION was not.
+*
+* Widening to 16 bits is not by itself the fix; a Galois-16 read from its low byte is
+* just as skewed (star 3 never chosen). Taking the HIGH byte decorrelates the
+* successive draws:
+*      low byte  0:13.0% 1:53.2% 2:33.8% 3: 0.0%
+*      HIGH byte 0:23.7% 1:26.8% 2:23.5% 3:25.9%
+* Cost is a shift pair and a conditional EOR -- cheaper than the multiply an LCG of
+* comparable quality would need.
 rnd
-                lda     rnd_seed
-                lsla
+                lsr     rnd_seed                ; 16-bit shift right; carry = old bit 0
+                ror     rnd_seed+1
                 bcc     rnd_no
-                eora    #$1D
-rnd_no
+                lda     rnd_seed
+                eora    #$B4                    ; x^16+x^14+x^13+x^11+1
                 sta     rnd_seed
+rnd_no
+                lda     rnd_seed                ; the HIGH byte is the output
                 rts
 
 * ---------------------------------------------------------------
@@ -589,7 +609,7 @@ fl_buf          fcb     0               ; which buffer this frame draws into
 fl_slot         fcb     0
 fl_prev         fcb     0,0,0,0         ; cel last drawn, per (buffer, torch) slot
 fl_tmp          fcb     0
-rnd_seed        fcb     $A5             ; any non-zero seed; the shift register dies at 0
+rnd_seed        fdb     $ACE1           ; 16-bit; any non-zero seed (0 is a fixed point)
 
 * The stars. starx=2 is an Apple BYTE column, so mono px 14 -> CoCo px 34; cel $2A
 * trims one leading byte and $2B does not, which puts them at framebuffer bytes 9 and
