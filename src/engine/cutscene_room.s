@@ -211,7 +211,29 @@ room_dead
 * cel has its OWN footprint: erase_flameN restores exactly the bytes save_flameN
 * captured, so a save taken for one cel does not serve another.
 * ---------------------------------------------------------------
+* ---------------------------------------------------------------
+* THE RATE. Measured on the running oracle, its flames change every 2-3 video frames
+* under SPEED 7 and every 6 under SPEED 12 -- mean 2.6 frames, 22.8 Hz. The port
+* redraws every frame, which is 60 Hz and 2-6x too fast; Jay saw it immediately.
+*
+* `play` is the reason: its loop is `pause SPEED` then NextFrame/FrameAdv, so ONE
+* engine frame spans many video frames and everything the engine animates -- flames,
+* stars, characters -- steps at that rate, not at the display's.
+*
+* So the STATE advances once every FLAME_DIV frames while the DRAW still happens every
+* frame. Those have to stay separate: the page flips every frame, so a buffer that is
+* not redrawn shows a stale flame. Skipping the draw would flicker between two states
+* at 30 Hz, which is the opposite of the fix.
+* ---------------------------------------------------------------
+FLAME_DIV       equ     3               ; ~20 Hz, the oracle's SPEED-7 cadence
+
 flicker
+                dec     fl_div
+                bne     fl_nostep
+                lda     #FLAME_DIV
+                sta     fl_div
+                inc     fl_step         ; this frame advances the state
+fl_nostep
 * slot = buffer parity * 2 + torch. Each of the four slots owns a peel buffer and a
 * "cel last drawn there", because a buffer is redrawn only every other frame and its
 * erase must restore what was saved INTO IT, not into its twin.
@@ -229,8 +251,11 @@ flicker
                 lda     a,x
                 sta     t_prev
                 lda     fl_state0
+                tst     fl_step
+                beq     fl_keep0
                 jsr     next_flame
                 sta     fl_state0
+fl_keep0
                 jsr     torch_step
                 ldb     fl_slot
                 ldx     #fl_prev
@@ -249,8 +274,11 @@ flicker
                 lda     a,x
                 sta     t_prev
                 lda     fl_state1
+                tst     fl_step
+                beq     fl_keep1
                 jsr     next_flame
                 sta     fl_state1
+fl_keep1
                 jsr     torch_step
                 ldb     fl_slot
                 incb
@@ -259,6 +287,7 @@ flicker
                 sta     ,x
 
                 jsr     pstars                  ; and the window
+                clr     fl_step
                 jsr     HAL_gfx_swap            ; show this frame's flames
                 lda     fl_buf
                 eora    #1
@@ -352,6 +381,10 @@ ps_sloop
                 rts
 
 pstars
+                tst     fl_step                 ; engine-paced, like the flames
+                bne     ps_run
+                jmp     ps_draw                 ; redraw, but do not age or light
+ps_run
                 ldx     #0
 ps_age
                 lda     star_cnt,x              ; age the lit ones
@@ -515,6 +548,8 @@ star_cnt        fcb     0,0,0,0         ; frames left lit
 star_bg         fcb     0,0,0,0         ; the room byte under each, saved once
 ps_dur          fcb     0
 ps_val          fcb     0
+fl_div          fcb     FLAME_DIV
+fl_step         fcb     0
 
 t_off           fdb     0               ; the torch being stepped: framebuffer offset,
 t_peel          fdb     0               ;   peel slot,
