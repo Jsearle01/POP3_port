@@ -175,6 +175,8 @@ room_start
 * variants, which is exactly what the parallel sub-byte recon exists to cost -- this
 * does not pre-empt it.
 * ---------------------------------------------------------------
+                jsr     ps_savebg               ; the room under each star, once
+
                 ldx     #FLAME_BASE             ; the flame code, off its own track
                 lda     #DISK_FLAME_TRK
                 ldb     #DISK_FLAME_SEC
@@ -256,6 +258,7 @@ flicker
                 abx
                 sta     ,x
 
+                jsr     pstars                  ; and the window
                 jsr     HAL_gfx_swap            ; show this frame's flames
                 lda     fl_buf
                 eora    #1
@@ -308,6 +311,97 @@ torch_call
                 lsla                            ; two bytes per entry
                 ldx     a,x
                 jmp     ,x                      ; tail-call; the cel routine rts's
+
+* ---------------------------------------------------------------
+* pstars — the four stars outside the princess's window. [SUBS.S:360 pstars]
+*
+* Each frame: count down any lit star and put it out when it expires, then roughly
+* one frame in 25 light a RANDOM star for 5-8 frames. So the window is mostly dark
+* with occasional single points -- the oracle's own rates, ported.
+*
+* NOT compiled sprites, and deliberately. A star is ONE PIXEL: cels $2A/$2B convert
+* to a single byte $10, one pixel of colour 1. A compiled sprite would be three
+* generated routines and a dispatch to write one byte. The flames earn that machinery
+* (13 rows, 9 cels, mixed RMW throughout); a star does not.
+*
+* The background under each star never changes, so it is saved ONCE and the star is
+* just a masked write over it -- which also makes "erase" exact by construction.
+* Both buffers converge because every frame redraws all four into the back buffer.
+* ---------------------------------------------------------------
+STAR_MASK       equ     $CF             ; clear sub-pixel 1 (bits 5-4)
+STAR_LIT        equ     $10             ; ...and set it to colour 1
+
+* ps_savebg — capture the room byte under each star. Called once, after the room is
+* up and before any star is drawn, so "erase" is exact rather than approximate.
+ps_savebg
+                ldx     #0
+ps_sloop
+                pshs    x
+                tfr     x,d
+                lslb
+                ldy     #star_off
+                ldd     b,y
+                addd    HAL_gfx_draw_base
+                tfr     d,y
+                lda     ,y
+                puls    x
+                sta     star_bg,x
+                leax    1,x
+                cmpx    #4
+                blo     ps_sloop
+                rts
+
+pstars
+                ldx     #0
+ps_age
+                lda     star_cnt,x              ; age the lit ones
+                beq     ps_agenext
+                deca
+                sta     star_cnt,x
+ps_agenext
+                leax    1,x
+                cmpx    #4
+                blo     ps_age
+
+                jsr     rnd                     ; a new twinkle? ~1 frame in 25
+                cmpa    #10
+                bhs     ps_draw
+                jsr     rnd
+                anda    #3
+                adda    #5                      ; lit for 5..8 frames
+                sta     ps_dur
+                jsr     rnd
+                anda    #3                      ; which of the four
+                tfr     a,b
+                ldx     #star_cnt
+                abx
+                lda     ps_dur
+                sta     ,x
+
+ps_draw
+                ldx     #0
+ps_dloop
+                lda     star_bg,x               ; the room, under this star
+                ldb     star_cnt,x
+                beq     ps_dark
+                anda    #STAR_MASK              ; lit: overwrite the one pixel
+                ora     #STAR_LIT
+ps_dark
+                sta     ps_val
+                pshs    x
+                tfr     x,d                     ; B = star index 0..3
+                lslb                            ; the offset table is 16-bit
+                ldy     #star_off
+                ldd     b,y
+                addd    HAL_gfx_draw_base
+                tfr     d,y                     ; Y -> this star's byte
+                lda     ps_val
+                sta     ,y
+                puls    x
+                leax    1,x
+                cmpx    #4
+                blo     ps_dloop
+                rts
 
 * ---------------------------------------------------------------
 * next_flame — the oracle's GETFLAMEFRAME, ported. [MOVER.S:1084]
@@ -412,6 +506,15 @@ fl_slot         fcb     0
 fl_prev         fcb     0,0,0,0         ; cel last drawn, per (buffer, torch) slot
 fl_tmp          fcb     0
 rnd_seed        fcb     $A5             ; any non-zero seed; the shift register dies at 0
+
+* The stars. starx=2 is an Apple BYTE column, so mono px 14 -> CoCo px 34; cel $2A
+* trims one leading byte and $2B does not, which puts them at framebuffer bytes 9 and
+* 8. stari 2a,2b,2b,2a and stary $62,$65,$6D,$72. [GAMEBG.S:113-115]
+star_off        fdb     98*80+9,101*80+8,109*80+8,114*80+9
+star_cnt        fcb     0,0,0,0         ; frames left lit
+star_bg         fcb     0,0,0,0         ; the room byte under each, saved once
+ps_dur          fcb     0
+ps_val          fcb     0
 
 t_off           fdb     0               ; the torch being stepped: framebuffer offset,
 t_peel          fdb     0               ;   peel slot,

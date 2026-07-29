@@ -62,6 +62,9 @@ local function dump_front(path)
 end
 
 local state, t0, started, shot1, loaded = "boot", nil, nil, nil, nil
+-- star_off from the engine: rows 98/101/109/114 at bytes 9/8/8/9, stride 80
+local STAR_OFF = { 98*80+9, 101*80+8, 109*80+8, 114*80+9 }
+local star_watch, star_seen, star_prev, star_checked = nil, 0, nil, false
 
 local function finish(reason)
     log(string.format("# checks=%d passed=%d failed=%d", #checks, #checks - failed, failed))
@@ -137,6 +140,27 @@ local function tick()
     end
     if magic == ROOM_MAGIC and rd8(ENGINE + 8) == 0 then
         return          -- room is up, but the flame bundle is still loading
+    end
+
+    -- THE STARS. They light roughly one frame in 25 and burn 5-8 frames, so two
+    -- captures four frames apart will usually miss them entirely — which is exactly
+    -- why the flicker checks below say nothing about them. Watch instead: the back
+    -- buffer is mapped at $8000, and pstars redraws all four into it every frame.
+    if star_watch == nil then star_watch, star_seen, star_prev = fn, 0, {} end
+    if fn < star_watch + 240 then
+        for i, off in ipairs(STAR_OFF) do
+            local v = rd8(0x8000 + off)
+            if star_prev[i] ~= nil and star_prev[i] ~= v then
+                star_seen = star_seen + 1
+            end
+            star_prev[i] = v
+        end
+        return
+    end
+    if not star_checked then
+        star_checked = true
+        check("stars_twinkle", star_seen > 0,
+              string.format("%d changes across 4 stars in 240 frames", star_seen))
     end
     if magic == ROOM_MAGIC then
         check("room_reached_screen", true,
