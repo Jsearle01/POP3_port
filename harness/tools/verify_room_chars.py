@@ -34,8 +34,14 @@ SP318 = pathlib.Path("C:/Users/jayse/AppData/Local/Temp/claude/"
 # 231 wrong bytes. room_test.lua records each capture's actual x/y out of the slot
 # records and this reads them back. A pixel check that assumes a position cannot
 # distinguish "drew in the wrong place" from "moved, as designed".
-CELS = {"vstand": (SP318 / "chtab6_a_080.s", 1),
-        "pstand": (SP318 / "chtab6_a_025.s", 0)}
+# The converted sources IN THE REPO, not the P3.18 scratch dump. The scratch copies
+# were converted at start_col=0, which is the wrong Apple screen-column PARITY for
+# where these characters actually stand — Jay saw it as orange and blue swapped.
+# Verifying against them would have confirmed the bug instead of catching it, which is
+# the whole hazard of a checker sharing its input with the thing it checks.
+#   vizier   start_col 197 (ODD)   princess start_col 120 (EVEN)   both Fdx=0
+CELS = {"vstand": (ROOT / "content/cutscene/chars/vstand_src.s", 1),
+        "pstand": (ROOT / "content/cutscene/chars/pstand_src.s", 0)}
 POSFILE = ROOT / "build/room_chars_pos.txt"
 FLOOR_H = {"vstand": 48, "pstand": 43}
 
