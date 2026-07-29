@@ -81,6 +81,7 @@
         export  HAL_gfx_cur_words
         export  HAL_gfx_cur_palcnt
         export  HAL_gfx_swap
+        export  HAL_gfx_mirror
         export  HAL_gfx_draw_base
         export  HAL_gfx_cur_back
         export  HAL_gfx_swaps
@@ -572,6 +573,130 @@ gfx_sw_map:
 gfx_sw_done:
         puls    u,y
         andcc   #$FE                    ; CC.C clear = success
+        rts
+
+* ===============================================================
+* HAL_gfx_mirror — make the FRONT buffer identical to the BACK one.
+*
+* WHY THIS EXISTS (POP P3.17). A page-flipping caller that draws a small animation
+* over a STILL background needs that background in both buffers, and the obvious way
+* to get it there is to produce it twice. The cutscene room did exactly that and Jay
+* saw the cost: the room was swapped into view as soon as it existed, and the second
+* copy was then built while the finished picture sat on screen -- first as a second
+* disk read (~2 s), then, once that was removed, as a second LZ expand (15 frames,
+* 0.25 s). Both are the same shape of bug: work done AFTER the reveal that the viewer
+* has to wait through.
+*
+* Copying is strictly cheaper than reproducing, and doing it BEFORE the first swap
+* costs the viewer nothing at all, because the screen is still black. The caller
+* builds its picture once, calls this, and swaps -- and both buffers are ready at the
+* instant anything becomes visible.
+*
+* HOW BOTH BUFFERS ARE MAPPED AT ONCE. Normally they cannot be: the window is 32 KB
+* and gfx_map_blocks fills all four blocks with ONE buffer, which is what keeps a
+* caller from ever writing to the displayed page by accident. But a 4-colour
+* framebuffer is 15,360 B -- under half the window -- so the two fit side by side:
+* back at $8000, front at $C000. That is a property of the MODE, not of the HAL, so
+* this routine CHECKS it rather than assuming it, and refuses in 16-colour where a
+* 30,720 B framebuffer needs all four blocks to itself.
+*
+* The destination top is $C000+15,360 = $FC00, which stays below the $FE00 constant-
+* RAM boundary. 16-colour would need $10000 and is exactly what the guard rejects.
+*
+* Entry: nothing. Exit: CC.C clear = mirrored, CC.C set = refused (mode too large).
+* Clobbers: A, B, X, and restores the normal single-buffer mapping either way.
+* ===============================================================
+GFX_MIRROR_MAX  equ     8192            ; framebuffer WORDS that fit in half a window
+
+HAL_gfx_mirror:
+        pshs    u,y
+
+        ldd     HAL_gfx_cur_words
+        cmpd    #GFX_MIRROR_MAX
+        bhi     gfx_mir_refuse          ; 16-colour: no room for two at once
+        tstb
+        bne     gfx_mir_ok
+        tsta
+        beq     gfx_mir_refuse          ; zero-size: nothing sane to copy
+gfx_mir_ok:
+        pshs    b,a                     ; keep the word count
+
+* --- map BACK low and FRONT high, as one critical section --------
+* Same hazard gfx_map_blocks documents: between the first MMU write and the last,
+* the window is half one thing and half another. Nothing may run in that gap.
+        pshs    cc
+        orcc    #$50
+        lda     HAL_gfx_cur_back
+        bne     gfx_mir_back_b
+        lda     #GFX_DB_A_BLOCK         ; back = A low, front = B high
+        ldb     #GFX_DB_B_BLOCK
+        bra     gfx_mir_setmmu
+gfx_mir_back_b:
+        lda     #GFX_DB_B_BLOCK         ; back = B low, front = A high
+        ldb     #GFX_DB_A_BLOCK
+gfx_mir_setmmu:
+        sta     GFX_DB_MMU              ; $FFA4 -> $8000, back buffer
+        inca
+        sta     GFX_DB_MMU+1            ; $FFA5 -> $A000
+        stb     GFX_DB_MMU+2            ; $FFA6 -> $C000, front buffer
+        incb
+        stb     GFX_DB_MMU+3            ; $FFA7 -> $E000
+        puls    cc
+
+* --- the copy, 16 bytes per pass --------------------------------
+* Unrolled eight ways because the loop overhead is otherwise a third of the cost.
+* The count is in WORDS, so eight `ldd`s consume eight of them per pass; the
+* framebuffer word counts are all multiples of eight (7,680 for 4-colour), which the
+* mode table guarantees and the guard above keeps true.
+        ldx     #GFX_DB_WINDOW          ; $8000, the back buffer
+        ldu     #GFX_DB_WINDOW+$4000    ; $C000, the front buffer
+        ldd     ,s                      ; word count
+        lsra
+        rorb
+        lsra
+        rorb
+        lsra
+        rorb                            ; /8 = passes
+        std     ,s
+gfx_mir_loop:
+        ldd     ,x++
+        std     ,u++
+        ldd     ,x++
+        std     ,u++
+        ldd     ,x++
+        std     ,u++
+        ldd     ,x++
+        std     ,u++
+        ldd     ,x++
+        std     ,u++
+        ldd     ,x++
+        std     ,u++
+        ldd     ,x++
+        std     ,u++
+        ldd     ,x++
+        std     ,u++
+        ldd     ,s
+        subd    #1
+        std     ,s
+        bne     gfx_mir_loop
+        leas    2,s                     ; drop the count
+
+* --- put the normal single-buffer mapping back ------------------
+        lda     HAL_gfx_cur_back
+        bne     gfx_mir_remap_b
+        lda     #GFX_DB_A_BLOCK
+        bra     gfx_mir_remap
+gfx_mir_remap_b:
+        lda     #GFX_DB_B_BLOCK
+gfx_mir_remap:
+        jsr     gfx_map_blocks
+        puls    u,y
+        andcc   #$FE                    ; CC.C clear = mirrored
+        rts
+
+gfx_mir_refuse:
+        puls    u,y
+        orcc    #$01                    ; CC.C set = caller must fill it itself
         rts
 
 * ---------------------------------------------------------------

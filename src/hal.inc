@@ -413,6 +413,30 @@ GFX_MODE_320x192x16 equ 1        ; $FF99=$1E, 160 B/row, 30,720 B, 16 palette re
         import  HAL_gfx_swap
         endc
 
+; HAL_gfx_mirror                                    [POP P3.17 — kernel service]
+;   Make the FRONT buffer identical to the BACK one, so a caller that draws a
+;   small animation over a STILL background does not have to PRODUCE that
+;   background twice. Building it twice is the obvious way and it is the slow
+;   one: the second copy is made after the first swap, which means the viewer
+;   waits through it with the finished picture already on screen.
+;
+;   Call it BEFORE the first swap. The screen is still black then, so the copy
+;   costs the viewer nothing and both buffers are ready the instant anything
+;   becomes visible.
+;
+;   ONLY LEGAL WHERE A FRAMEBUFFER FITS IN HALF THE WINDOW. Mapping both buffers
+;   at once is what makes a copy possible at all, and 16-colour's 30,720 B needs
+;   all four blocks to itself. The routine CHECKS this rather than trusting the
+;   caller and refuses rather than corrupting.
+;
+;   Entry: nothing.  Exit: CC.C clear = mirrored, CC.C set = refused.
+;   Callers that can run in either mode must handle the refusal — filling the
+;   second buffer the slow way is the correct fallback, not an error path.
+;   Clobbers: A, B, X. Restores the normal single-buffer mapping either way.
+        ifdef   OBJTARGET
+        import  HAL_gfx_mirror
+        endc
+
 ; HAL_gfx_draw_base / HAL_gfx_cur_back / HAL_gfx_swaps(_hi)   [P2.6]
 ;   HAL_gfx_draw_base  2 B  CPU address of the BACK buffer. DRAW HERE, and
 ;                           nowhere else. The physical buffer addresses are

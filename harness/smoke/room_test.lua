@@ -24,9 +24,12 @@ local CURMODE = tonumber(os.getenv("P_CURMODE") or "0x7AFE")
 
 local FB_BASE, FB_SIZE = 0x8000, 15360
 local ROOM_MAGIC = 0x4B00
--- HAL_gfx_swaps, the HAL's own count of flips performed (gfx.s). Real label, not an
--- `equ`, so the linker map address is the address -- no section-base correction.
-local SWAPS = tonumber(os.getenv("P_SWAPS") or "0x7B08")
+-- HAL_gfx_swaps, the HAL's own count of flips performed (gfx.s). The runner derives
+-- this from the link map like every other HAL address here, and the default below is
+-- only a standalone convenience: adding HAL_gfx_mirror moved all three HAL data
+-- symbols by $89 at once, and a hardcoded address would have quietly measured the
+-- wrong byte rather than failing.
+local SWAPS = tonumber(os.getenv("P_SWAPS") or "0x7B91")
 local gap_visible, gap_moving = nil, nil
 
 local cpu = manager.machine.devices[":maincpu"]
@@ -144,10 +147,20 @@ local function tick()
     if not gap_visible and rd8(SWAPS) ~= 0 then gap_visible = fn end
     if not gap_moving and rd8(ENGINE + 8) ~= 0 then gap_moving = fn end
     if state == "second" then
-        -- FOUR FRAMES LATER. One capture proves a picture; two prove MOTION, and
-        -- motion is the whole of phase B's claim. A still picture passes every other
-        -- check in this file and cannot pass the pair.
-        if fn >= shot1 + 4 then
+        -- TWELVE FRAMES LATER, and the number is derived rather than picked. One
+        -- capture proves a picture; two prove MOTION, which is the whole of phase B's
+        -- claim -- but only if the pair is guaranteed to straddle a state change.
+        --
+        -- It was 4, and 4 is not enough. room_loop waits for VBL and then calls
+        -- HAL_gfx_swap, which waits again, so the loop runs at 30 Hz: probe_frames
+        -- reached 152 over 298 video frames. At FLAME_DIV=3 a flame step is therefore
+        -- 3 iterations = 6 VIDEO frames, and a 4-frame separation lands inside one
+        -- step whenever the phase happens to fall that way. It passed for months on
+        -- luck and failed the moment the startup fix moved the phase by 13 frames --
+        -- reporting "a still picture" for flames that were animating correctly.
+        --
+        -- 12 = two full steps, so the pair straddles a change at ANY phase.
+        if fn >= shot1 + 12 then
             check("second_capture", dump_front(DUMP2),
                   string.format("frames %d and %d", shot1, fn))
             check("flicker_running", rd8(ENGINE + 8) > 0,

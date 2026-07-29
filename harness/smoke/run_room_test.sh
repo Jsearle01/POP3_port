@@ -48,6 +48,7 @@ BLK_B=$(grep -E "^Symbol: GFX_DB_B_BLOCK " "$MAP" | sed -E 's/.*= *//')
 export P_BLK_A=$(printf '0x%02X' $(( 0x$BLK_A - 0x$CODEBASE )))
 export P_BLK_B=$(printf '0x%02X' $(( 0x$BLK_B - 0x$CODEBASE )))
 export P_CURMODE="0x$(grep -E "^Symbol: HAL_gfx_cur_mode " "$MAP" | sed -E 's/.*= *//')"
+export P_SWAPS="0x$(grep -E "^Symbol: HAL_gfx_swaps " "$MAP" | sed -E 's/.*= *//')"
 export P_OUT="$LOG"
 export P_DUMP="$GOT"
 export P_DUMP2="build/room_front2.bin"

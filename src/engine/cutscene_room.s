@@ -165,6 +165,15 @@ room_start
 
                 jsr     ps_savebg               ; the room under each star, once
 
+* MIRROR BEFORE THE REVEAL, so nothing is built while the viewer waits. Jay, on the
+* first fix: "there's still a visible delay but not horrible" -- 15 frames of it,
+* which is the second LZ expand almost exactly (15,360 B at ~30 cy/byte against a
+* 29,859 cy frame). Copying the finished picture is cheaper than expanding it twice,
+* and doing it here rather than after the swap means it happens against a black
+* screen instead of against the finished room.
+                jsr     HAL_gfx_mirror
+                bcs     room_mirror_slow        ; 16-colour would refuse; this is not
+
                 jsr     HAL_gfx_swap            ; the room appears, ready to animate
 
 * AND AGAIN INTO THE OTHER BUFFER. The flames are drawn per frame and the page is
@@ -174,10 +183,19 @@ room_start
 * our HAL maps only the back buffer, so the port flips instead. This second expand is
 * now the ONLY thing between the picture appearing and the flames moving, and it is
 * CPU-bound rather than disk-bound.
+                bra     room_ready
+
+* THE FALLBACK, and it is the OLD behaviour rather than a failure. If the mirror ever
+* refuses -- it does so only in a mode whose framebuffer needs the whole window -- the
+* second buffer still has to be filled, and expanding the blob again is exactly how
+* this worked before. The scene stays correct; it just costs the 15 frames back.
+room_mirror_slow
+                jsr     HAL_gfx_swap
                 ldx     HAL_gfx_draw_base
                 ldu     #ROOM_BLOB
                 jsr     lz_unpack
 
+room_ready
                 lda     #2
                 sta     probe_status
                 ldd     #ROOM_MAGIC
