@@ -178,6 +178,42 @@ local function tick()
         -- HAL's own record of the active mode instead — real state, and readable.
         check("mode_is_4_colour", rd8(CURMODE) == 0,
               string.format("HAL_gfx_cur_mode=%d (want 0 = 320x192x4)", rd8(CURMODE)))
+        -- record which cel each torch is showing, so the offline pixel check
+        -- composites the right one instead of guessing
+        local c0, c1 = rd8(ENGINE + 9), rd8(ENGINE + 10)
+        log(string.format("# cels on screen: torch0=%d torch1=%d", c0, c1))
+        local cf = io.open("build/room_cels.txt", "w")
+        if cf then cf:write(c0 .. " " .. c1); cf:close() end
+        -- DO THE TWO BUFFERS AGREE? Every check in this file reads ONE buffer, so
+        -- none can see the page flip alternating between two different pictures --
+        -- which is what a perfectly regular 2-frame change period implies, and which
+        -- the eye blends into colours present in neither.
+        do
+            local back = rd8(CUR_BACK)
+            local bblk = (back == 0) and BLOCK_A or BLOCK_B
+            local fblk = (back == 0) and BLOCK_B or BLOCK_A
+            local diff, first = 0, nil
+            for _, col in ipairs({28, 29, 50, 51}) do
+                for row = 101, 113 do
+                    local o = 0x8000 + row * 80 + col
+                    map_blocks(fblk); local fv = rd8(o)
+                    map_blocks(bblk); local bv = rd8(o)
+                    if fv ~= bv then
+                        diff = diff + 1
+                        if not first then first = string.format("row %d col %d: front $%02X back $%02X", row, col, fv, bv) end
+                    end
+                end
+            end
+            -- OBSERVATION, not a check. With the swap correctly after the VBL wait,
+            -- the front holds the state just drawn and the back the previous one, so
+            -- they differ by one step BY CONSTRUCTION. That is benign: the displayed
+            -- buffer is always the fresh one, which verify_room_flame_pixels asserts
+            -- directly. Asserting equality here demanded something the design does
+            -- not promise -- and it only passed before because the old ordering
+            -- swapped mid-frame, which was the actual defect.
+            log(string.format("# pages differ in %d of 52 flame bytes (expected, one step apart)%s",
+                              diff, first and ("; " .. first) or ""))
+        end
         check("front_buffer_dumped", dump_front(DUMP), "")
         shot1 = fn
         state = "second"

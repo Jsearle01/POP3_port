@@ -82,7 +82,15 @@ fi
 # THE CHECKS THAT MATTER, and phase B needs TWO captures: a still picture passes
 # every in-emulator check above, so stillness has to be refuted explicitly.
 python harness/tools/verify_room_flicker.py --room "$WANT" --first "$GOT" --second "build/room_front2.bin"
-rc=$?
+rc1=$?
+
+# AND THE PIXELS THEMSELVES. The flicker check above only proves bytes changed inside
+# the boxes — it cannot see a wrong colour or a corrupted merge, which is how blue
+# pixels reached Jay's eye instead of this suite's.
+CELS=$(cat build/room_cels.txt 2>/dev/null || echo "1 1")
+python harness/tools/verify_room_flame_pixels.py --room "$WANT" --shot "$GOT"        --cel0 ${CELS% *} --cel1 ${CELS#* }
+rc2=$?
+[ $rc1 -ne 0 ] && rc=$rc1 || rc=$rc2
 echo "[run_room_test] --------------------------------"
 [ $rc -eq 0 ] && echo "[run_room_test] PASS" || echo "[run_room_test] FAIL (asset comparison)"
 exit $rc

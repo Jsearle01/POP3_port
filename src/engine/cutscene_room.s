@@ -93,6 +93,8 @@ probe_loads     fcb     0               ; $0204  successful disk reads
 probe_dskerr    fcb     0               ; $0205  WD1773 status of the first failure
 probe_magic     fdb     0               ; $0206  set once the room is on screen
 probe_frames    fcb     0               ; $0208  frames of flicker completed
+probe_cel0      fcb     0               ; $0209  cel each torch is showing —
+probe_cel1      fcb     0               ; $020A  the pixel check composites these
 
 ROOM_MAGIC      equ     $4B00
 
@@ -186,9 +188,18 @@ room_start
 room_hold
                 lda     #3
                 sta     probe_status
+* DRAW, THEN WAIT, THEN FLIP. The order matters at this rate and did not at the
+* intro's. HAL_gfx_swap writes VOFFSET ($FF9D); doing that mid-frame moves the
+* display's base address while the GIME is part-way down the screen, so the top of
+* the frame comes from one buffer and the bottom from the other. The intro swaps
+* once per caption and never showed it; here it happened 60 times a second, which is
+* a continuous tear — and a tear in 4-colour is not merely a shifted image, it lands
+* the raster on different bit pairs and reads as colours that are in NEITHER buffer.
+* That is the shape of what Jay reported: blue in flames whose cels contain no blue.
 room_loop
-                jsr     flicker
-                jsr     HAL_time_vbl_wait
+                jsr     flicker                 ; into the back buffer
+                jsr     HAL_time_vbl_wait       ; then the frame boundary
+                jsr     HAL_gfx_swap            ; and only then move VOFFSET
                 inc     probe_frames
                 bra     room_loop
 
@@ -257,6 +268,7 @@ fl_nostep
                 sta     fl_state0
 fl_keep0
                 jsr     torch_step
+                sta     probe_cel0
                 ldb     fl_slot
                 ldx     #fl_prev
                 abx
@@ -280,6 +292,7 @@ fl_keep0
                 sta     fl_state1
 fl_keep1
                 jsr     torch_step
+                sta     probe_cel1
                 ldb     fl_slot
                 incb
                 ldx     #fl_prev
@@ -288,7 +301,7 @@ fl_keep1
 
                 jsr     pstars                  ; and the window
                 clr     fl_step
-                jsr     HAL_gfx_swap            ; show this frame's flames
+                rts
                 lda     fl_buf
                 eora    #1
                 sta     fl_buf
@@ -357,8 +370,23 @@ torch_call
 * just a masked write over it -- which also makes "erase" exact by construction.
 * Both buffers converge because every frame redraws all four into the back buffer.
 * ---------------------------------------------------------------
-STAR_MASK       equ     $CF             ; clear sub-pixel 1 (bits 5-4)
-STAR_LIT        equ     $10             ; ...and set it to colour 1
+* TWINKLE draws with OPACITY = eor, onto both pages [GAMEBG.S:794]. So a star is not
+* a coloured pixel written over the window -- it is a BIT TOGGLE, and what it looks
+* like depends on the art underneath. The window is not uniform there:
+*
+*   star 0 row  98 byte $03 -> [black,black,black,white]
+*   star 1 row 101 byte $08 -> [black,black,BLUE, black]
+*   star 2 row 109 byte $03 -> [black,black,black,white]
+*   star 3 row 114 byte $00 -> [black,black,black,black]
+*
+* A fixed orange write gives all four the same appearance and lands on top of existing
+* art; the EOR gives each its own, which is what the oracle shows.
+*
+* THE SUB-PIXEL WAS ALSO WRONG. starx=2 is an Apple BYTE column, so the cels light
+* mono px 14+1=15 ($2B) and 14+5=19 ($2A); under the +20 centring those are CoCo px 35
+* and 39, i.e. sub-pixel 3 of bytes 8 and 9 -- not sub-pixel 1. The mask is the low
+* bit pair.
+STAR_EOR        equ     $01             ; toggle sub-pixel 3 (bits 1-0)
 
 * ps_savebg — capture the room byte under each star. Called once, after the room is
 * up and before any star is drawn, so "erase" is exact rather than approximate.
@@ -417,8 +445,7 @@ ps_dloop
                 lda     star_bg,x               ; the room, under this star
                 ldb     star_cnt,x
                 beq     ps_dark
-                anda    #STAR_MASK              ; lit: overwrite the one pixel
-                ora     #STAR_LIT
+                eora    #STAR_EOR               ; lit: TOGGLE the pixel, as TWINKLE does
 ps_dark
                 sta     ps_val
                 pshs    x
