@@ -1,5 +1,5 @@
 ## Form B Report — P3.17 — cutscene A+B: **INCOMPLETE.** A wrong premise, corrected by Jay, and the asset chain closed
-**Class:** BUILD — **PHASE A DELIVERED** (4c mode + palette + static room). Phase B (torch flicker) NOT built. POP `wip`. **Karateka UNTOUCHED** (read-only).
+**Class:** BUILD — **PHASES A AND B DELIVERED** (4c mode + palette + static room; torch flicker + star twinkle). POP `wip`. **Karateka UNTOUCHED** (read-only).
 **25.3: PASSED — Jay, `live-disk`, RGB.** "the render looks good in mame" (2026-07-28), on the pristine f2680 asset running off the mounted floppy. Jay separately confirmed the palette ("the palette looks good") and the converted room ("that looks correct").
 
 ### 0 — Receipt / status (C-35 stamp)
@@ -244,6 +244,96 @@ painted art.
 Jay had chosen to blank the stars; the measurement showed that would delete artwork
 and leave a hole for `pstars` to toggle over, so it was surfaced rather than executed.
 **Jay's ruling: use as-is.** No authored change, no protection-catalog entry.
+
+### 3G — PHASE B DELIVERED: the torches flicker, and the stars twinkle
+
+**The flames.** Nine cels from the oracle's `chtable6` through `sprite_convert` +
+`sprite_compiler`, drawn with the peel model the compiler was built for:
+`erase(previous) -> save(new) -> draw(new)`, per torch, per frame. `GETFLAMEFRAME` is
+ported as-is — a random draw below `torchLast+1` jumps to that state, otherwise step
+and wrap, over the oracle's own 18-entry `ptorchflame` pattern. That mix is what makes
+it read as fire rather than noise.
+
+Placement is measured, not assumed:
+
+```
+ptorchx 13,25 / ptorchoff 0,6 / ptorchy 113,113      [SUBS.S:306]
+pixel X = ptorchx*7+ptorchoff = 91 and 181 -> framebuffer bytes 27.75 and 50.25
+measured on the running oracle: flicker in cols 27-29 and 50-51, rows 104-113
+```
+
+Rows 104–113 ending at 113 is also what proves `ptorchy` is the **baseline**, so a
+13-row cel starts at row 101.
+
+**The stars.** `pstars` ported from `SUBS.S:360`: age any lit star, then ~1 frame in 25
+light a random one of four for 5–8 frames. `starx = 2` is an Apple **byte** column, so
+mono px 14 → CoCo px 34; cel `$2A` trims one leading byte and `$2B` does not, putting
+the four at framebuffer bytes 9/8/8/9 on rows 98/101/109/114 — which matches the single
+varying byte found while hunting the pristine room (row 101, byte 8), and is how they
+were noticed at all.
+
+**Not compiled sprites, deliberately.** A star is ONE PIXEL: `$2A`/`$2B` both convert to
+a single byte `$10`. Three generated routines and a dispatch to write one byte is not a
+trade worth making; the flames earn that machinery, a star does not. Flagged because the
+dispatch said to use the compiled path and this departs from it.
+
+#### The build-shape bug, and Jay named the fix
+
+With the nine compiled cels inside the program image, `ROOM.BIN`'s `prog` ran
+`$2000-$2C5A` — through `$2600` into BASIC's program and variable area, which is DECB's
+own workspace. **`LOADM` never returned**: the text screen showed the command with no
+`OK` after it, the first segment in memory and the second absent, and `EXEC` was never
+typed. I spent three rounds blaming keystroke timing, including one "fix" that made it
+strictly worse by posting `EXEC` *earlier*.
+
+`link/pop_engine.link` had already written the rule down — *"below the graphics pages'
+end at $25FF"* — and I walked past it. Jay ended it in one line: *"just look at the
+introseq.bin disk load and use that."* `INTROSEQ.BIN` is 2,005 B precisely because every
+asset it uses is read from a raw track at run time.
+
+So the flames became a disk-resident bundle: `src/engine/flame_cels.s` linked at `$0A00`
+with three dispatch tables at its head so the room needs one constant and not a link
+map, flattened by `harness/tools/decb_to_raw.py`, placed on track 30.
+**`ROOM.BIN`: 4,369 -> 1,661 B, `prog` `$2000-$22C6`.**
+
+#### What the tests assert now
+
+```
+7/7 in-emulator checks, 512 KB and 128 KB
+PASS room intact outside the torch boxes: every other byte matches the asset
+PASS flames flicker: 23 bytes changed between captures, all inside the boxes
+PASS stars_twinkle: 22 changes across 4 stars in 240 frames
+```
+
+The star check exists because the flicker checks could not see them: stars burn 5–8
+frames and light rarely, so two captures four frames apart miss them, and "room intact
+outside the torch boxes" was passing only because none happened to be lit. It watches
+the four star bytes for 240 frames instead.
+
+### 3H — The sub-byte gap, confirmed by Jay's eye and deferred
+
+Jay: *"the right most flame is to far left"*, then *"the left torch looks fine"*.
+
+| | true left edge | cel placed at | error |
+|---|---|---|---|
+| torch 0 | px 111 (byte 27.75) | byte 28 = px 112 | **+1 px right** |
+| torch 1 | px 201 (byte 50.25) | byte 50 = px 200 | **−1 px left** |
+
+They round in **opposite directions**, which is why one reads fine and the other does
+not. No byte-aligned placement fixes it — rounding torch 1 up is +3 px, worse.
+
+**My first evidence against this was weak and I presented it as strong.** I compared the
+union of lit pixel columns, oracle vs port, and got an exact match (197–207) — but that
+union is dominated by the torch bracket, which is always lit, so it could not see a
+1 px flame shift. Jay's eye was right and my measurement was not measuring the thing.
+
+An interim fix exists — these torches never move, so a conversion-time pre-shifted cel
+set would land torch 1 on px 201 with no runtime cost — at the price of a second
+compiled set (bundle 2,469 -> ~4,900 B, one track becomes two). **Jay's ruling: leave it
+for the sub-byte recon**, since the character work needs the general 4-phase answer
+anyway and the flames can then share it.
+
+---
 
 ### 4 — Verification (AC-by-AC) — **mostly NOT MET**
 
