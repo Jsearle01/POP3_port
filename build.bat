@@ -219,7 +219,7 @@ lwasm --obj -DOBJTARGET -I . -o build/obj/flame_cels.o src/engine/flame_cels.s
 if errorlevel 1 goto :error
 lwlink --decb --script=link/pop_flames.link --map=build/obj/flames.map -o build/flame_cels.bin build/obj/flame_cels.o build/obj/blit_core.o build/obj/char_draw.o
 if errorlevel 1 goto :error
-python harness/tools/decb_to_raw.py --bin build/flame_cels.bin --out build/assets/flames.raw --base 0x0A00
+python harness/tools/decb_to_raw.py --bin build/flame_cels.bin --out build/assets/flames.raw --base 0x4200
 if errorlevel 1 goto :error
 
 echo --- Link: princess room + HAL kernel ---
@@ -288,7 +288,7 @@ python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/pr
 if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/princess_room.lz --track 29 --tracks 1 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
-python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/flames.raw --track 30 --tracks 1 --reserve --imgtool "%IMGTOOL%"
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/flames.raw --track 30 --tracks 2 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 
 "%IMGTOOL%" dir coco_dmk_rsdos build\probe.dmk

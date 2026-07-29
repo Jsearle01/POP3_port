@@ -100,7 +100,10 @@ DISK_ROOM_SEC   equ     ROOM_TRACKS*SECS_PER_TRACK
 * Bundle entry points, at fixed offsets from FLAME_BASE. The room reaches everything
 * disk-resident through these rather than by link-time symbol, because the bundle and
 * the program are separate images.
-FLAME_BASE_TAB  equ     $0A00
+* The cutscene bundle moved to $4200 and grew to TWO tracks at P3.25. It could not
+* grow in place: two tracks from $0A00 reach $2E00 and this program starts at $2000,
+* so the bundle would have loaded over the engine. See link/pop_flames.link.
+FLAME_BASE_TAB  equ     $4200
 BLIT_TAB        equ     FLAME_BASE_TAB+58       ; blit_cel / blit_save / blit_erase
 CHARS_TAB       equ     FLAME_BASE_TAB+64       ; chars_frame (piece D)
 
@@ -665,12 +668,13 @@ PEEL_BYTES      equ     26              ; 13 rows x 2 bytes — one cel's footpr
 * "OK", first segment in memory, second absent. So the flames go on a raw track and
 * are read at run time, exactly as the intro reads every screen it shows.
 * [src/engine/flame_cels.s, link/pop_flames.link]
-FLAME_BASE      equ     $0A00
+FLAME_BASE      equ     $4200
 draw_tab        equ     FLAME_BASE+0
 save_tab        equ     FLAME_BASE+18
 erase_tab       equ     FLAME_BASE+36
 DISK_FLAME_TRK  equ     30
-DISK_FLAME_SEC  equ     1*SECS_PER_TRACK
+FLAME_TRACKS    equ     2               ; P3.25: headroom for the VM
+DISK_FLAME_SEC  equ     FLAME_TRACKS*SECS_PER_TRACK
 
 * The oracle's flame pattern, verbatim. 18 states over 9 cels; the repeats and the
 * out-of-order tail are what give the flicker its rhythm. [GAMEBG.S:150 ptorchflame]

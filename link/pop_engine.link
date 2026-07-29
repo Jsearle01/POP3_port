@@ -41,10 +41,39 @@
 ;   $7F00         stack top
 ;   $8000-$F7FF   MMU draw window
 ; ---------------------------------------------------------------------------
-; $2000 sits above every DECB region above and below the graphics pages' end at
-; $25FF, which DECB does not touch unless a BASIC graphics command runs. The
-; engine's own runtime data stays where P3.4 put it -- also chosen to be clear of
-; DECB, for the same reason, one dispatch earlier.
+; $2000 sits above every DECB region listed above. The engine's own runtime data
+; stays where P3.4 put it -- also chosen to be clear of DECB, for the same reason,
+; one dispatch earlier.
+;
+; ---------------------------------------------------------------------------
+; THE LOADM CEILING IS *NOT* $25FF. MEASURED: it is in $2488..$2535.
+; ---------------------------------------------------------------------------
+; This file used to say the program may run up to the graphics pages' end at
+; $25FF. That figure is ~174 bytes too generous and it MISLED THREE DISPATCHES
+; (P3.20 twice, P3.22 once), each of which spent rounds hunting a logic bug in
+; code that was fine.
+;
+; MEASURED at P3.22 by adding DEAD `rmb` FILLER to a known-good build -- no code,
+; nothing executable, only size:
+;
+;     prog ending $2487   boots, suite 8/8      (the green baseline)
+;     prog ending $2535   image corrupted       (baseline + 175 B of filler)
+;
+; so the true ceiling lies between those two, and $25FF is past it. Treat $2480 as
+; the practical limit and do not spend the difference.
+;
+; THE SIGNATURE, so the next reader recognises it in one glance: the program's
+; probe byte reads $40 (or any garbage) and the disk-read count is ZERO. That
+; combination means LOADM truncated on SIZE -- DECB wrote over the image as it
+; loaded -- not that the program has a bug. `$7900` reading `$FF` (kernel segment
+; absent) is the same fault caught one step earlier. Jay diagnosed this on sight
+; after several rounds had gone into a logic hunt.
+;
+; WHAT TO DO INSTEAD OF GROWING `prog`: put the code on a disk-resident track and
+; reach it through a fixed table, the way the cutscene bundle does
+; (link/pop_flames.link -- the cels, the blitter, char_draw and the VM all live
+; there, at $4200 across two tracks). That is the established route, arrived at
+; three times the hard way.
 
 section prog load 2000
 section code load 7900

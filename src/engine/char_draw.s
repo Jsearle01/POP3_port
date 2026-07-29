@@ -38,7 +38,7 @@
                 endc
 
 FB_STRIDE_4C    equ     80              ; 320 px at 4 px/byte
-FLAME_BASE      equ     $0A00
+FLAME_BASE      equ     $4200
 
 * ---------------------------------------------------------------
 * PIECE D — THE CHARACTER DRAW, exercised by HARDCODED position.
@@ -84,8 +84,11 @@ PRI_PEEL        equ     43*5            ; 215 B
 * free space above the blob.
 CHAR_TAB        equ     FLAME_BASE+54
 BLIT_TAB        equ     FLAME_BASE+58   ; blit_cel / blit_save / blit_erase
-VIZ_PEEL_BASE   equ     $5200
-PRI_PEEL_BASE   equ     $5200+VIZ_PEEL*2
+* MOVED at P3.25: the peel buffers were at $5200, which is inside the two-track
+* bundle's new extent ($4200..$65FF). $6C00 is clear of the bundle, of the disk
+* parameter block at $6A00, and of the trace ring at $7800.
+VIZ_PEEL_BASE   equ     $6C00
+PRI_PEEL_BASE   equ     $6C00+VIZ_PEEL*2
 
 * ---------------------------------------------------------------
 * PIECE D — THE CHARACTER DRAW, and the seed of the VM's character slots.

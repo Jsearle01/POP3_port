@@ -10,12 +10,26 @@
 ; $0A00 is the intro's asset-bundle region, and it is used the same way here: the
 ; room reads one track into it and indexes the pointer tables at the head.
 ;
-;   $0A00-$0A35   three 9-entry dispatch tables (draw / save / erase)
-;   $0A36-...     the compiled cels
+;   $4200-$4235   three 9-entry dispatch tables (draw / save / erase)
+;   $4236-$4239   char_tab (retired, reserved so the offsets below hold)
+;   $423A-$423F   blit_tab   (blit_cel / blit_save / blit_erase)
+;   $4240-$4241   chars_tab  (chars_frame)
+;   $4242-...     the compiled cels, the baked character cels, the blitter,
+;                 char_draw, and the VM's cel table
+;
+; TWO TRACKS from P3.25, following the intro bundle's worked precedent
+; (intro_seq.s:140-159: DISK_BUNDLE_TRK 25 "two tracks", BUNDLE $3000 = 9,216 B ->
+; $52FF, SAVE_BUF $5400 sited clear of it).
+;
+; IT COULD NOT GROW IN PLACE. At the old base, two tracks reach $0A00+9,216 = $2E00
+; and ROOM.BIN's prog starts at $2000 -- the bundle would have loaded straight over
+; the engine. $4200 sits immediately after the room blob ($3000..$41FF) and two
+; tracks reach $65FF, clear of the peel buffers, the disk parameter block at $6A00,
+; the trace ring at $7800 and the kernel at $7900.
 ;
 ; Nothing else may live at $0A00 while the room is running. The intro's bundle uses
 ; the same region, but the two programs never run at once.
 
-section prog load 0A00
+section prog load 4200
 
 entry flame_draw
