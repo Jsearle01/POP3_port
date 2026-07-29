@@ -30,6 +30,14 @@ case fits with 24 KB to spare).
 The same 49 cels are **11.9 KB as raw packed bitmaps** and **100.8 KB as compiled code — 8.2×.** That trade
 buys speed and costs an order of magnitude in RAM, and it is what puts the cutscene outside 128 KB.
 
+> **CORRECTED after Jay's review — see §3G.** Every figure above counts the two CHARACTERS only. The
+> scenery the scene also draws — torch flames, hourglass, post, stars — was left out of the budget
+> entirely: **+19.1 KB compiled.** Jay was right that none of it needs phasing (it never moves
+> horizontally, so the occupancy method already gives it one phase), but "needs no phases" is not "costs
+> nothing to keep resident". The all-resident total is **120.4 KB, not 100.8 KB**, and the peak-beat figure
+> I gave Jay in conversation was 4.4 KB short of fitting when it is really **23.6 KB** short. The same
+> measurement opens a new option — §3G.
+
 ---
 
 ### 2 — Files modified
@@ -177,6 +185,71 @@ over a 3-video-frame animation step with two buffers it lands near ~26k/frame, w
 no margin. **PA.6's verdict was about gameplay's load, and the cutscene's load is different — but "different"
 is not "measured".** That measurement is the natural P3.19.
 
+#### 3G — What the budget left out, and the option it exposes (added after Jay's review)
+
+Jay, reading the recon: *"did you remove the static graphics and the torch flames from the analysis?
+anything that doesn't move or only moves vertically (not horizontally) shouldn't need phasing."*
+
+**On phasing he is right, and it was already handled — but by accident of method rather than by design.**
+The 49 cels came from the character sequence tables, so the scenery was never in the ×4. And the occupancy
+method (§3D) makes his rule automatic: a cel that never moves horizontally is only ever drawn at one
+sub-byte column, so it collapses to one phase by construction. That is precisely why 41 of 49 cels needed
+one phase. `chy` does not touch X at all.
+
+**On the budget he found a real omission.** The scenery is not in the ×4 — and it was not in the resident
+total either, which was wrong. It has to be in RAM for the scene to draw:
+
+| item | chtab6.A | compiled | raw bitmap |
+|---|---|---|---|
+| torch flames | #1-9 | 2,415 B | |
+| post | #12 | 2,575 B | |
+| **hourglass** | #13-21 | **14,571 B** | |
+| stars | #42-43 | 42 B | |
+| **total** | | **19,603 B (19.1 KB)** | **1,778 B (1.7 KB)** |
+
+**The option this exposes.** Scenery is **11.0× worse compiled than stored as bitmaps** — a worse ratio
+than the characters' 8.2×, because on small cels the fixed per-cel code overhead dominates. And these
+objects sit at fixed positions, so they need **no shifter at all**: a plain byte-aligned blit is the cheap
+54 cy/byte path, not the 88 cy/byte shifted one PA.6 ruled infeasible.
+
+**Drawing scenery from data rather than compiling it saves 17.9 KB at almost no speed cost.** The hourglass
+alone is 14.2 KB of straight-line code to animate falling sand.
+
+That makes the sharper rule not "compile everything" but **compile only what moves horizontally, and blit
+the rest from data** — a hybrid, rather than an all-or-nothing bet on the runtime blit:
+
+| configuration | cost | vs 64 KB (packed 128 KB) |
+|---|---|---|
+| everything as data + runtime blit | ~15.2 KB | **fits, even unpacked** |
+| peak beat compiled + **scenery as data** | 71.8 KB | over 7.7 KB |
+| peak beat compiled + scenery compiled | 89.7 KB | over 23.6 KB |
+| all cels compiled + scenery as data | 102.5 KB | over 38.4 KB |
+| all compiled (§1 headline, corrected) | 120.4 KB | over 54.4 KB |
+
+It moves the best compiled configuration from 23.6 KB short to **7.7 KB short** — within trimming distance,
+where before it was not.
+
+**Two supporting measurements, both from Jay's question rather than the dispatch:**
+
+- **Per-beat working set.** The scene is sequential, so the union of 49 cels never has to be live at once.
+  Peak beat is `Vexit` (23 cels) + the princess resident = 70,058 B byte-aligned. On 128 KB there is no
+  spare bank to swap from, so per-beat residency means a disk load between beats — the thing Jay excluded.
+  The beats do have natural cover (music stings, the princess turning), so whether it is truly excluded is
+  his call, not an assumption I should make silently.
+- **Merge overhead.** 29% of the compiled set — 28.3 KB — is read-modify-write merge code, needed only
+  because a keyed pixel lands over unknown background. Compiled `--bg-zero` it is 1.40× smaller. That is
+  **not a proposal** (the module docstring is explicit it is invalid under POP's peel model); it is a bound
+  on what any compose-into-cleared-scratch design could recover — and the thing that composes into cleared
+  scratch is the runtime blit again.
+
+**A cel-identity thread left open.** Auditing the mapping against converted dimensions (prompted by Jay
+asking whether flames were in the set) showed cels 1-77 resolve to indices 10-103, all character-sized
+42-58 rows — but cels 78-85, labelled `vcast-*`, resolve to indices 1-8, which are 13×2 and **byte-identical
+to the P3.17 flame cels**. Either the image numbering has a discontinuity `& $7F` does not capture, or those
+are genuinely small spell-effect sprites (the vizier casts). **Bounded and non-load-bearing:** those 8 cels
+are 2,102 B of 100,770 — 2.1% — and if they are really character-sized the total rises ~18 KB, making every
+fit verdict worse, not better. No conclusion here depends on it.
+
 ---
 
 ### 4 — Verification (AC-by-AC)
@@ -202,7 +275,8 @@ is not "measured".** That measurement is the natural P3.19.
 | **Pixel-precise, occupancy** | 120,498 B (**+19.7 KB**) | **no** (over 54-86 KB) | yes | faithful sub-byte movement |
 | **Pixel-precise, all 4 phases** | 401,431 B | no | yes (24 KB spare) | faithful; buys nothing over occupancy for *this* scene |
 | **Middle path** (walk cels only) | 116,573 B | **no** (over 49.8 KB) | yes | partial |
-| **Runtime blit** (dormant HAL) | ~13-25 KB | **yes** | yes | faithful — but per-frame cost unmeasured, PA.6 marginal |
+| **Runtime blit** (dormant HAL) | ~15 KB | **yes** | yes | faithful — but per-frame cost unmeasured, PA.6 marginal |
+| **Hybrid: compile what moves H, blit scenery** (§3G) | 71.8 KB peak-beat | **no** (over 7.7 KB) | yes | faithful; nearest miss on 128 KB |
 
 **The decision this actually surfaces is not pixel-precision.** On 512 KB, pixel precision costs **+19.7 KB
 on a 416 KB budget — 4.7% — and is essentially free.** On 128 KB nothing in the compiled-sprite path fits,
@@ -217,6 +291,9 @@ Three questions I would want Jay to rule on, in order:
    workload.
 3. **Should the 4-colour block packing be claimed regardless?** It is ~32 KB on any machine, for a small
    HAL change, and it is free of the above.
+4. **Should scenery stop being compiled at all?** (§3G, added after Jay's review.) 17.9 KB for objects that
+   never move horizontally and so never needed the shifter. It is independent of every question above and
+   the cheapest single saving found in this recon.
 
 ---
 
@@ -238,6 +315,9 @@ Three questions I would want Jay to rule on, in order:
 - **Three cel numbers (186-188) were dropped** as a sequence-parser overrun past `Pslump` — outside
   ALTSET2's 90 frames [`FRAMEDEF.S:325`], so they cannot be cutscene cels. Dropped explicitly and counted,
   not silently. They do not affect the totals.
+- **Eight `vcast-*` cels resolve onto flame-sized images** (§3G). Unexplained; bounded at 2.1% of the total
+  and resolving it can only worsen the fit, so nothing depends on it — but the cel-identity chain is not
+  fully closed.
 - **Peel/save buffers are not in the budget.** Two characters at ~235/215 footprint bytes across two
   buffers ≈ 1 KB — immaterial against a 34-86 KB overshoot, but not zero.
 - **The engine's own growth is not modelled.** The 4-block program window is assumed to still hold the
@@ -248,6 +328,9 @@ Three questions I would want Jay to rule on, in order:
 - **P3.19 (the decision this report sets up): measure the dormant runtime blit against the cutscene's
   actual load** — 2 characters, ~450 footprint bytes, at the cutscene's animation rate, with peel. It is
   the only path that fits 128 KB.
+- **Stop compiling the scenery** (§3G): 17.9 KB, no fidelity cost, no shifter needed. Cheapest saving here.
+- **Close the `vcast-*` mapping** — 8 cels resolving to flame images; small, but the identity chain should
+  not stay open.
 - **Claim the 4-colour block packing** (~32 KB, small HAL change; would need the Karateka back-port route
   established in P3.17).
 - **FULL-GAME EXTRAPOLATION — FLAG ONLY, not measured** (dispatch §4). 49 cutscene cels cost 100.8 KB
@@ -259,7 +342,12 @@ Three questions I would want Jay to rule on, in order:
   axis that predicts cost.
 
 ### 9 — User interaction during task
-None — dispatch executed as written.
+Jay reviewed the delivered recon and asked whether static graphics and the torch flames had been removed
+from the analysis, noting that anything not moving horizontally should not need phasing. He was right on
+the phasing (already handled, §3G) and the question exposed a genuine omission in the BUDGET: 19.1 KB of
+scenery was uncounted, which made the peak-beat figure I had given him in conversation 19 KB optimistic.
+Corrected in §1 and §3G, with the resulting hybrid option added to §5. Two further measurements (per-beat
+working set, merge overhead) were made to answer his follow-up "what options do we have for 128 KB".
 
 ### 10 — Candidate(s) captured this task
 `seeds/POP/live/2026-07-29-a-worst-case-multiplier-is-a-property-of-the-data-not-the-mechanism.md`
