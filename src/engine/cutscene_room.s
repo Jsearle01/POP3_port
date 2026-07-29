@@ -75,12 +75,24 @@ DISK_ROOM_TRK   equ     29              ; clear of the intro's spans and the dir
 ROOM_TRACKS     equ     1
 DISK_ROOM_SEC   equ     ROOM_TRACKS*SECS_PER_TRACK
 
-* Where the packed blob is read to, as an offset from the framebuffer base: the top of
-* the usable draw window ($8000-$FDFF = 32,256 B) less the blob. The window is four
-* 8 KB blocks in BOTH modes, so a 15,360 B 4-colour picture leaves far more headroom
-* than the 16-colour ones did -- lz_pack reports 16,895 B of in-place slack here
-* against 1,535 for the intro screens.
-ROOM_LOAD_OFF   equ     32256-ROOM_TRACKS*4608
+* WHERE THE PACKED BLOB LIVES, and it is main RAM rather than the draw window.
+*
+* It used to load high in the window (offset 32256-4608) and expand down over itself,
+* which is what the intro does and what lz_pack's in-place slack argument is about.
+* That is fine for a screen shown once. It is wrong here, because the window is
+* REMAPPED by every buffer swap: a blob sitting in it is unreachable the instant the
+* pages flip, so filling the second buffer meant reading the same track off disk a
+* second time -- 1.3 s of it, with the finished picture already on screen.
+*
+* At $3000 the blob survives the swap and expands twice from RAM. The map (see
+* link/pop_engine.link) puts the engine at $2000, the trace ring at $7800 and the
+* stack at $7F00, so $3000-$41FF is clear of all three with room to spare.
+*
+* The unpacker's `cmpu #LZ_SRC_END` guard is a window-runaway check and cannot fire
+* on a blob this low. It is not what terminates the loop -- `lz_end`, the WRITER
+* bound, is -- and the writer is the destructive direction, so the bound that matters
+* still holds.
+ROOM_BLOB       equ     $3000
 
 SAM_SLOW        equ     $FFD8           ; the FDC needs normal speed (§2G disk rule)
 SAM_FAST        equ     $FFD9
@@ -119,33 +131,51 @@ room_start
 
                 jsr     disk_read_init
 
-                ldx     HAL_gfx_draw_base
-                leax    ROOM_LOAD_OFF,x         ; the blob lands high in the window
+* EVERY DISK READ HAPPENS HERE, BEFORE THE PICTURE IS SHOWN.
+*
+* Jay: "it takes like 2 seconds between the static screen being rendered and the
+* torches to be drawn and start animating." It did, and both seconds were disk: the
+* room used to be swapped into view as soon as it unpacked, and only THEN did the
+* engine read a second room track (for the other buffer) and the flame track. The
+* delay was not slow flames -- it was a still picture being displayed during two
+* track reads that had not happened yet.
+*
+* The second room read was pure waste. The blob is ONE track of 4,608 bytes and the
+* unpacker only READS it (`lz_end`, the writer bound, is what terminates -- see
+* lz_unpack.s), so the same blob expands twice. Landing it in main RAM at $3000
+* instead of high in the draw window is what makes that possible: the window is
+* remapped by the swap, so a blob living there is gone the moment the buffers flip,
+* while $3000 stays put. One track read becomes one track read plus a memory
+* decompress of a few frames.
+                ldx     #ROOM_BLOB
                 lda     #DISK_ROOM_TRK
                 ldb     #DISK_ROOM_SEC
                 jsr     load_tracks
                 bne     room_failed
 
-                ldx     HAL_gfx_draw_base
-                leau    ROOM_LOAD_OFF,x         ; U -> the blob; X -> the picture
-                jsr     lz_unpack               ; expands down over itself
+                ldx     #FLAME_BASE             ; the flame code, off its own track
+                lda     #DISK_FLAME_TRK
+                ldb     #DISK_FLAME_SEC
+                jsr     load_tracks
+                bne     room_failed
 
-                jsr     HAL_gfx_swap            ; the room appears, in one frame
+                ldx     HAL_gfx_draw_base       ; X -> the picture
+                ldu     #ROOM_BLOB              ; U -> the blob, in main RAM
+                jsr     lz_unpack
+
+                jsr     ps_savebg               ; the room under each star, once
+
+                jsr     HAL_gfx_swap            ; the room appears, ready to animate
 
 * AND AGAIN INTO THE OTHER BUFFER. The flames are drawn per frame and the page is
 * flipped per frame, so BOTH buffers have to hold the room -- otherwise every other
 * frame shows a cleared screen. The oracle avoids this by drawing its flames straight
 * onto the displayed page (`lay`, a direct hires call) and never flipping for them;
-* our HAL maps only the back buffer, so the port flips instead and pays one extra
-* one-track read (~1.3 s, once) to make that legal.
+* our HAL maps only the back buffer, so the port flips instead. This second expand is
+* now the ONLY thing between the picture appearing and the flames moving, and it is
+* CPU-bound rather than disk-bound.
                 ldx     HAL_gfx_draw_base
-                leax    ROOM_LOAD_OFF,x
-                lda     #DISK_ROOM_TRK
-                ldb     #DISK_ROOM_SEC
-                jsr     load_tracks
-                bne     room_failed
-                ldx     HAL_gfx_draw_base
-                leau    ROOM_LOAD_OFF,x
+                ldu     #ROOM_BLOB
                 jsr     lz_unpack
 
                 lda     #2
@@ -177,14 +207,6 @@ room_start
 * variants, which is exactly what the parallel sub-byte recon exists to cost -- this
 * does not pre-empt it.
 * ---------------------------------------------------------------
-                jsr     ps_savebg               ; the room under each star, once
-
-                ldx     #FLAME_BASE             ; the flame code, off its own track
-                lda     #DISK_FLAME_TRK
-                ldb     #DISK_FLAME_SEC
-                jsr     load_tracks
-                bne     room_failed
-
 room_hold
                 lda     #3
                 sta     probe_status

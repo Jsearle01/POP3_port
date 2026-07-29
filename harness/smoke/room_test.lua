@@ -24,6 +24,10 @@ local CURMODE = tonumber(os.getenv("P_CURMODE") or "0x7AFE")
 
 local FB_BASE, FB_SIZE = 0x8000, 15360
 local ROOM_MAGIC = 0x4B00
+-- HAL_gfx_swaps, the HAL's own count of flips performed (gfx.s). Real label, not an
+-- `equ`, so the linker map address is the address -- no section-base correction.
+local SWAPS = tonumber(os.getenv("P_SWAPS") or "0x7B08")
+local gap_visible, gap_moving = nil, nil
 
 local cpu = manager.machine.devices[":maincpu"]
 local mem = cpu.spaces["program"]
@@ -128,6 +132,17 @@ local function tick()
     end
     -- running / second
     local magic = rd8(ENGINE + 6) * 256 + rd8(ENGINE + 7)
+
+    -- THE STARTUP GAP, sampled every frame from EXEC onward.
+    --
+    -- Jay timed this by eye — "like 2 seconds between the static screen being rendered
+    -- and the torches to be drawn and start animating" — and eye-timing was the only
+    -- instrument this suite had, because every check here fires AFTER the flames are
+    -- already running and so cannot see how long getting there took. HAL_gfx_swaps
+    -- leaving 0 is the frame VOFFSET first moved, which is the frame the room became
+    -- visible; probe_frames leaving 0 is the first flicker drawn.
+    if not gap_visible and rd8(SWAPS) ~= 0 then gap_visible = fn end
+    if not gap_moving and rd8(ENGINE + 8) ~= 0 then gap_moving = fn end
     if state == "second" then
         -- FOUR FRAMES LATER. One capture proves a picture; two prove MOTION, and
         -- motion is the whole of phase B's claim. A still picture passes every other
@@ -137,6 +152,19 @@ local function tick()
                   string.format("frames %d and %d", shot1, fn))
             check("flicker_running", rd8(ENGINE + 8) > 0,
                   string.format("probe_frames=%d", rd8(ENGINE + 8)))
+            -- 30 frames = half a second, comfortably under what an eye reads as a
+            -- pause and comfortably over the few frames the second expand costs. The
+            -- old design sat at ~2 s here; a regression puts a track read back between
+            -- the picture and the motion, which is hundreds of frames, not tens.
+            if gap_visible and gap_moving then
+                local d = gap_moving - gap_visible
+                check("startup_gap_small", d <= 30,
+                      string.format("room visible f%d -> flames moving f%d = %d frames "
+                                    .. "(%.2f s)", gap_visible, gap_moving, d, d / 59.92))
+            else
+                check("startup_gap_small", false,
+                      "never observed both the first swap and the first flicker frame")
+            end
             finish("room displayed, two captures")
         end
         return
@@ -180,13 +208,15 @@ local function tick()
     if magic == ROOM_MAGIC then
         check("room_reached_screen", true,
               string.format("magic $%04X at frame %d", magic, fn))
-        -- THREE reads: the room twice (the flames flip the page every frame, so both
-        -- buffers must hold it) and the flame code bundle once. Waiting for
-        -- probe_frames to move is what makes this check meaningful — the bundle read
-        -- is a whole track, ~78 frames, and sampling before it finishes reports a
-        -- count that is merely early rather than wrong.
-        check("disk_reads_ok", rd8(ENGINE + 4) == 3,
-              string.format("loads=%d (want 3: room x2 + flame bundle), status $%02X",
+        -- TWO reads: the room track once and the flame bundle once. It was three
+        -- until Jay timed the gap — "like 2 seconds between the static screen being
+        -- rendered and the torches" — and the third read turned out to be the room
+        -- fetched a SECOND time to fill the other buffer, after the picture was
+        -- already on screen. The blob now lives in main RAM and expands twice from
+        -- there, so this count is the assertion that the delay has not crept back:
+        -- a regression to 3 is exactly the visible pause returning.
+        check("disk_reads_ok", rd8(ENGINE + 4) == 2,
+              string.format("loads=%d (want 2: room + flame bundle), status $%02X",
                             rd8(ENGINE + 4), rd8(ENGINE + 5)))
         -- The GIME's VRES register is write-only: reading $FF99 returns bus noise,
         -- not what was written ($1B came back for a register set to $15). Check the
