@@ -195,76 +195,96 @@ bb_done
 * blit_save / blit_erase — POP PEELS.
 *
 * The room is a still picture and is never cleared, so a character has to put back
-* what it covered. save copies the footprint out before the draw; erase puts it
-* back before the next one. Both are plain opaque runs, so both use the core.
+* what it covered. save copies the footprint out before the draw; erase puts it back
+* before the next one.
 *
-* THE PEEL BUFFER IS GROUP-REVERSED, and that is safe rather than sloppy: save
-* reads the framebuffer ascending and writes descending, erase does the same in
-* the other direction, so the two are exact inverses and the reversal is never
-* observable. It also means the buffer must only ever be written by save and read
-* by erase, never inspected as a picture.
+* THE PEEL IS A PLAIN FORWARD COPY, NOT A STACK-BLAST, and that is a CORRECTION to
+* P3.20. That version used blit_blast both ways, on the argument that save and erase
+* are exact inverses so a group-reversed peel could never be observed. THE ARGUMENT
+* IS FALSE for any width that is not a multiple of 4: blit_blast reverses GROUP
+* order, and with a tail the partition is asymmetric, so the permutation is not an
+* involution. At width 5 it is a rotation --
+*
+*     save   peel = [fb4, fb0, fb1, fb2, fb3]
+*     erase  fb   = [fb3, fb4, fb0, fb1, fb2]      rotated again, not restored
+*
+* -- so the background rotated one byte further every frame. That is why the error
+* ACCUMULATED, and why two captures twelve frames apart disagreed (36 vs 33 wrong
+* bytes) rather than failing identically. Non-determinism was the tell.
+*
+* CONSEQUENCE FOR "ONE CORE", stated rather than buried: blit_blast now has ONE
+* caller (the sprite blast) instead of three. The peel cannot share it because the
+* peel's source is live memory whose layout it does not control -- the same reason
+* P3.20 gave for not retrofitting the picture blitter, which turns out to apply more
+* widely than it looked.
 *
 *   Entry: X = framebuffer address (top-left), Y = peel buffer,
 *          A = rows, B = width in bytes
-*
-* Rows and width are ARGUMENTS rather than shared variables so a caller never has
-* to reach into this module's private state to set up a call.
 * ---------------------------------------------------------------
 blit_save
-                pshs    cc
-                orcc    #$50
-                sts     bc_saved_s
-                stx     bc_rowbase
+                pshs    cc,x,y,u
                 sta     bc_prows
                 stb     bc_width
 bs_row
-                ldx     bc_rowbase
+                pshs    x,y                     ; keep this row's two origins
                 tfr     x,u                     ; U = framebuffer row (source)
-                lda     bc_width                ; AFTER the tfr — it clobbers D
-                sta     bc_count
-                leas    a,y                     ; S = one past the peel row end
-                ldx     #bs_blast_back
-                stx     bb_ret
-                jmp     blit_blast
-bs_blast_back
                 lda     bc_width
-                leay    a,y                     ; peel buffer walks forward
-                ldx     bc_rowbase
+                lsra
+                beq     bs_odd
+                sta     bc_count
+bs_pair
+                ldd     ,u++                    ; 8   forward read
+                std     ,y++                    ; 8   forward write — a true COPY
+                dec     bc_count
+                bne     bs_pair
+bs_odd
+                lda     bc_width
+                anda    #1
+                beq     bs_next
+                lda     ,u                      ; odd trailing byte
+                sta     ,y
+bs_next
+                puls    x,y
                 leax    FB_STRIDE,x
-                stx     bc_rowbase
+                lda     bc_width
+                leay    a,y
                 dec     bc_prows
                 bne     bs_row
-                lds     bc_saved_s
-                puls    cc
+                puls    cc,x,y,u
                 rts
 
 blit_erase
-                pshs    cc
-                orcc    #$50
-                sts     bc_saved_s
-                stx     bc_rowbase
+                pshs    cc,x,y,u
                 sta     bc_prows
                 stb     bc_width
 be_row
-                ldx     bc_rowbase
+                pshs    x,y
                 tfr     y,u                     ; U = peel row (source)
-                lda     bc_width                ; AFTER the tfr — it clobbers D
+                lda     bc_width
+                lsra
+                beq     be_odd
                 sta     bc_count
-                leas    a,x                     ; S = one past the framebuffer row
-                ldx     #be_blast_back
-                stx     bb_ret
-                jmp     blit_blast
-be_blast_back
+be_pair
+                ldd     ,u++
+                std     ,x++                    ; back into the framebuffer
+                dec     bc_count
+                bne     be_pair
+be_odd
+                lda     bc_width
+                anda    #1
+                beq     be_next
+                lda     ,u
+                sta     ,x
+be_next
+                puls    x,y
+                leax    FB_STRIDE,x
                 lda     bc_width
                 leay    a,y
-                ldx     bc_rowbase
-                leax    FB_STRIDE,x
-                stx     bc_rowbase
                 dec     bc_prows
                 bne     be_row
-                lds     bc_saved_s
-                puls    cc
+                puls    cc,x,y,u
                 rts
+
 
 * ---------------------------------------------------------------
 * WHY THE INTRO'S PICTURE BLITTER DOES NOT CALL blit_blast

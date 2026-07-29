@@ -29,7 +29,15 @@ BOXES = [(26, 31, 99, 115),     # torch 0: true px 111 -> byte 27.75
          # star reads as damage to the room — the check would fail for the scene
          # working correctly.
          (10, 10, 98, 98), (8, 8, 101, 101),
-         (9, 9, 109, 109), (9, 9, 114, 114)]
+         (9, 9, 109, 109), (9, 9, 114, 114),
+         # ...and the two characters (P3.21). They are drawn by the real blit path
+         # now, so their footprints are legitimate content rather than damage. The
+         # BYTE-EXACTNESS of what lands there is not checked here -- this file only
+         # knows where things may change. verify_room_chars.py compares the pixels
+         # against an offline replay of the same baked cels, which is the check that
+         # can actually see a wrong one.
+         (54, 58, 104, 151),          # vizier   px 217 -> byte 54, phase 1
+         (35, 39, 109, 151)]          # princess px 140 -> byte 35, phase 0
 
 
 def inside(i):
