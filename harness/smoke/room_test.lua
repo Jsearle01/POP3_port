@@ -49,6 +49,7 @@ local function rd8(a) return mem:read_u8(a) end
 local VIZ = tonumber(os.getenv("P_VIZ") or "0")
 local PRI = tonumber(os.getenv("P_PRI") or "0")
 local DRAWN = tonumber(os.getenv("P_DRAWN") or "0")
+local LAST  = tonumber(os.getenv("P_LAST") or "0")
 local function log_positions(tag)
     if VIZ == 0 then return end
     local f2 = io.open("build/room_chars_pos.txt", "a")
@@ -66,9 +67,24 @@ local function log_positions(tag)
     -- buffer's, not the displayed one's. A checker that reads the wrong slot's cel
     -- reports a false failure, which is the same class of mistake four times over.
     local shown = DUMP_BACK and (rd8(CUR_BACK) % 2) or (1 - (rd8(CUR_BACK) % 2))
+    -- POSITION COMES FROM ch_last, NOT FROM THE SLOT RECORD, for the same reason the
+    -- cel does. The record holds the x/y the VM has decided for the frame being built;
+    -- the buffer being captured was drawn earlier and still holds the PREVIOUS position
+    -- until that buffer is redrawn. P3.27 fixed this for the cel and did not extend it
+    -- to x/y, which is what made a correct draw read as 139 wrong bytes shifted exactly
+    -- one byte column (got[c] == want[c+1] on every affected row).
+    --
+    -- ch_last is (x,y,w,h) per (character, slot), written when that slot last saved --
+    -- and a position change always takes the peel path, so it IS where that buffer drew.
+    local function lastxy(ch)
+        local o = LAST + (ch * 2 + shown) * 4
+        return rd8(o), rd8(o + 1)
+    end
+    local vx, vy = lastxy(0)
+    local px, py = lastxy(1)
     f2:write(string.format("%s %d %d %d %d %d %d\n", tag,
-                           rd8(VIZ), rd8(VIZ + 1), rd8(DRAWN + 0 * 2 + shown),
-                           rd8(PRI), rd8(PRI + 1), rd8(DRAWN + 1 * 2 + shown)))
+                           vx, vy, rd8(DRAWN + 0 * 2 + shown),
+                           px, py, rd8(DRAWN + 1 * 2 + shown)))
     f2:close()
 end
 
