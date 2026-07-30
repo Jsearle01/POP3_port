@@ -683,10 +683,15 @@ vm_start
 * The princess stands, steps 8 px, slumps, steps back, and repeats. 8 px keeps her on
 * one sub-byte phase, which one baked cel can serve; sub-byte steps need the phase
 * variants and are piece E.
-pri_demo        fcb     11,11,11,11             ; Pstand's cel, four steps
-                fcb     SEQ_CHX,8               ; step right 8 px (mirrored by face)
-                fcb     1,1,1,1                 ; Pslump's cel
-                fcb     SEQ_CHX,-8              ; and back
+pri_demo
+                fcb     11
+                fcb     SEQ_CHX,4
+                fcb     1
+                fcb     SEQ_CHX,4
+                fcb     11
+                fcb     SEQ_CHX,-4
+                fcb     1
+                fcb     SEQ_CHX,-4
                 fcb     SEQ_GOTO
                 fdb     pri_demo
 

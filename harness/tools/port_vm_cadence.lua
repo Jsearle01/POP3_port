@@ -61,7 +61,10 @@ local function tick()
             local mean = tot / cnt
             log(string.format("# mean %.2f frames between cel changes over %d samples",
                               mean, cnt))
-            log(string.format("# the demo holds a cel for 4 steps -> %.2f frames per STEP",
+    log("# the demo changes cel EVERY step, so frames-between-cel-changes IS")
+    log("#   frames-per-step. (It held a cel for 4 steps until P3.29 densified it;")
+    log("#   this line asserted that division and would now divide by the wrong")
+    log("#   number -- a stale constant in a measuring tool reads as a measurement.)")
                               mean / 4))
             log(string.format("# target 2.60 (13/5 = 3,3,2,3,2); error %+.2f frames",
                               mean / 4 - 2.60))
