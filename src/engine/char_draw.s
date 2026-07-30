@@ -166,27 +166,27 @@ chars_frame
                 anda    #1                      ; A = which buffer
                 sta     ch_slot
 
-* --- MOVE the vizier, slowly, so the peel's moving case is actually exercised ---
-* P3.21 found the move path had never run: the position was a constant in the
-* descriptor and the column variable it computed was dead. Now the step writes the
-* record's x, which is what the draw reads.
-                inc     ch_tick
-                lda     ch_tick
-                anda    #$3F
-                bne     cf_nomove
-                lda     ch_dir
-                nega                            ; +8 <-> -8
-                sta     ch_dir
-cf_nomove
-                lda     ch_tick
-                anda    #$1F
-                bne     cf_draw
-                ldx     #viz_slot
-                lda     CH_X,x
-                adda    ch_dir
-                sta     CH_X,x
+* TWO PHASES, KEPT DISTINCT AS THE ORACLE HAS THEM [FRAMEADV.S]. NextFrame DECIDES --
+* it runs the cadence and, on a step boundary, advances each character's sequence and
+* sets its cel/x/y. FrameAdv DRAWS what was decided. Collapsing them would let a
+* position change part-way through a frame's drawing, and the peel would then restore
+* against a position that no longer matches.
+* Point each character at its sequence, once. A lazy check rather than an init entry
+* point because the room calls straight into here and has no other hook; vm_seq is
+* zero until this runs, and vm_step treats a zero stream as "nothing to advance".
+                ldd     vm_seq
+                bne     cf_running
+                ldu     #viz_demo
+                stu     vm_seq
+                ldu     #pri_demo
+                stu     vm_seq+2
+cf_running
+                jsr     vm_nextframe            ; decide
+                jsr     vm_frameadv             ; draw
+                rts
 
-cf_draw
+* vm_frameadv — the DRAW half: the gated D path, once per character.
+vm_frameadv
                 clr     ch_idx
                 ldx     #viz_slot
                 jsr     char_one
@@ -222,12 +222,12 @@ char_one
                 lda     CH_W,x
                 sta     ch_w
 
-* ch_last[] index = character*4 + slot*2  (two slots, an x/y pair each)
+* ch_last[] index = (character*2 + slot) * 4  — four bytes: x, y, w, h
                 lda     ch_idx
                 lsla
+                adda    ch_slot
                 lsla
-                adda    ch_slot
-                adda    ch_slot
+                lsla
                 sta     ch_lastoff
 * FOUR seen bits, not two: one per (character, slot). Keying on the slot alone would
 * make character 0 and character 1 share a bit, so the second character would
@@ -263,7 +263,9 @@ co_setmove
 * going. P3.20 erased at the new position, which is only harmless while nothing
 * moves — and nothing did, because its move path was dead (P3.21 found that).
                 tsta
-                beq     co_draw                 ; static: no erase, no save
+                lbeq    co_draw                 ; static: no erase, no save (long — the
+                                                ; erase block below grew past a short
+                                                ; branch's reach)
                 lda     ch_bit
                 anda    ch_seen
                 beq     co_save                 ; this buffer has saved nothing yet
@@ -274,12 +276,25 @@ co_setmove
                 inca
                 ldb     a,y
                 stb     ch_ty                   ; old y
+                inca
+                ldb     a,y
+                stb     ch_w                    ; the width it was SAVED with
+                inca
+                ldb     a,y
+                stb     ch_h                    ; and the height
+                clr     ch_fdx                  ; the old position already included it
                 jsr     co_setup
                 ldx     ch_dest
                 ldy     ch_peel
                 lda     ch_h
                 ldb     ch_w
                 jsr     [BLIT_TAB+4]            ; blit_erase (preserves X,Y,U)
+* Put the CURRENT cel's dimensions back: the save and draw below are the new cel's.
+                ldx     ch_rec
+                lda     CH_H,x
+                sta     ch_h
+                lda     CH_W,x
+                sta     ch_w
 
 co_save
 * --- SAVE the background at the NEW position, and record it --------------
@@ -296,6 +311,12 @@ co_save
                 stb     a,y
                 inca
                 ldb     ch_ty
+                stb     a,y
+                inca
+                ldb     ch_w                    ; remember the extent, not just where
+                stb     a,y
+                inca
+                ldb     ch_h
                 stb     a,y
                 lda     ch_seen
                 ora     ch_bit
@@ -363,10 +384,237 @@ co_setup
 cs_done
                 rts
 
+
+* ---------------------------------------------------------------
+* PIECE C — THE SEQUENCE INTERPRETER (the animation engine).
+*
+* The cutscene is DATA over this, not a subsystem (P3.16). A sequence is a byte
+* stream where a POSITIVE byte is a cel number and a NEGATIVE byte is an opcode
+* [SEQTABLE.S]. `Vwalk1 db 48,chx,2` reads literally: cel 48, then move x by 2.
+*
+* OPCODES PRECEDE THE CEL THEY AFFECT. `Vwalk db chx,1` / `Vwalk1 db 48,chx,2`
+* means entering Vwalk applies chx 1 and THEN draws 48; the chx 2 after 48 applies
+* before 49. So a step consumes opcodes until it reaches a cel, sets that cel, and
+* returns -- one cel per animation step, which is what `play` does per iteration.
+*
+* IT MUTATES THE P3.22 SLOT RECORDS. There is no parallel state: cel/x/y/facing live
+* in the record the draw path already reads, which is why P3.22 shaped it that way.
+* ---------------------------------------------------------------
+SEQ_GOTO        equ     $FF             ; goto      = -1, followed by a 2-byte target
+SEQ_ABOUTFACE   equ     $FE             ; aboutface = -2
+SEQ_CHX         equ     $FB             ; chx       = -5, signed operand
+SEQ_CHY         equ     $FA             ; chy       = -6, signed operand
+SEQ_SETFALL     equ     $F8             ; setfall   = -8, operand consumed unused
+
+* --- THE CADENCE, from P3.23's measurement -------------------------------
+* Frame counts transfer 1:1 (CoCo3 16.683 ms vs Apple 16.688 ms, 0.03% apart), so a
+* SPEED expressed in Apple frames is the same integer here. SPEED 7 is 2.6 frames:
+* a constant 3 runs +15.3% slow, which IS the 20.0-vs-22.8 Hz gap carried since
+* P3.17. A 13/5 cadence lands within 0.01 ms of the oracle AND reproduces its own
+* measured 2-3 frame spread instead of flattening it.
+cad_tab         fcb     3,3,2,3,2       ; 13 frames over 5 steps = 2.6
+CAD_LEN         equ     5
+cad_idx         fcb     0
+cad_cnt         fcb     1               ; frames left in the current step
+
+* --- image index -> the baked cel that holds it --------------------------
+* Only the cels actually baked can be drawn. The cel TABLE covers all 49, but baking
+* the rest needs the per-cel parity conversion volume, which is E's scope. A cel
+* whose image is not here leaves the slot showing what it had -- visible as a stall,
+* not as a crash.
+img_map         fcb     10
+                fdb     pslump
+                fcb     25
+                fdb     pstand
+                fcb     80
+                fdb     vstand
+                fcb     0               ; terminator
+
+vm_seq          fdb     0,0             ; sequence pointer per character
+vm_rec          fdb     0
+vm_img          fcb     0
+
+* ---------------------------------------------------------------
+* vm_resolve — cel number in A -> the record's cel fields.
+*
+* Resolves through the generated table (image index, Fdx, Fdy, parity) exactly as
+* getfindex/getaltframe2 do, then maps the image index to a baked cel and takes h/w
+* from that cel's own header so the peel extent always matches what will be drawn.
+*   Preserves U (the caller's sequence pointer).
+* ---------------------------------------------------------------
+vm_resolve
+                pshs    u
+                ldu     vm_rec
+                sta     CH_CEL,u                ; remember the cel number
+                suba    #CEL_LO
+                ldb     #CEL_ENTSZ
+                mul                             ; D = offset into the table
+                ldx     #cel_table
+                leax    d,x
+                lda     ,x                      ; image index
+                sta     vm_img
+                lda     1,x                     ; Fdx, signed
+                sta     CH_FDX,u
+
+                ldx     #img_map
+vr_find
+                lda     ,x
+                beq     vr_done                 ; not baked — leave the slot as it was
+                cmpa    vm_img
+                beq     vr_found
+                leax    3,x
+                bra     vr_find
+vr_found
+                ldd     1,x                     ; the baked cel's address
+                std     CH_PTR,u
+                tfr     d,x
+                lda     ,x                      ; the cel's own header: rows, width
+                sta     CH_H,u
+                lda     1,x
+                sta     CH_W,u
+vr_done
+                puls    u
+                rts
+
+* ---------------------------------------------------------------
+* vm_step — advance ONE character's sequence by one animation step.
+*   X -> slot record, ch_idx = character index.
+* ---------------------------------------------------------------
+vm_step
+                stx     vm_rec
+                lda     ch_idx
+                lsla
+                ldx     #vm_seq
+                ldu     a,x                     ; U = this character's stream position
+                cmpu    #0
+                beq     vs_none                 ; no sequence assigned
+vs_loop
+                lda     ,u+
+                bpl     vs_cel                  ; positive = a cel number
+                cmpa    #SEQ_GOTO
+                beq     vs_goto
+                cmpa    #SEQ_ABOUTFACE
+                beq     vs_face
+                cmpa    #SEQ_CHX
+                beq     vs_chx
+                cmpa    #SEQ_CHY
+                beq     vs_chy
+                leau    1,u                     ; setfall and friends: skip the operand
+                bra     vs_loop
+
+vs_goto
+                ldu     ,u                      ; the 2-byte target replaces the pointer
+                bra     vs_loop
+
+vs_face
+* aboutface flips CharFace — AND THEREFORE THE REQUIRED PARITY, because the rule is
+* bit7(Fcheck) == bit7(CharFace) (P3.24). The cels baked here carry ONE parity, the
+* one for CharFace=-1, so a turn would need the opposite variant of every cel drawn
+* after it. The flip is implemented because the VM must not silently drop an opcode;
+* the parity consequence is DEFERRED to G (the turn), and this is the note P3.24
+* asked for rather than an assumption buried in code.
+                ldx     vm_rec
+                lda     CH_FACE,x
+                nega
+                sta     CH_FACE,x
+                bra     vs_loop
+
+vs_chx
+                lda     ,u+                     ; signed delta
+                ldx     vm_rec
+                ldb     CH_FACE,x
+                bpl     vs_chx_add              ; facing right: add as-is
+                nega                            ; facing left: the delta is mirrored
+vs_chx_add
+                adda    CH_X,x
+                sta     CH_X,x
+                bra     vs_loop
+
+vs_chy
+                lda     ,u+
+                ldx     vm_rec
+                adda    CH_Y,x
+                sta     CH_Y,x
+                bra     vs_loop
+
+vs_cel
+                jsr     vm_resolve              ; A = cel number; preserves U
+                lda     ch_idx
+                lsla
+                ldx     #vm_seq
+                stu     a,x                     ; remember where we stopped
+vs_none
+                rts
+
+* ---------------------------------------------------------------
+* vm_nextframe — the DECIDE half. Runs the cadence; on a step boundary it advances
+* both characters' sequences. Nothing here draws.
+* ---------------------------------------------------------------
+vm_nextframe
+                dec     cad_cnt
+                bne     vn_hold
+                lda     cad_idx                 ; next entry in the 3,3,2,3,2 cycle
+                inca
+                cmpa    #CAD_LEN
+                blo     vn_wrap
+                clra
+vn_wrap
+                sta     cad_idx
+                ldx     #cad_tab
+                lda     a,x
+                sta     cad_cnt
+
+                clr     ch_idx                  ; step both characters
+                ldx     #viz_slot
+                jsr     vm_step
+                lda     #1
+                sta     ch_idx
+                ldx     #pri_slot
+                jsr     vm_step
+vn_hold
+                rts
+
+* ---------------------------------------------------------------
+* vm_start — point a character at a sequence.
+*   X -> slot record's sequence entry index in A, U = the stream.
+* ---------------------------------------------------------------
+vm_start
+                lsla
+                ldx     #vm_seq
+                stu     a,x
+                rts
+
+* --- the demonstration sequence, and why it is this one ------------------
+* The dispatch asked for Vstand holding then a short Vwalk. VWALK CANNOT RUN YET: its
+* cels (48-53) are not baked, and baking them needs the per-cel parity conversion
+* volume that is E's scope. So the proof uses the cels that ARE baked -- and it still
+* exercises every opcode the interpreter implements except aboutface (see vs_face):
+* cel bytes, chx in both directions, and goto looping.
+*
+* The princess stands, steps 8 px, slumps, steps back, and repeats. 8 px keeps her on
+* one sub-byte phase, which one baked cel can serve; sub-byte steps need the phase
+* variants and are piece E.
+pri_demo        fcb     11,11,11,11             ; Pstand's cel, four steps
+                fcb     SEQ_CHX,8               ; step right 8 px (mirrored by face)
+                fcb     1,1,1,1                 ; Pslump's cel
+                fcb     SEQ_CHX,-8              ; and back
+                fcb     SEQ_GOTO
+                fdb     pri_demo
+
+* The vizier holds Vstand, driven by the VM rather than by a hardcoded call — which
+* is the point: his cel now comes from data too.
+viz_demo        fcb     54
+                fcb     SEQ_GOTO
+                fdb     viz_demo
+
+* --- the VM's cel-id table, generated from ALTSET2 ---------------------
+                include "content/cutscene/cel_table.s"
+
 * --- the baked cels: segment streams for the runtime blitter, from
 * --- harness/tools/cel_blit_prep.py. Data, not compiled sprites.
                 include "content/cutscene/chars/vstand.s"
                 include "content/cutscene/chars/pstand.s"
+                include "content/cutscene/chars/pslump.s"
 
 * --- the two slots, initialised from the oracle's own start positions ----
 * startV0 CharX=197, startP0 CharX=120, both CharFace=-1, floorY=151
@@ -389,9 +637,16 @@ ch_bit          fcb     0
 ch_seen         fcb     0               ; bit per (character,slot): background saved?
 ch_move         fcb     0
 ch_lastoff      fcb     0
-* Renderer-side, NOT character state: where each buffer last drew each character.
-* Two characters x two slots x (x,y).
-ch_last         fcb     0,0,0,0,0,0,0,0
+* Renderer-side, NOT character state: what each buffer last drew for each character —
+* x, y, WIDTH and HEIGHT. Two characters x two slots x 4 bytes.
+*
+* THE DIMENSIONS ARE HERE BECAUSE THE VM CHANGES THEM. A peel must be erased with the
+* extent it was SAVED with; once an interpreter switches cels, the record's current
+* w/h belong to the NEW cel. Erasing pstand's 43x5 save with pslump's 43x6 restored a
+* column that was never saved — visible as $AA, the uninitialised-peel signature, and
+* as captures that disagreed because the error accumulated. Found the moment the VM
+* first switched a cel, which is what D's checks could not reach on a fixed cel.
+ch_last         rmb     16              ; 2 chars x 2 slots x (x,y,w,h)
 ch_bits         fcb     1,2,4,8         ; seen bit for (character, slot)
 ch_tick         fcb     0
 ch_dir          fcb     CH_STEP

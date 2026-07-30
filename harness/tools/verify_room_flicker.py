@@ -41,7 +41,10 @@ BOXES = [(26, 31, 99, 115),     # torch 0: true px 111 -> byte 27.75
          # him on phase 1, which one baked cel can serve — so with +20 centring and
          # width 5 he occupies byte columns 52..60.
          (52, 60, 104, 151),          # vizier   x 189..205, phase 1
-         (35, 39, 109, 151)]          # princess x 120 static, phase 0
+         # The princess MOVES and CHANGES CEL under the VM (P3.25): the demo sequence
+         # steps her x between 112 and 120 and alternates Pstand (5 B wide) with
+         # Pslump (6 B), so she occupies byte columns 33..40 over rows 109..151.
+         (33, 40, 109, 151)]          # princess x 112..120, cels 11/1, phase 0
 
 
 def inside(i):

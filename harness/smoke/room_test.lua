@@ -52,8 +52,12 @@ local function log_positions(tag)
     if VIZ == 0 then return end
     local f2 = io.open("build/room_chars_pos.txt", "a")
     if not f2 then return end
-    f2:write(string.format("%s %d %d %d %d\n", tag,
-                           rd8(VIZ), rd8(VIZ + 1), rd8(PRI), rd8(PRI + 1)))
+    -- x, y AND CEL for each character (CH_CEL is record offset 3). The VM switches
+    -- cels now, so a check that assumes which cel is drawn cannot tell "wrong cel"
+    -- from "the sequence advanced" — the same trap the fixed-position assumption was.
+    f2:write(string.format("%s %d %d %d %d %d %d\n", tag,
+                           rd8(VIZ), rd8(VIZ + 1), rd8(VIZ + 3),
+                           rd8(PRI), rd8(PRI + 1), rd8(PRI + 3)))
     f2:close()
 end
 

@@ -40,27 +40,34 @@ SP318 = pathlib.Path("C:/Users/jayse/AppData/Local/Temp/claude/"
 # Verifying against them would have confirmed the bug instead of catching it, which is
 # the whole hazard of a checker sharing its input with the thing it checks.
 #   vizier   start_col 197 (ODD)   princess start_col 120 (EVEN)   both Fdx=0
-CELS = {"vstand": (ROOT / "content/cutscene/chars/vstand_src.s", 1),
-        "pstand": (ROOT / "content/cutscene/chars/pstand_src.s", 0)}
+# CEL NUMBER -> (converted source, phase, rows). Keyed by the number the VM writes into
+# the slot record, because with an interpreter running there is no fixed answer to
+# "which cel is on screen" — it must be read from the machine, like the position.
+CELS = {54: (ROOT / "content/cutscene/chars/vstand_src.s", 1, 48),   # Vstand
+        11: (ROOT / "content/cutscene/chars/pstand_src.s", 0, 43),   # Pstand
+        1:  (ROOT / "content/cutscene/chars/pslump_src.s", 0, 43),   # Pslump
+        18: (ROOT / "content/cutscene/chars/pslump_src.s", 0, 43)}   # Pslump, same image
 POSFILE = ROOT / "build/room_chars_pos.txt"
 FLOOR_H = {"vstand": 48, "pstand": 43}
 
 
 def placements():
-    """[(tag, [(label, src, phase, top, col), ...]), ...] from the recorded positions."""
+    """[(tag, [(label, src, phase, top, col), ...]), ...] from the recorded state."""
     if not POSFILE.exists():
         raise SystemExit("  no build/room_chars_pos.txt — run the room test first")
     out = []
     for line in POSFILE.read_text().splitlines():
         f = line.split()
-        if len(f) != 5:
+        if len(f) != 7:
             continue
-        tag, vx, vy, px, py = f[0], *map(int, f[1:])
+        tag = f[0]
+        vx, vy, vc, px, py, pc = map(int, f[1:])
         rows = []
-        for label, x, y in (("vstand", vx, vy), ("pstand", px, py)):
-            src, phase = CELS[label]
-            h = FLOOR_H[label]
-            rows.append((label, src, phase, y - h + 1, (x + 20) >> 2))
+        for cel, x, y in ((vc, vx, vy), (pc, px, py)):
+            if cel not in CELS:
+                raise SystemExit("  cel %d is on screen but has no baked source" % cel)
+            src, phase, h = CELS[cel]
+            rows.append(("cel%d" % cel, src, phase, y - h + 1, (x + 20) >> 2))
         out.append((tag, rows))
     return out
 
