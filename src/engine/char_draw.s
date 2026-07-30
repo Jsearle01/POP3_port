@@ -253,6 +253,12 @@ char_one
                 sta     ch_bit
 
 * --- did the character move since THIS buffer last drew it? ---------------
+                ldy     #ch_drawn               ; the cel this buffer last drew
+                lda     ch_idx
+                lsla
+                adda    ch_slot
+                ldb     a,y
+                stb     ch_lastcel
                 ldy     #ch_last
                 lda     ch_lastoff
                 ldx     ch_rec
@@ -262,6 +268,17 @@ char_one
                 inca
                 ldb     a,y                     ; last y
                 cmpb    CH_Y,x
+                bne     co_moved
+* THE CEL COUNTS AS A CHANGE TOO, not just the position. The test compared x and y
+* only, so a character that changed CEL WITHOUT MOVING took the static branch: no
+* erase, no save, and the new cel drawn straight over the old one's pixels. The merge
+* is idempotent for the SAME cel, which is what made the skip safe when P3.22
+* introduced it -- but a DIFFERENT cel leaves the previous one showing wherever the
+* new one is transparent, and it accumulates. Isolated by ablation: cel-change with
+* the position FIXED fails on its own (65/72, captures disagreeing), so this is not a
+* movement bug and not an overlap bug.
+                lda     ch_lastcel
+                cmpa    CH_CEL,x
                 beq     co_static
 co_moved
                 lda     #1
@@ -730,6 +747,7 @@ ch_ty           fcb     0
 ch_h            fcb     0
 ch_w            fcb     0
 ch_fdx          fcb     0
+ch_lastcel      fcb     0
 ch_tmp          fcb     0
 ch_rec          fdb     0
 ch_dest         fdb     0
