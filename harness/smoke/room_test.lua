@@ -48,16 +48,24 @@ local function rd8(a) return mem:read_u8(a) end
 -- reads as 231 wrong bytes.
 local VIZ = tonumber(os.getenv("P_VIZ") or "0")
 local PRI = tonumber(os.getenv("P_PRI") or "0")
+local DRAWN = tonumber(os.getenv("P_DRAWN") or "0")
 local function log_positions(tag)
     if VIZ == 0 then return end
     local f2 = io.open("build/room_chars_pos.txt", "a")
     if not f2 then return end
-    -- x, y AND CEL for each character (CH_CEL is record offset 3). The VM switches
-    -- cels now, so a check that assumes which cel is drawn cannot tell "wrong cel"
-    -- from "the sequence advanced" — the same trap the fixed-position assumption was.
+    -- x, y AND the cel THAT WAS DRAWN INTO THE BUFFER BEING CAPTURED.
+    --
+    -- The cel is NOT read from the slot record: that holds the cel for the frame
+    -- currently being decided, while the buffer we capture was drawn a frame earlier
+    -- and may still hold the previous one. Reading the record made a correct draw
+    -- look like 32 wrong bytes (P3.27). ch_drawn is written at DRAW time, indexed by
+    -- (character, slot), so this reads what actually reached these pixels.
+    --
+    -- The displayed buffer is the one that is NOT the current draw target.
+    local shown = 1 - (rd8(CUR_BACK) % 2)
     f2:write(string.format("%s %d %d %d %d %d %d\n", tag,
-                           rd8(VIZ), rd8(VIZ + 1), rd8(VIZ + 3),
-                           rd8(PRI), rd8(PRI + 1), rd8(PRI + 3)))
+                           rd8(VIZ), rd8(VIZ + 1), rd8(DRAWN + 0 * 2 + shown),
+                           rd8(PRI), rd8(PRI + 1), rd8(DRAWN + 1 * 2 + shown)))
     f2:close()
 end
 

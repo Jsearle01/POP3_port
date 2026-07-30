@@ -126,6 +126,17 @@ PRI_PEEL_BASE   equ     $6C00+VIZ_PEEL*2
 *   +5  w       width in bytes
 *   +6  ptr     2 B  resolved cel data address (patched from char_tab at startup)
 *   +8  peel    2 B  peel base for slot 0; slot 1 sits at +PEEL (the widest cel)
+*  +11  stride  2 B  the peel SLOT STRIDE — a constant, the character's widest cel.
+*
+*               IT CANNOT BE h*w OF THE CURRENT CEL, and that was a real bug. Slot 1's
+*               peel lives at base + stride; if the stride is computed from whatever
+*               cel is loaded, a save at w=6 writes at +258 while the following erase
+*               at w=5 reads at +215 — a different address, so the erase restores
+*               bytes that were never saved. It showed as exactly 32 wrong pixels that
+*               appeared only when the VM stepped, and vanished entirely when the VM
+*               was frozen. Sizing the BUFFER to the widest cel (P3.25) was necessary
+*               and not sufficient; the STRIDE has to be constant too.
+*
 *  +10  fdx     the frame's own x offset, signed — ALTSET2's Fdx. The cel table
 *               carries it per cel (-1..5 across the cutscene set) and the VM writes
 *               it here when it selects a cel. Zero for every cel drawn so far, so
@@ -151,9 +162,10 @@ CH_CEL          equ     3
 CH_H            equ     4
 CH_W            equ     5
 CH_FDX          equ     10              ; per-frame x offset, from the cel table
+CH_STRIDE       equ     11              ; 2 B — constant peel slot stride
 CH_PTR          equ     6
 CH_PEEL         equ     8
-CH_SIZE         equ     11
+CH_SIZE         equ     13
 
 * Motion step. MUST be a multiple of 4 px: the phase is baked into the cel data
 * (P3.19/P3.20), so moving by anything else would need the phase variant for the
@@ -331,6 +343,26 @@ co_draw
                 ldu     CH_PTR,x                ; the baked cel
                 ldx     ch_dest
                 jsr     [BLIT_TAB]              ; blit_cel — clobbers X and Y
+
+* RECORD WHAT WAS ACTUALLY DRAWN INTO THIS BUFFER, for the checker to read.
+*
+* The pixel check used to read CH_CEL from the slot record at CAPTURE time, but the
+* buffer being captured was drawn a FRAME EARLIER and may still hold the previous
+* cel — so the check compared this frame's cel against last frame's pixels. That is
+* the fourth variant of one mistake in this project (assume the position, assume the
+* input provenance, assume the cel, assume the cel is CURRENT): a checker that
+* assumes any part of the state it checks cannot tell "wrong" from "changed".
+*
+* Indexed by (character, slot) because each buffer holds its own last-drawn cel.
+                ldx     ch_rec
+                lda     CH_CEL,x
+                ldb     ch_idx
+                lslb
+                addb    ch_slot
+                ldx     #ch_drawn
+                stb     ch_tmp
+                ldb     ch_tmp
+                sta     b,x
                 rts
 
 * co_here — ch_tx/ch_ty := this record's current x,y
@@ -377,9 +409,7 @@ co_setup
                 std     ch_peel
                 lda     ch_slot
                 beq     cs_done
-                lda     ch_h
-                ldb     ch_w
-                mul                             ; one slot's footprint
+                ldd     CH_STRIDE,x             ; the CONSTANT slot stride
                 addd    ch_peel
                 std     ch_peel
 cs_done
@@ -638,11 +668,13 @@ viz_slot        fcb     197,151,-1,54           ; x, y, face, cel id (chtab6.A #
                 fdb     vstand                  ; resolved at link time now
                 fdb     VIZ_PEEL_BASE
                 fcb     0                       ; Fdx — the VM writes this per cel
+                fdb     VIZ_PEEL                ; slot stride: widest vizier cel
 pri_slot        fcb     120,151,-1,25           ; x, y, face, cel id (chtab6.A #25)
                 fcb     43,5
                 fdb     pstand
                 fdb     PRI_PEEL_BASE
                 fcb     0                       ; Fdx
+                fdb     PRI_PEEL                ; slot stride: widest princess cel
 
 ch_base         fdb     0
 ch_slot         fcb     0
@@ -661,6 +693,7 @@ ch_lastoff      fcb     0
 * as captures that disagreed because the error accumulated. Found the moment the VM
 * first switched a cel, which is what D's checks could not reach on a fixed cel.
 ch_last         rmb     16              ; 2 chars x 2 slots x (x,y,w,h)
+ch_drawn        rmb     4               ; the cel each buffer was last DRAWN with
 ch_bits         fcb     1,2,4,8         ; seen bit for (character, slot)
 ch_tick         fcb     0
 ch_dir          fcb     CH_STEP

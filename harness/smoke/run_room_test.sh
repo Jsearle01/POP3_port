@@ -54,6 +54,7 @@ export P_SWAPS="0x$(grep -E "^Symbol: HAL_gfx_swaps " "$MAP" | sed -E 's/.*= *//
 FMAP="build/obj/flames.map"
 export P_VIZ="0x$(grep -E "^Symbol: viz_slot " "$FMAP" | sed -E 's/.*= *//')"
 export P_PRI="0x$(grep -E "^Symbol: pri_slot " "$FMAP" | sed -E 's/.*= *//')"
+export P_DRAWN="0x$(grep -E "^Symbol: ch_drawn " "$FMAP" | sed -E 's/.*= *//')"
 export P_OUT="$LOG"
 export P_DUMP="$GOT"
 export P_DUMP2="build/room_front2.bin"
