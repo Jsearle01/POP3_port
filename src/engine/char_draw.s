@@ -437,6 +437,34 @@ SEQ_CHX         equ     $FB             ; chx       = -5, signed operand
 SEQ_CHY         equ     $FA             ; chy       = -6, signed operand
 SEQ_SETFALL     equ     $F8             ; setfall   = -8, operand consumed unused
 
+* ---------------------------------------------------------------
+* PACING POLICY: "FLOOR AT SPEED, OVERRUN NATURALLY"  (Jay, P3.27)
+* ---------------------------------------------------------------
+* The cadence table is a MINIMUM, not a target. A step waits at least its listed
+* frames; if the draw takes longer, the step takes longer. Nothing clamps the rate.
+*
+* THIS PORTS THE MECHANISM, NOT EITHER MEASURED NUMBER. The oracle's `play` does
+* `lda SPEED / jsr pause` [SUBS.S:876-881] -- a minimum delay -- so its observed rate
+* is that floor plus whatever its draw overran by. Measured (P3.26): 2.6 frames/step
+* with characters static, 3.9 with them animating. The 3.9 is not a pace it aimed at;
+* it is a 6502 draw against a 2.6-frame floor.
+*
+* WHY NOT MATCH THE 3.9. Hard-coding it would mean inserting delay to reproduce the
+* Apple's inability to keep up -- porting a limitation as if it were a design. It also
+* would not generalise: gameplay load varies by room and actor count, so one scene's
+* Apple-specific draw cost is the wrong constant everywhere else.
+*
+* CLAUDE.md §2 -- "trace wins on fact; source wins on intent". This chooses INTENT for
+* the floor (SPEED 7 means 2.6 frames) and lets the achieved rate be an observed
+* consequence of OUR draw cost, exactly as 3.9 was a consequence of the oracle's.
+*
+* ACKNOWLEDGED COST: ~1.4x the oracle's animated rate (21.9 vs 15.6 Hz at the floor).
+* Faster than the original ran this motion. REVISITABLE BY EYE (Jay's caveat) -- if it
+* looks wrong side by side with the oracle, the policy changes, not the measurement.
+*
+* Applies to E-H and the demo. Not to be re-litigated per scene.
+* ---------------------------------------------------------------
+
 * --- THE CADENCE, from P3.23's measurement -------------------------------
 * Frame counts transfer 1:1 (CoCo3 16.683 ms vs Apple 16.688 ms, 0.03% apart), so a
 * SPEED expressed in Apple frames is the same integer here. SPEED 7 is 2.6 frames:
