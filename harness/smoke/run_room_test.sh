@@ -48,6 +48,7 @@ BLK_B=$(grep -E "^Symbol: GFX_DB_B_BLOCK " "$MAP" | sed -E 's/.*= *//')
 export P_BLK_A=$(printf '0x%02X' $(( 0x$BLK_A - 0x$CODEBASE )))
 export P_BLK_B=$(printf '0x%02X' $(( 0x$BLK_B - 0x$CODEBASE )))
 export P_CURMODE="0x$(grep -E "^Symbol: HAL_gfx_cur_mode " "$MAP" | sed -E 's/.*= *//')"
+export P_DUMP_BACK="${P_DUMP_BACK:-0}"
 export P_SWAPS="0x$(grep -E "^Symbol: HAL_gfx_swaps " "$MAP" | sed -E 's/.*= *//')"
 # The character slot records live in the disk-resident bundle (P3.22), so their
 # addresses come from the FLAMES map, not the room map.

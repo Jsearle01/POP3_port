@@ -62,7 +62,10 @@ local function log_positions(tag)
     -- (character, slot), so this reads what actually reached these pixels.
     --
     -- The displayed buffer is the one that is NOT the current draw target.
-    local shown = 1 - (rd8(CUR_BACK) % 2)
+    -- ...and when the probe captures the BACK buffer, the cel to read is that
+    -- buffer's, not the displayed one's. A checker that reads the wrong slot's cel
+    -- reports a false failure, which is the same class of mistake four times over.
+    local shown = DUMP_BACK and (rd8(CUR_BACK) % 2) or (1 - (rd8(CUR_BACK) % 2))
     f2:write(string.format("%s %d %d %d %d %d %d\n", tag,
                            rd8(VIZ), rd8(VIZ + 1), rd8(DRAWN + 0 * 2 + shown),
                            rd8(PRI), rd8(PRI + 1), rd8(DRAWN + 1 * 2 + shown)))
@@ -81,11 +84,18 @@ local function map_blocks(first)
     for i = 0, 3 do mem:write_u8(0xFFA4 + i, first + i) end
 end
 
+-- P_DUMP_BACK captures the DRAWN buffer rather than the displayed one. It exists for
+-- the single-buffer probe (P3.29): with the page flip disabled the drawn buffer is
+-- never displayed, so a capture of the front would show a static room and prove
+-- nothing. Diagnostic only — the shipped suite captures the front, which is what the
+-- viewer actually sees.
+local DUMP_BACK = (os.getenv("P_DUMP_BACK") or "0") ~= "0"
+
 local function dump_front(path)
     local back = rd8(CUR_BACK)
     local back_blk  = (back == 0) and BLOCK_A or BLOCK_B
     local front_blk = (back == 0) and BLOCK_B or BLOCK_A
-    map_blocks(front_blk)
+    map_blocks(DUMP_BACK and back_blk or front_blk)
     local t = {}
     for i = 0, FB_SIZE - 1 do t[#t + 1] = string.char(rd8(FB_BASE + i)) end
     map_blocks(back_blk)
