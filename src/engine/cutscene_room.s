@@ -279,6 +279,12 @@ room_loop
 *
 * The two HAL values it needs are passed as ARGUMENTS rather than linked, which is
 * what lets it live in a bundle that has no HAL: A = which buffer, X = its address.
+* The VM paces off REAL VBLs, not off loop iterations — P3.25 measured the old
+* iteration counter at 3.09 frames/step against a 2.60 table, because one iteration
+* stopped equalling one frame the moment the VM added work. The bundle links without
+* the HAL, so the frame counter is handed over like the other two HAL values.
+                jsr     HAL_time_frame_count    ; D = 16-bit frame count (race-safe)
+                tfr     d,u
                 lda     HAL_gfx_cur_back
                 anda    #1
                 ldx     HAL_gfx_draw_base

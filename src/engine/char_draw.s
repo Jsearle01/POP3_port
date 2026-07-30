@@ -162,6 +162,7 @@ CH_SIZE         equ     11
 CH_STEP         equ     8
 
 chars_frame
+                stu     vm_now                  ; U = the HAL's real frame count
                 stx     ch_base                 ; X = the draw buffer's address
                 anda    #1                      ; A = which buffer
                 sta     ch_slot
@@ -415,7 +416,8 @@ SEQ_SETFALL     equ     $F8             ; setfall   = -8, operand consumed unuse
 cad_tab         fcb     3,3,2,3,2       ; 13 frames over 5 steps = 2.6
 CAD_LEN         equ     5
 cad_idx         fcb     0
-cad_cnt         fcb     1               ; frames left in the current step
+vm_now          fdb     0               ; the HAL's frame count, handed in per call
+vm_due          fdb     0               ; the frame this step is due to fire on
 
 * --- image index -> the baked cel that holds it --------------------------
 * Only the cels actually baked can be drawn. The cel TABLE covers all 49, but baking
@@ -550,9 +552,18 @@ vs_none
 * vm_nextframe — the DECIDE half. Runs the cadence; on a step boundary it advances
 * both characters' sequences. Nothing here draws.
 * ---------------------------------------------------------------
+* PACED OFF REAL VBLs. The old version decremented a counter once per call, which
+* is once per LOOP ITERATION -- and P3.25 measured 0.84 iterations per video frame,
+* so a 2.60-iteration step took 3.09 frames. The table was always in the right unit;
+* the counter was not. Comparing against the HAL's frame count makes a step take the
+* frames it says regardless of how long an iteration costs.
+*
+* Signed 16-bit compare, so it is correct until the counter passes $7FFF -- about
+* nine minutes at 60 Hz. Fine for a cutscene, noted rather than assumed away.
 vm_nextframe
-                dec     cad_cnt
-                bne     vn_hold
+                ldd     vm_now
+                subd    vm_due
+                bmi     vn_hold                 ; this step's frames have not elapsed
                 lda     cad_idx                 ; next entry in the 3,3,2,3,2 cycle
                 inca
                 cmpa    #CAD_LEN
@@ -561,8 +572,11 @@ vm_nextframe
 vn_wrap
                 sta     cad_idx
                 ldx     #cad_tab
-                lda     a,x
-                sta     cad_cnt
+                lda     a,x                     ; frames this step should last
+                tfr     a,b
+                clra                            ; D = that count, zero-extended
+                addd    vm_now
+                std     vm_due                  ; fire again at now + count
 
                 clr     ch_idx                  ; step both characters
                 ldx     #viz_slot
