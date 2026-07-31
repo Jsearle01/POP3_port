@@ -319,8 +319,11 @@ source / Jay — each conclusion rests on>
 25.2 bundled-artifact grep: <verbatim, or "N/A — ROM build, no sibling-import artifact">
 25.3 operator-runtime-smoke: <Jay MAME visual gate — "pending Jay" if not yet observed>
 
-### 6 — Reactive deviations
-<§22.5 changes from spec, or: None.>
+### 6 — Reactive deviations and route accounting
+<§22.5 changes from the dispatch spec, or: None.>
+<ROUTE ACCOUNTING: if you proposed a route (in conversation or in a prior report), state which parts of it this
+change actually contains and which you did NOT implement. "Proposed X + Y; this commit does X only, not Y" —
+or: no route proposed.>
 
 ### 7 — Uncertainty flags
 <what is not yet certain, or: None.>
@@ -337,6 +340,19 @@ source / Jay — each conclusion rests on>
 ### 11 — Commit
 <hash>  (pushed to origin/wip before this report)
 ```
+
+**Route accounting (added 2026-07-30, P3.30 §3D).** A dispatch's spec is checked by §6's reactive-deviations line
+and by the AC list. **A route YOU proposed is checked by nothing** — and a plan diverging from its implementation is
+**invisible in a diff**, because the diff shows only what was done, never what was described. P3.30 proposed *"pack
++ reclaim the room blob"*, implemented only the reclaim, and reported the result as though it were the route; Jay
+caught it by remembering the proposal (*"i thought we packed so it would fit on 2?"*). The dropped half was not the
+optional one — without it the load overruns into the disk driver, so the implemented half could not work alone.
+
+The failure is not skipping a half; wanting something running first is legitimate. **The failure is not SAYING so.**
+A message describing a route and a commit doing something else is worse than either alone, because it spends the
+reader's trust on a picture that no artifact will contradict. So: **before reporting a result, state which parts of
+any route you proposed the change actually contains.** Every other check in this project inspects an artifact; this
+one cannot be, which is exactly why it must be written down.
 
 Reports are written to `reports/<YYYYMMDD-HHMMSS>-<slug>.md` (colon-free), tracked, pushed to origin/wip —
 the Orchestrator fetches them (no paste).
