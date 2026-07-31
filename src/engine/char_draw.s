@@ -38,7 +38,20 @@
                 endc
 
 FB_STRIDE_4C    equ     80              ; 320 px at 4 px/byte
-FLAME_BASE      equ     $4200
+
+* WHERE THE BUNDLE LIVES, and it is ONE literal for the whole build (P3.31).
+*
+* It was three: this file, cutscene_room.s, and link/pop_flames.link, all saying $4200
+* independently. Moving the bundle to $3000 needs all three to move together, and the
+* two that are assembled would have moved silently out of step -- the loader would read
+* the image to one address while the code inside it called its own tables at another.
+* build.bat passes -DFLAME_BASE to both sources from one variable, and decb_to_raw
+* refuses an image whose first segment is not exactly at the stated base, which is what
+* ties the link script to the same number. 0x3000, not $3000: lwasm's -D takes a
+* C-style literal and silently defines a $-prefixed value as ZERO (see build.bat).
+                ifndef  FLAME_BASE
+FLAME_BASE      equ     $3000
+                endc
 
 * ---------------------------------------------------------------
 * PIECE D — THE CHARACTER DRAW, exercised by HARDCODED position.
@@ -230,10 +243,15 @@ vm_frameadv
 * ---------------------------------------------------------------
 char_one
                 stx     ch_rec
-                lda     CH_H,x
-                sta     ch_h
-                lda     CH_W,x
-                sta     ch_w
+* RESOLVE THE CEL FIRST, because its DIMENSIONS depend on which variant is chosen.
+* A sub-byte phase can add a byte to a cel's width (the shifted pixels spill into one
+* more column), so the peel extent is a property of the VARIANT, not of the cel number.
+* Reading h/w from the record here -- as this did until P3.31 -- would size the save to
+* whichever variant vm_resolve happened to store and erase the other one's footprint
+* short by a column: the P3.25 stride bug, one level down.
+                jsr     co_variant              ; U = the phase-correct baked cel
+                stu     ch_cel
+                jsr     co_dims
 
 * ch_last[] index = (character*2 + slot) * 4  — four bytes: x, y, w, h
                 lda     ch_idx
@@ -320,11 +338,15 @@ co_setmove
                 ldb     ch_w
                 jsr     [BLIT_TAB+4]            ; blit_erase (preserves X,Y,U)
 * Put the CURRENT cel's dimensions back: the save and draw below are the new cel's.
-                ldx     ch_rec
-                lda     CH_H,x
-                sta     ch_h
-                lda     CH_W,x
-                sta     ch_w
+* FROM THE VARIANT, NOT FROM THE RECORD, and the difference is a real bug (P3.31).
+* The record's CH_H/CH_W are whatever vm_resolve last wrote, and vm_resolve resolves
+* through img_map, which has no entry for the walk's images -- so for a walk cel they
+* hold the PREVIOUS cel's size. The save and the draw below then ran at 48x5 while the
+* cel was 47 rows: the character was drawn one row high, and the peel saved and
+* restored a footprint one row off from the one it painted. It left a trail, and the
+* trail grew every step -- 0 wrong bytes at the walk's first capture and 839 by its
+* sixteenth, which is the accumulating signature exactly.
+                jsr     co_dims
 
 co_save
 * --- SAVE the background at the NEW position, and record it --------------
@@ -356,8 +378,7 @@ co_draw
 * --- DRAW, always -------------------------------------------------------
                 jsr     co_here
                 jsr     co_setup
-                ldx     ch_rec
-                ldu     CH_PTR,x                ; the baked cel
+                ldu     ch_cel                  ; the variant char_one resolved
                 ldx     ch_dest
                 jsr     [BLIT_TAB]              ; blit_cel — clobbers X and Y
 
@@ -380,6 +401,73 @@ co_draw
                 stb     ch_tmp
                 ldb     ch_tmp
                 sta     b,x
+                rts
+
+* ---------------------------------------------------------------
+* co_variant — U := the baked cel for THIS cel number at THIS sub-byte phase.
+*
+* RESOLVED AT DRAW TIME, NOT WHEN THE CEL IS CHOSEN. The phase comes from x, and `chx`
+* moves x in the same step that selects the cel, so a pointer fixed at selection time
+* would be one step stale -- the same one-step lag that had the checker reporting 139
+* wrong bytes in P3.29. char_one runs inside vm_frameadv, after vm_nextframe has
+* decided, so the record read here is the state this frame will actually draw.
+*
+* Most cels have one baked phase and CH_PTR is it. The walk is different: its deltas
+* net 10 px per cycle and 10 mod 4 = 2, so each of cels 48-53 is drawn at exactly TWO
+* phases and has two baked variants. WHICH two is not written here or in the bake --
+* both take it from walk_phases.py, because P3.30 wrote it by hand and produced the
+* exact complement of the truth (it dropped `Vwalk db chx,1`, the one-off entry step
+* that moves x before cel 48 is ever drawn).
+*
+* THE PHASE EXPRESSION IS co_setup'S, TERM FOR TERM -- x + Fdx + 20. Fdx is 0 for every
+* walk cel, so dropping it would compute the same answer today and a wrong one for the
+* first cel that carries one; two places deriving the same quantity by different
+* expressions is how the arithmetic drifts in the first place.
+*
+* A 0 in the table means "the walk never puts this cel on this phase" and falls back to
+* the record's own pointer rather than blitting from address 0. The fallback is not a
+* correctness path: if it ever fires, the previous cel is drawn and the pixel check
+* reports it as wrong bytes, which is the loud failure we want over a silent one.
+*
+*   Entry: ch_rec -> the slot record
+*   Exit:  U = the cel data to blit.  Clobbers A, X.
+* ---------------------------------------------------------------
+co_variant
+                ldx     ch_rec
+                lda     CH_CEL,x
+                suba    #WALK_LO
+                bcs     cv_plain                ; below the walk's range
+                cmpa    #WALK_N
+                bhs     cv_plain                ; above it
+                lsla                            ; four phase slots per cel...
+                lsla
+                sta     ch_tmp
+                lda     CH_X,x
+                adda    CH_FDX,x                ; ...indexed by the sub-byte phase,
+                adda    #20                     ; from co_setup's own expression
+                anda    #3
+                adda    ch_tmp
+                lsla                            ; two bytes per pointer
+                ldx     #walk_tab
+                ldu     a,x
+                cmpu    #0
+                bne     cv_done
+cv_plain
+                ldx     ch_rec
+                ldu     CH_PTR,x                ; single-phase cel
+cv_done
+                rts
+
+* co_dims — ch_h/ch_w := the RESOLVED VARIANT's own header, which is the only thing
+* that knows how big this draw is. One routine because both callers must agree: the
+* extent a peel is saved with has to be the extent it is drawn with, and the two are
+* set 40 lines apart.
+co_dims
+                ldu     ch_cel
+                lda     ,u                      ; rows
+                sta     ch_h
+                lda     1,u                     ; width in bytes
+                sta     ch_w
                 rts
 
 * co_here — ch_tx/ch_ty := this record's current x,y
@@ -695,11 +783,41 @@ pri_demo
                 fcb     SEQ_GOTO
                 fdb     pri_demo
 
-* The vizier holds Vstand, driven by the VM rather than by a hardcoded call — which
-* is the point: his cel now comes from data too.
-viz_demo        fcb     54
+* --- the vizier's sequence: Vwalk, ported verbatim -----------------------
+* (harness/tools/peel_matrix.py rewrites pri_demo's body and finds its end by matching
+* the line above this one. Keep them in step: the marker is in that file too.)
+*
+*     Vwalk    db chx,1              <- a ONE-OFF entry step, OUTSIDE the loop
+*     Vwalk1   db 48,chx,2
+*     Vwalk2   db 49,chx,6
+*              db 50,chx,1
+*              db 51,chx,-1
+*              db 52,chx,1
+*              db 53,chx,1
+*              db goto / dw Vwalk1   <- loops to Vwalk1, NOT to Vwalk
+*     [SEQTABLE.S:1513-1522]
+*
+* THE GOTO TARGET IS LOAD-BEARING. Looping to Vwalk would repeat the entry step every
+* cycle and net 11 px instead of 10; 11 mod 4 = 3 puts every cel on FOUR phases, which
+* needs 24 baked cels instead of 12 and would present as a vizier that is subtly wrong
+* half the time rather than as an error.
+*
+* AND SO IS THE ENTRY STEP ITSELF, for a reason that only shows up in the bake: it
+* moves x from 197 to 196 before cel 48 is ever drawn, which shifts every phase in the
+* walk by one delta. P3.30 computed the phases without it (see co_variant).
+*
+* chx is mirrored by facing in the VM (P3.25-verified) and startV0 sets CharFace=-1
+* [SUBS.S:1147], so these positive deltas carry him LEFT from 197 toward the princess
+* at 120 -- 10 px per cycle, reaching her at step 45.
+viz_demo        fcb     SEQ_CHX,1               ; the one-off entry step
+viz_walk1       fcb     48,SEQ_CHX,2
+                fcb     49,SEQ_CHX,6
+                fcb     50,SEQ_CHX,1
+                fcb     51,SEQ_CHX,-1
+                fcb     52,SEQ_CHX,1
+                fcb     53,SEQ_CHX,1
                 fcb     SEQ_GOTO
-                fdb     viz_demo
+                fdb     viz_walk1
 
 * --- the VM's cel-id table, generated from ALTSET2 ---------------------
                 include "content/cutscene/cel_table.s"
@@ -709,6 +827,10 @@ viz_demo        fcb     54
                 include "content/cutscene/chars/vstand.s"
                 include "content/cutscene/chars/pstand.s"
                 include "content/cutscene/chars/pslump.s"
+
+* --- the walk: 6 cels x 2 sub-byte phases, and the table that picks between
+* --- them. Both generated by harness/tools/bake_walk.py from one derivation.
+                include "content/cutscene/chars/walk_baked.s"
 
 * --- the two slots, initialised from the oracle's own start positions ----
 * startV0 CharX=197, startP0 CharX=120, both CharFace=-1, floorY=151
@@ -754,6 +876,9 @@ ch_w            fcb     0
 ch_fdx          fcb     0
 ch_lastcel      fcb     0
 ch_tmp          fcb     0
+ch_cel          fdb     0               ; the variant resolved for THIS draw — not
+*                                       ; state, a value carried from char_one to
+*                                       ; co_draw so the phase is resolved once
 ch_rec          fdb     0
 ch_dest         fdb     0
 ch_peel         fdb     0

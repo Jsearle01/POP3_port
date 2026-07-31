@@ -103,7 +103,14 @@ DISK_ROOM_SEC   equ     ROOM_TRACKS*SECS_PER_TRACK
 * The cutscene bundle moved to $4200 and grew to TWO tracks at P3.25. It could not
 * grow in place: two tracks from $0A00 reach $2E00 and this program starts at $2000,
 * so the bundle would have loaded over the engine. See link/pop_flames.link.
-FLAME_BASE_TAB  equ     $4200
+* P3.31: $4200 -> $3000, and the base is now ONE literal for the whole build, passed
+* as -DFLAME_BASE by build.bat to this file and to char_draw.s together. It was three
+* independent copies of $4200; see char_draw.s for what moving one without the others
+* does. FLAME_BASE_TAB was a second name for the same address in this file alone.
+                ifndef  FLAME_BASE
+FLAME_BASE      equ     $3000
+                endc
+FLAME_BASE_TAB  equ     FLAME_BASE
 BLIT_TAB        equ     FLAME_BASE_TAB+58       ; blit_cel / blit_save / blit_erase
 CHARS_TAB       equ     FLAME_BASE_TAB+64       ; chars_frame (piece D)
 
@@ -168,7 +175,14 @@ room_start
                 jsr     load_tracks
                 bne     room_failed
 
-                ldx     #FLAME_BASE             ; the flame code, off its own track
+* THE BUNDLE ARRIVES PACKED, AND IT LANDS ABOVE WHERE IT WILL LIVE.
+*
+* Both reads still happen here, before the picture, so this is still two reads and no
+* disk between the room appearing and the flames moving. What changed is WHERE: the
+* packed blob is read to FLAME_LOAD, high in the window, and expanded down to
+* FLAME_BASE later -- see bundle_expand. Reading it here is safe because the packed
+* blob does not overlap the room blob it will eventually overwrite.
+                ldx     #FLAME_LOAD
                 lda     #DISK_FLAME_TRK
                 ldb     #DISK_FLAME_SEC
                 jsr     load_tracks
@@ -189,6 +203,7 @@ room_start
                 jsr     HAL_gfx_mirror
                 bcs     room_mirror_slow        ; 16-colour would refuse; this is not
 
+                jsr     bundle_expand           ; the blob is spent — expand over it
                 jsr     HAL_gfx_swap            ; the room appears, ready to animate
 
 * AND AGAIN INTO THE OTHER BUFFER. The flames are drawn per frame and the page is
@@ -209,6 +224,7 @@ room_mirror_slow
                 ldx     HAL_gfx_draw_base
                 ldu     #ROOM_BLOB
                 jsr     lz_unpack
+                jsr     bundle_expand           ; only now is the blob finished with
 
 room_ready
 * No cel-pointer patching any more: the slot records and the cel data are in the
@@ -626,6 +642,43 @@ rnd_no
                 rts
 
 * ---------------------------------------------------------------
+* bundle_expand — expand the packed cutscene bundle down onto the room blob's ground.
+*
+* THE PACKING IS STRUCTURAL, NOT AN OPTIMISATION, and P3.30 proved that by breaking it.
+* The bundle with the walk cels is 14,258 B unpacked. Three separate budgets bound it
+* and they are NOT the same number:
+*
+*   disk bytes        2 tracks 9,216 / 3 tracks 13,824 / 4 tracks 18,432
+*   resident bytes    14,258 -- packing does not move this one at all, because the
+*                     blitter walks the segment stream in place
+*   READ GRANULARITY  load_tracks reads WHOLE TRACKS. Four tracks from $3000 write
+*                     through to $77FF -- straight across DR_VARBASE at $6A00, the disk
+*                     driver's own parameter block, WHILE IT IS USING IT. The room hung
+*                     at EXEC. So the room is not $3000-$77FF but $3000-$69FF = 14,848 B
+*                     = 3.22 tracks, and 3 whole tracks is 13,824: the unpacked bundle
+*                     cannot be loaded at ANY track count.
+*
+* Packed it is two tracks, and the expand is memory-to-memory, which has no track
+* granularity at all. That is the whole reason this routine exists.
+*
+* WHY IT CANNOT OVERWRITE ITS OWN INPUT. Same argument as the intro screens (P3.12):
+* the writer starts at FLAME_BASE and the reader starts high in the same window, and
+* lz_pack places the stream so the writer never catches it -- then PROVES it by
+* decoding the blob out of a single buffer exactly as lz_unpack does, rather than
+* trusting the arithmetic. The measured slack for this blob is printed by the build.
+*
+* WHEN IT RUNS IS LOAD-BEARING. The destination IS the room blob, so this must not run
+* until the blob has been read for the last time: after HAL_gfx_mirror on the fast path,
+* and after the second lz_unpack on the slow one. It runs BEFORE the swap so the ~14
+* frames it costs are spent against a black screen rather than in front of the finished
+* room -- the same reason the mirror moved ahead of the reveal in P3.17.
+* ---------------------------------------------------------------
+bundle_expand
+                ldx     #FLAME_BASE
+                ldu     #FLAME_LOAD
+                jmp     lz_unpack               ; tail call: nothing to preserve
+
+* ---------------------------------------------------------------
 * load_tracks — A = first track, B = sector count, X = destination.
 * Returns Z set on success. Carried from intro_seq.s, including the two things that
 * file learned the hard way: the FDC must run at NORMAL speed (double speed breaks
@@ -674,12 +727,15 @@ PEEL_BYTES      equ     26              ; 13 rows x 2 bytes — one cel's footpr
 * "OK", first segment in memory, second absent. So the flames go on a raw track and
 * are read at run time, exactly as the intro reads every screen it shows.
 * [src/engine/flame_cels.s, link/pop_flames.link]
-FLAME_BASE      equ     $4200
 draw_tab        equ     FLAME_BASE+0
 save_tab        equ     FLAME_BASE+18
 erase_tab       equ     FLAME_BASE+36
 DISK_FLAME_TRK  equ     30
-FLAME_TRACKS    equ     2               ; P3.25: headroom for the VM
+* FLAME_LOAD, FLAME_TRACKS and FLAME_RAW are GENERATED by lz_pack.py from the bundle it
+* actually packed (build/obj/flame_load.inc). They are not editable constants: the load
+* address is `FLAME_BASE + window - blob`, so it MOVES when the packed size crosses a
+* track, and a hand-kept copy would be right until the day the bundle grew.
+                include "build/obj/flame_load.inc"
 DISK_FLAME_SEC  equ     FLAME_TRACKS*SECS_PER_TRACK
 
 * The oracle's flame pattern, verbatim. 18 states over 9 cels; the repeats and the

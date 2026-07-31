@@ -10,11 +10,11 @@
 ; $0A00 is the intro's asset-bundle region, and it is used the same way here: the
 ; room reads one track into it and indexes the pointer tables at the head.
 ;
-;   $4200-$4235   three 9-entry dispatch tables (draw / save / erase)
-;   $4236-$4239   char_tab (retired, reserved so the offsets below hold)
-;   $423A-$423F   blit_tab   (blit_cel / blit_save / blit_erase)
-;   $4240-$4241   chars_tab  (chars_frame)
-;   $4242-...     the compiled cels, the baked character cels, the blitter,
+;   $3000-$3035   three 9-entry dispatch tables (draw / save / erase)
+;   $3036-$3039   char_tab (retired, reserved so the offsets below hold)
+;   $303A-$303F   blit_tab   (blit_cel / blit_save / blit_erase)
+;   $3040-$3041   chars_tab  (chars_frame)
+;   $3042-...     the compiled cels, the baked character cels, the blitter,
 ;                 char_draw, and the VM's cel table
 ;
 ; TWO TRACKS from P3.25, following the intro bundle's worked precedent
@@ -23,13 +23,25 @@
 ;
 ; IT COULD NOT GROW IN PLACE. At the old base, two tracks reach $0A00+9,216 = $2E00
 ; and ROOM.BIN's prog starts at $2000 -- the bundle would have loaded straight over
-; the engine. $4200 sits immediately after the room blob ($3000..$41FF) and two
-; tracks reach $65FF, clear of the peel buffers, the disk parameter block at $6A00,
-; the trace ring at $7800 and the kernel at $7900.
+; the engine. $4200 sat immediately after the room blob ($3000..$41FF).
 ;
-; Nothing else may live at $0A00 while the room is running. The intro's bundle uses
+; $4200 -> $3000 AT P3.31, ONTO THE ROOM BLOB'S GROUND. The walk's twelve cels take the
+; bundle to 14,258 B, and from $4200 the contiguous room below the disk driver's
+; parameter block at $6A00 is 10,240 -- it does not fit at all. The blob at $3000 is
+; 4,608 B and is DEAD once the room is drawn (one expand, and since P3.22 the second
+; buffer is filled by HAL_gfx_mirror rather than a second expand), so the bundle lives
+; there instead: $3000-$67B2 unpacked, still clear of $6A00, of the peel buffers at
+; $6C00, of the trace ring at $7800 and of the kernel at $7900. It ARRIVES packed --
+; see cutscene_room.s bundle_expand for why nothing else fits through load_tracks.
+;
+; THIS ADDRESS IS THE ONE COPY THE ASSEMBLER CANNOT SEE. The two .s files take
+; FLAME_BASE from build.bat's -D; the linker cannot read that, so it is repeated here,
+; and decb_to_raw refuses an image whose first segment is not exactly at the base
+; build.bat states -- which is what turns a drift between these two into a build error.
+;
+; Nothing else may live at $3000 while the room is running. The intro's bundle uses
 ; the same region, but the two programs never run at once.
 
-section prog load 4200
+section prog load 3000
 
 entry flame_draw

@@ -47,16 +47,33 @@ CELS = {54: (ROOT / "content/cutscene/chars/vstand_src.s", 1, 48),   # Vstand
         11: (ROOT / "content/cutscene/chars/pstand_src.s", 0, 43),   # Pstand
         1:  (ROOT / "content/cutscene/chars/pslump_src.s", 0, 43),   # Pslump
         18: (ROOT / "content/cutscene/chars/pslump_src.s", 0, 43)}   # Pslump, same image
+
+# THE WALK'S CELS CARRY NO FIXED PHASE, and that is the whole difference (P3.31). Every
+# cel above is drawn at one sub-byte phase for the life of the scene, so the phase could
+# be written next to it. Cels 48-53 are drawn at TWO, alternating as x moves 10 px per
+# cycle, so the phase is a function of the position -- and the position is read off the
+# machine. Deriving it here with co_setup's own expression is what keeps this a CHECK:
+# the engine picks a variant out of walk_tab, this composites the shift from the source
+# cel, and the two agree only if the table, the bake and the draw all line up.
+#
+# Fdx is 0 for every walk cel [ALTSET2 via cel_parity_rule], so it is not carried here;
+# a walk cel with a non-zero Fdx would need it, and cel_table.s is where it lives.
+WALK = {c: ROOT / ("content/cutscene/chars/vwalk%d_src.s" % c) for c in range(48, 54)}
 POSFILE = ROOT / "build/room_chars_pos.txt"
-FLOOR_H = {"vstand": 48, "pstand": 43}
 
 
-def placements():
+def cel_rows(src):
+    """The cel's own row count, read from the converted source rather than tabulated."""
+    return Cel(str(src)).h
+
+
+def placements(posfile=None):
     """[(tag, [(label, src, phase, top, col), ...]), ...] from the recorded state."""
-    if not POSFILE.exists():
-        raise SystemExit("  no build/room_chars_pos.txt — run the room test first")
+    pf = pathlib.Path(posfile) if posfile else POSFILE
+    if not pf.exists():
+        raise SystemExit("  no %s — run the room test first" % pf)
     out = []
-    for line in POSFILE.read_text().splitlines():
+    for line in pf.read_text().splitlines():
         f = line.split()
         if len(f) != 7:
             continue
@@ -64,9 +81,13 @@ def placements():
         vx, vy, vc, px, py, pc = map(int, f[1:])
         rows = []
         for cel, x, y in ((vc, vx, vy), (pc, px, py)):
-            if cel not in CELS:
+            if cel in WALK:
+                src, phase = WALK[cel], (x + 20) & 3
+                h = cel_rows(src)
+            elif cel in CELS:
+                src, phase, h = CELS[cel]
+            else:
                 raise SystemExit("  cel %d is on screen but has no baked source" % cel)
-            src, phase, h = CELS[cel]
             rows.append(("cel%d" % cel, src, phase, y - h + 1, (x + 20) >> 2))
         out.append((tag, rows))
     return out
@@ -85,11 +106,22 @@ def torch(i):
 
 
 def main():
+    # --pos/--shots let the WALK run reuse this unchanged: same check, more captures.
+    # Two captures 12 frames apart can only see the walk's start, and "byte-exact at the
+    # start" is precisely what an accumulating bug looks like.
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--pos', help='positions file (default build/room_chars_pos.txt)')
+    ap.add_argument('--shots', help='printf pattern for capture files, %%s = tag')
+    a = ap.parse_args()
+
     room = pathlib.Path(ROOT / "content/cutscene/princess_room.raw").read_bytes()
     shots = {"first": "build/room_front.bin", "second": "build/room_front2.bin"}
     rc = 0
     seen = []
-    for tag, rows in placements():
+    for tag, rows in placements(a.pos):
+        if a.shots:
+            shots[tag] = a.shots % tag
         want = bytearray(room)
         for label, src, phase, top, col in rows:
             cel = Cel(str(src))
@@ -117,12 +149,33 @@ def main():
             rc = 1
     # STABILITY: an accumulating state bug shows up as captures disagreeing, not as a
     # stable wrong number (P3.21 bug 2 presented exactly that way — 36 vs 33).
+    #
+    # BUT DISAGREEING COUNTS ONLY MEAN THAT WHEN THE CAPTURES SHOW THE SAME SCENE. The
+    # walk never repeats a position, so "the counts differ" is what a moving character
+    # looks like whether or not anything is wrong, and reading it as an accumulating bug
+    # would be the fifth variant of a checker assuming the state it checks. Captures at
+    # the SAME position must agree; captures at different ones are compared ACROSS RUNS
+    # instead (run_walk_test.sh runs the machine twice and diffs).
     counts = {n for _, n, _ in seen}
-    moved = len({p for _, _, p in seen}) > 1
-    print("  stability: %s%s"
-          % ("all captures agree (%s)" % counts.pop() if len(counts) == 1
-             else "CAPTURES DISAGREE %s — accumulating state bug" % sorted(counts),
-             "; the character MOVED between captures" if moved else "; position static"))
+    by_pos = {}
+    for _, n, p in seen:
+        by_pos.setdefault(p, set()).add(n)
+    unstable = {p: sorted(v) for p, v in by_pos.items() if len(v) > 1}
+    if unstable:
+        print("  stability: SAME POSITION, DIFFERENT RESULT %s — accumulating state bug"
+              % list(unstable.values())[:3])
+        rc = 1
+    elif len(by_pos) == len(seen) and len(seen) > 2:
+        print("  stability: %d captures, every one a different position — no repeat to "
+              "compare within this run; %s"
+              % (len(seen), "all clean" if counts == {0}
+                 else "worst %d wrong" % max(counts)))
+    else:
+        print("  stability: %s"
+              % ("all captures agree (%s)" % sorted(counts)[0] if len(counts) == 1
+                 else "CAPTURES DISAGREE %s — accumulating state bug" % sorted(counts)))
+        if len(counts) > 1:
+            rc = 1
     return rc
 
 

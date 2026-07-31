@@ -23,6 +23,8 @@ def main():
     ap.add_argument('--base', required=True, type=lambda s: int(s, 0),
                     help='the address the raw image will be loaded at')
     ap.add_argument('--fill', type=lambda s: int(s, 0), default=0)
+    ap.add_argument('--allow-gap', action='store_true',
+                    help='permit a leading gap between --base and the first segment')
     a = ap.parse_args()
 
     d = pathlib.Path(a.bin).read_bytes()
@@ -44,6 +46,15 @@ def main():
     hi = max(ad + len(b) for ad, b in segs)
     if lo < a.base:
         sys.exit(f"segment at ${lo:04X} is below the stated base ${a.base:04X}")
+    # AND IT MUST NOT BE ABOVE IT EITHER (P3.31). The load address lives in TWO places
+    # that cannot see each other -- the linker script and this --base -- and a mismatch
+    # in this direction is silent: the image just gains a run of fill at the front, so
+    # every offset inside it is wrong by that much and the code jumps into padding. The
+    # bundle is linked flush at its base, so lo != base means the two have drifted.
+    if lo != a.base and not a.allow_gap:
+        sys.exit(f"first segment is at ${lo:04X} but --base says ${a.base:04X} — the "
+                 f"linker script and the build's base have drifted apart "
+                 f"(pass --allow-gap if the leading gap is deliberate)")
 
     img = bytearray([a.fill]) * (hi - a.base)
     for ad, b in segs:

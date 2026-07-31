@@ -34,7 +34,7 @@ GOT="build/room_front.bin"
 [ -f "$MAP" ] || { echo "[run_room_test] missing $MAP — run build.bat first"; exit 1; }
 [ -f "$SRC_DSK" ] || { echo "[run_room_test] missing $SRC_DSK — run build.bat first"; exit 1; }
 cp -f "$SRC_DSK" "$DSK" || exit 1
-rm -f "$LOG" "$PASS" "$FAIL" "$GOT" build/room_front2.bin
+rm -f "$LOG" "$PASS" "$FAIL" "$GOT" build/room_front2.bin build/room_chars_pos.txt   # appended per capture; stale rows read as extra captures
 
 export P_ENGINE="0x$(grep -E "^Symbol: room_entry " "$MAP" | sed -E "s/.*= *//")"
 export P_CURBACK="0x$(grep -E "^Symbol: HAL_gfx_cur_back " "$MAP" | sed -E "s/.*= *//")"
@@ -90,7 +90,8 @@ fi
 
 # THE CHECKS THAT MATTER, and phase B needs TWO captures: a still picture passes
 # every in-emulator check above, so stillness has to be refuted explicitly.
-python harness/tools/verify_room_flicker.py --room "$WANT" --first "$GOT" --second "build/room_front2.bin"
+python harness/tools/verify_room_flicker.py --room "$WANT" --first "$GOT" \
+       --second "build/room_front2.bin" --pos build/room_chars_pos.txt
 rc1=$?
 
 # AND THE PIXELS THEMSELVES. The flicker check above only proves bytes changed inside

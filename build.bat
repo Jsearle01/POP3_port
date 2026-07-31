@@ -99,6 +99,28 @@ if not defined IMGTOOL (
 
 if not exist build mkdir build
 if not exist build\obj mkdir build\obj
+if not exist build\assets mkdir build\assets
+
+REM ======================================================================
+REM THE TWO ADDRESSES THAT MORE THAN ONE FILE HAS TO AGREE ON.
+REM
+REM DR_VARBASE is disk_read.s's 7-byte parameter block; three assemblies have to be
+REM told the same value or the kernel and its callers put it in different places.
+REM FLAME_BASE is where the cutscene bundle lives; char_draw.s calls its own tables at
+REM that address, cutscene_room.s expands the bundle to it, and link/pop_flames.link
+REM links it there. It was $4200 written out three times independently, which is fine
+REM until one of them moves. It moved (P3.31), so it is one variable now.
+REM
+REM 0x, NOT $ -- lwasm's -D takes a C-style literal and silently defines a $-prefixed
+REM value as ZERO, with no warning (see the DR_VARBASE note below).
+REM ======================================================================
+set DR_VARBASE=0x6A00
+set FLAME_BASE=0x3000
+REM The window the bundle is expanded inside: FLAME_BASE up to (not into) the disk
+REM driver's parameter block. Loading through DR_VARBASE while the driver is using it
+REM is what hung the room in P3.30, and it hung silently -- a read that lands on a live
+REM parameter block does not fail, it just makes the next read read the wrong track.
+set /a FLAME_WINDOW=0x6A00-0x3000
 
 echo --- Assemble: HAL kernel unit (object) ---
 REM Every HAL module opens `section code` and exports its hal.inc entry points
@@ -112,7 +134,7 @@ REM read that follows any HAL call reads a clobbered track number.
 REM DR_VARBASE relocates disk_read.s's 7 scratch bytes off its $2100 default,
 REM which is inside POP's program region. $1F00 clears the intro's runtime asset
 REM bundle ($0A00-$1BFF) and its patch save buffer ($1C00-$1EFF).
-lwasm --obj -DOBJTARGET -DHAL_GFX_MODE_SERVICE -DDR_VARBASE=0x6A00 -I . -o build/obj/hal_build.o src/harness/hal_build.s
+lwasm --obj -DOBJTARGET -DHAL_GFX_MODE_SERVICE -DDR_VARBASE=%DR_VARBASE% -I . -o build/obj/hal_build.o src/harness/hal_build.s
 if errorlevel 1 goto :error
 call :size build/obj/hal_build.o
 
@@ -137,7 +159,7 @@ if errorlevel 1 goto :error
 call :size build/obj/intro_splash.o
 
 echo --- Assemble: P3.3 intro sequencer (both credits, one mechanism) ---
-lwasm --obj -DOBJTARGET -DDR_VARBASE=0x6A00 -I . -o build/obj/intro_seq.o src/engine/intro_seq.s
+lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -I . -o build/obj/intro_seq.o src/engine/intro_seq.s
 
 if errorlevel 1 goto :error
 
@@ -145,9 +167,37 @@ lwasm --obj -DOBJTARGET -I . -o build/obj/lz_unpack.o src/engine/lz_unpack.s
 
 if errorlevel 1 goto :error
 
+echo --- Assemble+link+PACK: cutscene code bundle (disk-resident) ---
+REM MOVED AHEAD OF THE ROOM (P3.31), because the room now depends on this step's
+REM OUTPUT and not merely on its existence: lz_pack emits build/obj/flame_load.inc,
+REM which tells cutscene_room.s where the packed blob has to be read to. That address
+REM is `FLAME_BASE + window - blob` and steps by a whole track when the bundle grows,
+REM so it is generated rather than written down. Build order is the dependency.
+lwasm --obj -DOBJTARGET -DFLAME_BASE=%FLAME_BASE% -I . -o build/obj/char_draw.o src/engine/char_draw.s
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -I . -o build/obj/blit_core.o src/engine/blit_core.s
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -I . -o build/obj/flame_cels.o src/engine/flame_cels.s
+if errorlevel 1 goto :error
+lwlink --decb --script=link/pop_flames.link --map=build/obj/flames.map -o build/flame_cels.bin build/obj/flame_cels.o build/obj/blit_core.o build/obj/char_draw.o
+if errorlevel 1 goto :error
+REM --base must equal the link script's load address EXACTLY; decb_to_raw fails the
+REM build if the two have drifted, which is the only check that can see that pair.
+python harness/tools/decb_to_raw.py --bin build/flame_cels.bin --out build/assets/flames.raw --base %FLAME_BASE%
+if errorlevel 1 goto :error
+REM THE BUNDLE IS PACKED, AND IT IS STRUCTURAL RATHER THAN AN OPTIMISATION. Unpacked
+REM it is over 14 KB and load_tracks reads WHOLE TRACKS, so no track count lands it in
+REM the 14,848 B between FLAME_BASE and the disk driver's parameter block: two tracks
+REM are too few and three overrun into $6A00 while the driver is using it (P3.30 hung
+REM the room exactly there). Packed it is two tracks, and the in-place expand is
+REM memory-to-memory, which has no track granularity at all.
+python harness/tools/lz_pack.py build/assets/flames.raw --out-dir build/assets ^
+       --window-cap %FLAME_WINDOW% --dest-base %FLAME_BASE% --emit-inc build/obj/flame_load.inc
+if errorlevel 1 goto :error
+
 echo --- Assemble: P3.17 princess room (4-colour, static) ---
 
-lwasm --obj -DOBJTARGET -DDR_VARBASE=0x6A00 -I . -o build/obj/cutscene_room.o src/engine/cutscene_room.s
+lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DFLAME_BASE=%FLAME_BASE% -I . -o build/obj/cutscene_room.o src/engine/cutscene_room.s
 if errorlevel 1 goto :error
 call :size build/obj/intro_seq.o
 
@@ -210,18 +260,6 @@ call :size build/intro_seq.bin
 
 
 
-echo --- Assemble+link: torch-flame code bundle (disk-resident) ---
-lwasm --obj -DOBJTARGET -I . -o build/obj/char_draw.o src/engine/char_draw.s
-if errorlevel 1 goto :error
-lwasm --obj -DOBJTARGET -I . -o build/obj/blit_core.o src/engine/blit_core.s
-if errorlevel 1 goto :error
-lwasm --obj -DOBJTARGET -I . -o build/obj/flame_cels.o src/engine/flame_cels.s
-if errorlevel 1 goto :error
-lwlink --decb --script=link/pop_flames.link --map=build/obj/flames.map -o build/flame_cels.bin build/obj/flame_cels.o build/obj/blit_core.o build/obj/char_draw.o
-if errorlevel 1 goto :error
-python harness/tools/decb_to_raw.py --bin build/flame_cels.bin --out build/assets/flames.raw --base 0x4200
-if errorlevel 1 goto :error
-
 echo --- Link: princess room + HAL kernel ---
 
 lwlink --decb --script=link/pop_engine.link --entry=room_entry --map=build/obj/room.map -o build/cutscene_room.bin build/obj/cutscene_room.o build/obj/lz_unpack.o build/obj/hal_build.o
@@ -258,7 +296,6 @@ REM nothing about directories, and a program at $0200 cannot LOADM past one
 REM granule anyway (idioms 23). Tracks 27-34 sit above the track-17 directory;
 REM the granules are reserved in the FAT with no directory entry, which DECB
 REM tolerates exactly (karateka decb-loadm-boot-gates.md gate G1).
-if not exist build\assets mkdir build\assets
 python harness/tools/make_intro_assets.py --out-screen build/assets/intro_screen.raw --out-bundle build/assets/intro_bundle.raw ^
        --prolog content/intro/prolog1.bin build/assets/prolog1.raw ^
        --prolog content/intro/prolog2.bin build/assets/prolog2.raw
@@ -288,7 +325,7 @@ python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/pr
 if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/princess_room.lz --track 29 --tracks 1 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
-python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/flames.raw --track 30 --tracks 2 --reserve --imgtool "%IMGTOOL%"
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/flames.lz --track 30 --tracks 2 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 
 "%IMGTOOL%" dir coco_dmk_rsdos build\probe.dmk

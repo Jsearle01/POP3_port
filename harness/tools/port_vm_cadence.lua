@@ -61,13 +61,15 @@ local function tick()
             local mean = tot / cnt
             log(string.format("# mean %.2f frames between cel changes over %d samples",
                               mean, cnt))
-    log("# the demo changes cel EVERY step, so frames-between-cel-changes IS")
-    log("#   frames-per-step. (It held a cel for 4 steps until P3.29 densified it;")
-    log("#   this line asserted that division and would now divide by the wrong")
-    log("#   number -- a stale constant in a measuring tool reads as a measurement.)")
-                              mean / 4))
-            log(string.format("# target 2.60 (13/5 = 3,3,2,3,2); error %+.2f frames",
-                              mean / 4 - 2.60))
+            log("# the demo changes cel EVERY step, so frames-between-cel-changes IS")
+            log("#   frames-per-step. (It held a cel for 4 steps until P3.29 densified")
+            log("#   it; the /4 that used to be here would now divide by the wrong")
+            log("#   number -- a stale constant in a measuring tool reads as a")
+            log("#   measurement. P3.31: the fragment it left behind was a Lua SYNTAX")
+            log("#   ERROR, so this whole file has not parsed since. A measuring tool")
+            log("#   that cannot load reports nothing, and nothing looks like silence.)")
+            log(string.format("# floor 2.60 (13/5 = 3,3,2,3,2); overrun %+.2f frames",
+                              mean - 2.60))
         else
             log("# NO CEL CHANGES seen — the VM did not step")
         end

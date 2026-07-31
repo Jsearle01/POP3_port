@@ -9,6 +9,13 @@
 # (LOADM"ROOM"+EXEC off a mounted floppy, CLAUDE.md §4 launch path `live-disk`),
 # not a poked image and not a rendered framebuffer.
 #
+# SINCE P3.31 THE SCENE HAS A GAIT IN IT, and that changes what this gate is for. The
+# vizier walks left from x=197 at a measured 3.18 video frames per step, against a
+# 2.60-frame floor that the cadence table asks for and the draw overruns. Whether that
+# is the right PACE is not a thing any byte comparison can answer -- CLAUDE.md §4:
+# motion-bearing gates need a live run, and "density is not motion" (P3.29). This is
+# the runner for it. A rejection is a policy revisit, not a defect.
+#
 # The byte comparison in run_room_test.sh already proves the displayed buffer IS the
 # converted room. What this adds is the thing a byte comparison cannot judge: whether
 # the 4-colour palette looks right on a real screen. That is Jay's eye, and the
@@ -36,7 +43,8 @@ RAMOPT=""
 [ -n "${MAME_RAM:-}" ] && RAMOPT="-ramsize $MAME_RAM"
 
 echo "[run_room_live] POP CoCo3 — the princess's room, 4-colour, normal speed, $MONITOR${MAME_RAM:+, $MAME_RAM}"
-echo "[run_room_live] boot, LOADM\"ROOM\", EXEC — then one disk read (~1.3 s) and the room appears."
+echo "[run_room_live] boot, LOADM\"ROOM\", EXEC — then two track reads (~2.6 s) and the room appears."
+echo "[run_room_live] UNDER GATE: the vizier's GAIT. He walks left toward the princess."
 echo "[run_room_live] palette is Karateka's 4c starting point: black / orange / blue / white."
 echo "[run_room_live] close the window when you are done."
 

@@ -40,6 +40,10 @@ BOXES = [(26, 31, 99, 115),     # torch 0: true px 111 -> byte 27.75
          # position. The demo oscillates x over 189..205 in 8 px steps — 8 px keeps
          # him on phase 1, which one baked cel can serve — so with +20 centring and
          # width 5 he occupies byte columns 52..60.
+         # ...AND SINCE P3.31 HE WALKS THE WHOLE ROOM, so a fixed box is no longer a
+         # box at all. --pos replaces both character boxes with the footprints the
+         # machine actually recorded for each capture; this pair is the fallback for
+         # a run with no positions file, which is now only the static demos.
          (52, 60, 104, 151),          # vizier   x 189..205, phase 1
          # The princess MOVES and CHANGES CEL under the VM (P3.25): the demo sequence
          # steps her x between 112 and 120 and alternates Pstand (5 B wide) with
@@ -47,9 +51,32 @@ BOXES = [(26, 31, 99, 115),     # torch 0: true px 111 -> byte 27.75
          (33, 40, 109, 151)]          # princess x 112..120, cels 11/1, phase 0
 
 
-def inside(i):
+def inside(i, boxes=None):
     r, c = i // STRIDE, i % STRIDE
-    return any(c0 <= c <= c1 and r0 <= r <= r1 for c0, c1, r0, r1 in BOXES)
+    return any(c0 <= c <= c1 and r0 <= r <= r1 for c0, c1, r0, r1 in (boxes or BOXES))
+
+
+def recorded_boxes(posfile):
+    """Character boxes from where the machine says the characters WERE.
+
+    A walking character cannot have a written-down box: the whole point of the walk is
+    that he is somewhere different every step. Reading the position back and boxing THAT
+    keeps the assertion tight -- everything outside the footprints the machine reports
+    must still equal the room -- instead of widening the box until it stops meaning
+    anything. Widths and heights are the widest either character has, which is the one
+    approximation here and it errs on the side of excusing bytes, not accusing them.
+    """
+    W, H = 11, 48                    # widest cel + a byte for the sub-byte spill
+    boxes = list(BOXES[:6])          # the torches and the stars, unchanged
+    for line in pathlib.Path(posfile).read_text().splitlines():
+        f = line.split()
+        if len(f) != 7:
+            continue
+        vx, vy, _vc, px, py, _pc = map(int, f[1:])
+        for x, y in ((vx, vy), (px, py)):
+            col = (x + 20) >> 2
+            boxes.append((col - 1, col + W, y - H + 1, y))
+    return boxes
 
 
 def main():
@@ -57,7 +84,11 @@ def main():
     ap.add_argument('--room', required=True, help='the converted room asset')
     ap.add_argument('--first', required=True)
     ap.add_argument('--second', required=True)
+    ap.add_argument('--pos', help='positions recorded by the run; replaces the two '
+                                  'static character boxes with the real footprints')
     a = ap.parse_args()
+    boxes = recorded_boxes(a.pos) if a.pos and pathlib.Path(a.pos).exists() else None
+    inside_ = lambda i: inside(i, boxes)                              # noqa: E731
 
     want = pathlib.Path(a.room).read_bytes()
     one = pathlib.Path(a.first).read_bytes()
@@ -69,8 +100,8 @@ def main():
 
     ok = True
 
-    stray = [i for i in range(len(want)) if one[i] != want[i] and not inside(i)]
-    stray += [i for i in range(len(want)) if two[i] != want[i] and not inside(i)]
+    stray = [i for i in range(len(want)) if one[i] != want[i] and not inside_(i)]
+    stray += [i for i in range(len(want)) if two[i] != want[i] and not inside_(i)]
     if stray:
         i = stray[0]
         print(f"  FAIL room disturbed outside the torches: {len(stray)} bytes; "
@@ -81,7 +112,7 @@ def main():
               "matches the asset")
 
     moved = [i for i in range(len(one)) if one[i] != two[i]]
-    outside = [i for i in moved if not inside(i)]
+    outside = [i for i in moved if not inside_(i)]
     if not moved:
         print("  FAIL flames did not move between the captures — a still picture")
         ok = False

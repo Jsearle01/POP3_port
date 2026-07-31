@@ -39,10 +39,28 @@ VARIANTS = {
 }
 
 
+def pin_vizier(t):
+    """Hold the vizier on Vstand for the duration of the matrix.
+
+    THE MATRIX VARIES ONE THING (P3.31). Since the walk landed, the shipped demo has the
+    vizier crossing the room and eventually standing on top of the princess -- and two
+    characters whose footprints overlap break the peel in a way that has nothing to do
+    with these axes (it is its own defect, reported separately). Leaving him walking
+    would make every case report that instead of what it is testing, which is the
+    difference between a matrix and a scene.
+    """
+    lo = t.index("viz_demo        fcb")
+    hi = t.index("* --- the VM's cel-id table")
+    return t[:lo] + "viz_demo        fcb     54\n                fcb     SEQ_GOTO\n" \
+                    "                fdb     viz_demo\n\n" + t[hi:]
+
+
 def set_demo(body):
-    t = CD.read_text(encoding='utf-8')
+    t = pin_vizier(CD.read_text(encoding='utf-8'))
     start = t.index("\npri_demo") + 1   # label alone; the harness rewrites the body
-    end = t.index("* The vizier holds Vstand")
+    # The marker is a comment line in char_draw.s; it is named there too. If it moves,
+    # this raises rather than silently rewriting the wrong span.
+    end = t.index("* --- the vizier's sequence")
     new = "pri_demo\n"
     for item in body:
         new += "                fcb     %s\n" % item
@@ -50,12 +68,19 @@ def set_demo(body):
     CD.write_text(t[:start] + new + t[end:], encoding='utf-8')
 
 
-def run():
+def build():
     r = subprocess.run(["cmd.exe", "/c", "cd /d C:\\Projects\\POP3_port && "
                         "C:\\Projects\\POP3_port\\build.bat"],
                        capture_output=True, text=True)
     if re.search(r"ERROR", r.stdout or "", re.I):
-        return None, [l for l in (r.stdout or "").splitlines() if "ERROR" in l.upper()][:1]
+        return [l for l in (r.stdout or "").splitlines() if "ERROR" in l.upper()][:1]
+    return None
+
+
+def run():
+    err = build()
+    if err:
+        return None, err
     pos = ROOT / "build/room_chars_pos.txt"
     if pos.exists():
         pos.unlink()
@@ -89,7 +114,14 @@ def main():
                   % (name, c1, c2, stable, "" if ok else "<-- FAIL"))
     finally:
         CD.write_text(orig, encoding='utf-8')
-        print("\n  (char_draw.s restored)")
+        # AND REBUILT. Restoring the source leaves build/ holding the LAST CASE's binary
+        # -- a demo nobody asked for -- and the next thing to run a smoke test measures
+        # that instead of the tree. It cost a set of memory-size runs in P3.31: the room
+        # came up with the vizier pinned and case E's princess, and passed, which is the
+        # same "reports the previous build" hazard this file's header warns about, seen
+        # from the other end.
+        print("\n  (char_draw.s restored; rebuilding so build/ matches the tree)")
+        run()
     if bad:
         print("  FAILED: %s" % ", ".join(bad))
         print("  A case that is 0 at one capture and non-zero at the other is the")
