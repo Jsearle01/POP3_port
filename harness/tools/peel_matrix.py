@@ -48,11 +48,19 @@ def pin_vizier(t):
     with these axes (it is its own defect, reported separately). Leaving him walking
     would make every case report that instead of what it is testing, which is the
     difference between a matrix and a scene.
+
+    IDEMPOTENT ON PURPOSE: set_demo re-reads the file it has already written, so from
+    the second case onward the pin is already in place. Asserting "exactly one match"
+    was right for the source and wrong for the loop, and it failed the whole run on
+    case B rather than on case A -- the shape of a check that is correct about the
+    world and wrong about when it is asked.
     """
-    lo = t.index("viz_demo        fcb")
-    hi = t.index("* --- the VM's cel-id table")
-    return t[:lo] + "viz_demo        fcb     54\n                fcb     SEQ_GOTO\n" \
-                    "                fdb     viz_demo\n\n" + t[hi:]
+    a = "                ldu     #viz_script             ; the vizier follows a SCRIPT (P3.32)"
+    b = "                ldu     #0                      ; PINNED by peel_matrix"
+    if b in t:
+        return t
+    assert t.count(a) == 1, "the vizier's script init moved; update pin_vizier"
+    return t.replace(a, b)
 
 
 def set_demo(body):

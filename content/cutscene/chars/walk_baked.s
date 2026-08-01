@@ -33,3 +33,9 @@ walk_tab
                 fdb     0,vwalk51_p1,0,vwalk51_p3
                 fdb     vwalk52_p0,0,vwalk52_p2,0
                 fdb     0,vwalk53_p1,0,vwalk53_p3
+
+* the vizier's scene script: (sequence, plays), from PlayCut0 [SUBS.S].
+* A count of 0 means the sequence holds and the script is finished.
+viz_script
+                fdb     viz_walk
+                fcb     0

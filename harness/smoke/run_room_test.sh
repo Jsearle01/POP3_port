@@ -98,7 +98,8 @@ rc1=$?
 # the boxes — it cannot see a wrong colour or a corrupted merge, which is how blue
 # pixels reached Jay's eye instead of this suite's.
 CELS=$(cat build/room_cels.txt 2>/dev/null || echo "1 1")
-python harness/tools/verify_room_flame_pixels.py --room "$WANT" --shot "$GOT"        --cel0 ${CELS% *} --cel1 ${CELS#* }
+python harness/tools/verify_room_flame_pixels.py --room "$WANT" --shot "$GOT" \
+       --cel0 ${CELS% *} --cel1 ${CELS#* } --pos build/room_chars_pos.txt
 rc2=$?
 [ $rc1 -ne 0 ] && rc=$rc1 || rc=$rc2
 echo "[run_room_test] --------------------------------"

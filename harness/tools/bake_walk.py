@@ -35,15 +35,15 @@ OUT = ROOT / "content/cutscene/chars"
 CHARX = 197                       # startV0 [SUBS.S:1147]
 
 
-def phases():
-    """cel -> the phases the walk actually draws it at, derived not declared."""
-    occ = {}
-    for cel, _x, ph, _fdx in W.trace()[1]:
-        occ.setdefault(cel, set()).add(ph)
-    return {c: tuple(sorted(p)) for c, p in occ.items()}
+PHASES = W.occupancy(W.port_plan())
 
-
-PHASES = phases()
+# cel -> (source stem, convert it?). The walk's six each get their own conversion; the
+# vizier's standing cel already has one from P3.22 and is reused rather than re-derived,
+# because a second conversion of the same image at the same start_col is a second chance
+# to differ from the file everything else already checks against.
+STEMS = {48: ("vwalk48", True), 49: ("vwalk49", True), 50: ("vwalk50", True),
+         51: ("vwalk51", True), 52: ("vwalk52", True), 53: ("vwalk53", True),
+         54: ("vstand", False), 55: ("vstop55", True), 56: ("vstop56", True)}
 
 
 def main():
@@ -54,22 +54,28 @@ def main():
         fimg, fdx, fdy, fchk, lab = alt[cel]
         idx = fimg & 0x7F
         sc = R.draw_x(CHARX, fdx, fchk)          # a column of the correct PARITY
-        src = OUT / ("vwalk%d_src.s" % cel)
-        r = subprocess.run([sys.executable, str(ROOT / "harness/tools/sprite_convert.py"),
-                            "--table", str(TABLE), "--index", str(idx),
-                            "--out", str(src), "--label", "vwalk%d_src" % cel,
-                            "--start-col", str(sc), "--quiet"],
-                           capture_output=True, text=True)
-        if r.returncode != 0:
-            print("  cel %d: CONVERT FAILED %s" % (cel, (r.stderr or "")[:60]))
+        stem, convert = STEMS[cel]
+        src = OUT / ("%s_src.s" % stem)
+        if convert:
+            r = subprocess.run([sys.executable, str(ROOT / "harness/tools/sprite_convert.py"),
+                                "--table", str(TABLE), "--index", str(idx),
+                                "--out", str(src), "--label", "%s_src" % stem,
+                                "--start-col", str(sc), "--quiet"],
+                               capture_output=True, text=True)
+            if r.returncode != 0:
+                print("  cel %d: CONVERT FAILED %s" % (cel, (r.stderr or "")[:60]))
+                fail += 1
+                continue
+        elif not src.exists():
+            print("  cel %d: %s is missing and this cel is not re-converted" % (cel, src))
             fail += 1
             continue
         par = "ODD" if R.parity(fchk, R.FACE_LEFT) else "EVEN"
         for ph in PHASES[cel]:
-            dst = OUT / ("vwalk%d_p%d.s" % (cel, ph))
+            dst = OUT / ("%s_p%d.s" % (stem, ph))
             b = subprocess.run([sys.executable, str(ROOT / "harness/tools/cel_blit_prep.py"),
                                 str(src), "--phase", str(ph),
-                                "--label", "vwalk%d_p%d" % (cel, ph), "--out", str(dst)],
+                                "--label", "%s_p%d" % (stem, ph), "--out", str(dst)],
                                capture_output=True, text=True)
             good = "replay OK" in (b.stdout or "")
             print("  cel %-3d img %-4d %-5s start_col %-4d phase %d  %s"
@@ -108,16 +114,32 @@ def emit_table():
     L.append("")
     for cel in sorted(PHASES):
         for ph in PHASES[cel]:
-            L.append('                include "content/cutscene/chars/vwalk%d_p%d.s"'
-                     % (cel, ph))
+            L.append('                include "content/cutscene/chars/%s_p%d.s"'
+                     % (STEMS[cel][0], ph))
     L += ["",
           "WALK_LO         equ     %d" % lo,
           "WALK_N          equ     %d" % (hi - lo + 1),
           "walk_tab"]
     for cel in range(lo, hi + 1):
-        row = ["vwalk%d_p%d" % (cel, p) if p in PHASES.get(cel, ()) else "0"
+        row = ["%s_p%d" % (STEMS[cel][0], p) if p in PHASES.get(cel, ()) else "0"
                for p in range(4)]
         L.append("                fdb     " + ",".join(row))
+
+    # THE SCENE SCRIPT COMES FROM THE SAME DERIVATION AS THE PHASES, because it IS the
+    # same fact: which sequence runs for how many steps is what decides the positions,
+    # and the positions are what decide the phases. Written by hand in one place and
+    # derived in the other, they would drift, and the symptom would be a cel drawn at a
+    # phase nobody baked.
+    seqlab = {"Vwalk": "viz_walk", "Vstop": "viz_stop", "Vstand": "viz_stand"}
+    L += ["",
+          "* the vizier's scene script: (sequence, plays), from PlayCut0 [SUBS.S].",
+          "* A count of 0 means the sequence holds and the script is finished.",
+          "viz_script"]
+    for seq, n in W.port_plan()[:-1]:
+        L.append("                fdb     %s" % seqlab[seq])
+        L.append("                fcb     %d" % n)
+    L += ["                fdb     %s" % seqlab[W.port_plan()[-1][0]],
+          "                fcb     0"]
     out.write_text("\n".join(L) + "\n", encoding="utf-8")
     print("  %s: %d cels, WALK_LO %d WALK_N %d"
           % (out.name, sum(len(p) for p in PHASES.values()), lo, hi - lo + 1))

@@ -202,8 +202,10 @@ chars_frame
 * zero until this runs, and vm_step treats a zero stream as "nothing to advance".
                 ldd     vm_seq
                 bne     cf_running
-                ldu     #viz_demo
-                stu     vm_seq
+                ldu     #viz_script             ; the vizier follows a SCRIPT (P3.32)
+                stu     vm_scr
+                ldu     #viz_stand              ; a non-zero seed; the script's first
+                stu     vm_seq                  ;   entry replaces it on step one
                 ldu     #pri_demo
                 stu     vm_seq+2
 cf_running
@@ -211,8 +213,50 @@ cf_running
                 jsr     vm_frameadv             ; draw
                 rts
 
-* vm_frameadv — the DRAW half: the gated D path, once per character.
+* ---------------------------------------------------------------
+* vm_frameadv — the DRAW half. THREE PASSES OVER ALL CHARACTERS, not one pass each.
+*
+* THIS IS THE FIX FOR THE OVERLAP DEFECT (P3.31 §3D, P3.32). It used to be two calls
+* to char_one, and each call did erase -> save -> draw for ONE character before the
+* next character ran. So the second character's SAVE happened AFTER the first had
+* already been drawn, and what it saved as "background" was the first character's
+* PIXELS. One step later it restored them -- painting the vizier back into a place he
+* no longer was. The damage compounded, because the next save captured the mess.
+*
+* THE CORRUPTION WAS ASYMMETRIC, AND THAT IS THE TELL. Jay: "the vizier doesn't get
+* corrupted, only the princess." The MOVER is the one whose save straddles the other's
+* pixels, so the STATIONARY character is the one that gets vandalised. A fix that only
+* tidied the moving character's own footprint would have left this exactly as it was,
+* which is why the princess's cleanliness -- not the vizier's -- is the test.
+*
+* Phasing the frame removes the interleave outright: nothing is drawn until every save
+* has been taken, so no save can see anything but the clean room.
+*
+*     ERASE all  -> the room is clean everywhere a character was
+*     SAVE  all  -> every background captured against that clean room
+*     DRAW  all  -> and only now does anything reach the screen
+*
+* The passes cost three walks over the characters instead of one. The walk is the
+* cheap part (a variant lookup and a few index bytes); the blits are unchanged in
+* number, and they are the cost.
+* ---------------------------------------------------------------
+CP_ERASE        equ     0
+CP_SAVE         equ     1
+CP_DRAW         equ     2
+
 vm_frameadv
+                jsr     ch_scan                 ; decide the peel for the WHOLE frame
+                lda     #CP_ERASE
+                bsr     ch_pass
+                lda     #CP_SAVE
+                bsr     ch_pass
+                lda     #CP_DRAW
+                bsr     ch_pass
+                rts
+
+* ch_pass — run one pass over every character, in draw order.
+ch_pass
+                sta     ch_cp
                 clr     ch_idx
                 ldx     #viz_slot
                 jsr     char_one
@@ -223,37 +267,54 @@ vm_frameadv
                 rts
 
 * ---------------------------------------------------------------
-* char_one — draw one character from its slot record, peeling ONLY if it moved.
+* ch_scan — ch_anymove := did ANY character move (or change cel) this frame?
 *
-*   X -> slot record.  Uses ch_rec as the authority for the record pointer because
-*   blit_cel clobbers X (and blit_blast clobbers A,B,D,Y — only X is preserved,
-*   which is what P3.20's Bug 1 got wrong by keeping the peel pointer in Y).
+* THE PEEL-SKIP'S PREMISE WAS RE-EXAMINED HERE AND IT WAS FALSE (P3.32). P3.22 skipped
+* the peel for a character that had not moved, on the grounds that "the background
+* under a static character never changes". That is true only while it is the only
+* thing on the screen. The princess does not move -- but the vizier walks over the
+* room beneath her, so her background changes without her doing anything, and skipping
+* her erase leaves her pixels on screen while HIS save is taken. Three passes do not
+* help if one character never enters the first pass.
 *
-* WHY SKIPPING THE PEEL IS SAFE WHEN NOTHING MOVED. The background under a static
-* character never changes, so there is nothing to restore; and the masked merge is
-* IDEMPOTENT, so redrawing in place over its own previous pixels lands the same
-* bytes:
+* So the skip is now a property of the FRAME, not of the character: if anything moved,
+* everybody peels. One flag, and it is conservative in the safe direction -- a
+* character that did not need a peel gets one, which costs time and cannot corrupt.
+*
+* When nothing moves at all -- which is what the scene does once he has stopped -- the
+* skip still applies to everyone, and P3.22's idempotent-merge argument still holds
+* exactly as written, because every character is redrawing its own cel over its own
+* pixels at its own position:
 *
 *     ((d AND m) OR s) AND m) OR s  ==  (d AND m) OR s        because s AND m == 0
 *
-* (the baker sets mask bits only where the source pixels are 0, so s AND m is zero
-* by construction — cel_blit_prep.encode_row). P3.21 measured the consequence: the
-* two-character draw with full peel needs two frames (10.0 Hz), and draw-only fits
-* in one (20.0 Hz). The peel was redundant work, not slow work.
+* (the baker sets mask bits only where the source pixels are 0, so s AND m is zero by
+* construction -- cel_blit_prep.encode_row). P3.21 measured what it buys: the
+* two-character draw with full peel needs two frames, draw-only fits in one.
 * ---------------------------------------------------------------
-char_one
-                stx     ch_rec
-* RESOLVE THE CEL FIRST, because its DIMENSIONS depend on which variant is chosen.
-* A sub-byte phase can add a byte to a cel's width (the shifted pixels spill into one
-* more column), so the peel extent is a property of the VARIANT, not of the cel number.
-* Reading h/w from the record here -- as this did until P3.31 -- would size the save to
-* whichever variant vm_resolve happened to store and erase the other one's footprint
-* short by a column: the P3.25 stride bug, one level down.
-                jsr     co_variant              ; U = the phase-correct baked cel
-                stu     ch_cel
-                jsr     co_dims
+ch_scan
+                clr     ch_anymove
+                clr     ch_idx
+                ldx     #viz_slot
+                bsr     ch_scan_one
+                lda     #1
+                sta     ch_idx
+                ldx     #pri_slot
+                bsr     ch_scan_one
+                rts
 
+ch_scan_one
+                stx     ch_rec
+                bsr     ch_index
+                jsr     ch_moved                ; ch_move := 0/1
+                lda     ch_move
+                ora     ch_anymove
+                sta     ch_anymove
+                rts
+
+* ch_index — ch_lastoff and ch_bit for this (character, slot).
 * ch_last[] index = (character*2 + slot) * 4  — four bytes: x, y, w, h
+ch_index
                 lda     ch_idx
                 lsla
                 adda    ch_slot
@@ -269,8 +330,10 @@ char_one
                 ldx     #ch_bits
                 lda     a,x
                 sta     ch_bit
+                rts
 
 * --- did the character move since THIS buffer last drew it? ---------------
+ch_moved
                 ldy     #ch_drawn               ; the cel this buffer last drew
                 lda     ch_idx
                 lsla
@@ -305,18 +368,51 @@ co_static
                 clra
 co_setmove
                 sta     ch_move
+                rts
 
-* --- ERASE at the OLD position, if this buffer has one and we moved ------
+* ---------------------------------------------------------------
+* char_one — do THIS pass's work for one character.
+*
+*   X -> slot record.  Uses ch_rec as the authority for the record pointer because
+*   blit_cel clobbers X (and blit_blast clobbers A,B,D,Y — only X is preserved,
+*   which is what P3.20's Bug 1 got wrong by keeping the peel pointer in Y).
+*
+* The setup below is re-done per pass rather than stashed between them. It is a
+* variant lookup and two index bytes; carrying it across three passes would mean a
+* per-character copy of six values, which is the parallel state P3.22 was shaped to
+* avoid -- and the state that goes stale is the state that gets read stale.
+* ---------------------------------------------------------------
+char_one
+                stx     ch_rec
+* RESOLVE THE CEL FIRST, because its DIMENSIONS depend on which variant is chosen.
+* A sub-byte phase can add a byte to a cel's width (the shifted pixels spill into one
+* more column), so the peel extent is a property of the VARIANT, not of the cel number.
+* Reading h/w from the record here -- as this did until P3.31 -- would size the save to
+* whichever variant vm_resolve happened to store and erase the other one's footprint
+* short by a column: the P3.25 stride bug, one level down.
+                jsr     co_variant              ; U = the phase-correct baked cel
+                stu     ch_cel
+                jsr     co_dims
+                bsr     ch_index
+
+                lda     ch_cp
+                cmpa    #CP_DRAW
+                lbeq    co_draw                 ; the draw is unconditional
+                lda     ch_anymove
+                beq     cp_none                 ; nothing moved: no peel this frame
+                lda     ch_cp
+                cmpa    #CP_ERASE
+                bne     co_save
+* --- ERASE at the OLD position, if this buffer has one ------------------
 * The erase must restore where the character WAS in this buffer, not where it is
 * going. P3.20 erased at the new position, which is only harmless while nothing
 * moves — and nothing did, because its move path was dead (P3.21 found that).
-                tsta
-                lbeq    co_draw                 ; static: no erase, no save (long — the
-                                                ; erase block below grew past a short
-                                                ; branch's reach)
                 lda     ch_bit
                 anda    ch_seen
-                beq     co_save                 ; this buffer has saved nothing yet
+                bne     co_erase
+cp_none
+                rts
+co_erase
                 ldy     #ch_last
                 lda     ch_lastoff
                 ldb     a,y
@@ -337,16 +433,14 @@ co_setmove
                 lda     ch_h
                 ldb     ch_w
                 jsr     [BLIT_TAB+4]            ; blit_erase (preserves X,Y,U)
-* Put the CURRENT cel's dimensions back: the save and draw below are the new cel's.
-* FROM THE VARIANT, NOT FROM THE RECORD, and the difference is a real bug (P3.31).
-* The record's CH_H/CH_W are whatever vm_resolve last wrote, and vm_resolve resolves
-* through img_map, which has no entry for the walk's images -- so for a walk cel they
-* hold the PREVIOUS cel's size. The save and the draw below then ran at 48x5 while the
-* cel was 47 rows: the character was drawn one row high, and the peel saved and
-* restored a footprint one row off from the one it painted. It left a trail, and the
-* trail grew every step -- 0 wrong bytes at the walk's first capture and 839 by its
-* sixteenth, which is the accumulating signature exactly.
-                jsr     co_dims
+                rts
+* THE DIMENSIONS NO LONGER HAVE TO BE PUT BACK HERE, because the save is a separate
+* pass and re-resolves them from the variant on entry. When the erase and the save ran
+* back to back this restore was load-bearing and getting it from the RECORD was a real
+* bug (P3.31): the record's CH_H/CH_W are whatever vm_resolve last wrote, and it
+* resolves through img_map, which has no entry for the walk's images -- so a walk cel
+* saved and drew at the PREVIOUS cel's 48x5 while the cel was 47 rows. Drawn one row
+* high, peel one row off, and a trail that grew from 0 to 839 wrong bytes.
 
 co_save
 * --- SAVE the background at the NEW position, and record it --------------
@@ -373,6 +467,7 @@ co_save
                 lda     ch_seen
                 ora     ch_bit
                 sta     ch_seen
+                rts                             ; the draw is a separate pass now
 
 co_draw
 * --- DRAW, always -------------------------------------------------------
@@ -596,6 +691,9 @@ img_map         fcb     10
                 fcb     0               ; terminator
 
 vm_seq          fdb     0,0             ; sequence pointer per character
+vm_scr          fdb     0,0             ; scene-script cursor per character (0 = none)
+vm_cnt          fcb     0,0             ; plays left on the current script entry
+vm_ix           fcb     0
 vm_rec          fdb     0
 vm_img          fcb     0
 
@@ -647,6 +745,7 @@ vr_done
 * ---------------------------------------------------------------
 vm_step
                 stx     vm_rec
+                jsr     vm_script_tick          ; has this sequence had its N plays?
                 lda     ch_idx
                 lsla
                 ldx     #vm_seq
@@ -752,6 +851,77 @@ vn_hold
                 rts
 
 * ---------------------------------------------------------------
+* vm_script_tick / vm_advance — the oracle's `play N`, ported (P3.32).
+*
+* A SEQUENCE DOES NOT KNOW WHEN TO STOP. `Vwalk` ends `goto Vwalk1` and walks forever;
+* what ends it is the SCENE, which in the oracle is a run of vjumpseq/play pairs
+* [SUBS.S:687-716]:
+*
+*     lda #Vapproach / jsr vjumpseq / lda #30 / jsr play
+*     lda #Vstop     / jsr vjumpseq / lda #4  / jsr play   ;stops in front of princess
+*
+* and `play N` is N animation steps [SUBS.S:876]. So the script is a list of
+* (sequence, plays) and the counter ticks once per step, which is exactly here.
+*
+* THIS IS NOT PlayCut0 (out of scope) -- it is the two calls that make Vstop mean
+* anything. Without it, porting Vstop as data would change nothing: nothing would ever
+* leave Vwalk, and the vizier would keep walking through the princess exactly as he did
+* before, which would have looked like the walk was simply unfixed.
+*
+* A count of 0 means "hold here", and the cursor is zeroed when one is loaded so the
+* next tick cannot walk off the end of the table. The princess has no script at all
+* (cursor 0), which is the same path.
+* ---------------------------------------------------------------
+vm_script_tick
+                lda     ch_idx
+                lsla
+                ldx     #vm_scr
+                ldu     a,x
+                cmpu    #0
+                beq     vt_done                 ; no script: this sequence holds
+                ldx     #vm_cnt
+                lda     ch_idx
+                ldb     a,x
+                bne     vt_dec
+                bsr     vm_advance              ; spent: take the next entry
+                ldx     #vm_cnt
+                lda     ch_idx
+                ldb     a,x
+vt_dec
+                tstb
+                beq     vt_done                 ; 0 plays = hold forever
+                decb
+                stb     a,x
+vt_done
+                rts
+
+* vm_advance — load the next (sequence, plays) pair and advance the cursor.
+* vjumpseq restarts the sequence from its FIRST byte, which for Vwalk means its one-off
+* `chx,1` entry step runs again — that is the behaviour, not an accident of the port.
+vm_advance
+                lda     ch_idx
+                lsla
+                sta     vm_ix
+                ldx     #vm_scr
+                ldu     a,x                     ; U -> the cursor
+                ldy     ,u++                    ; the sequence
+                ldb     ,u+                     ; its play count
+                lda     vm_ix
+                ldx     #vm_seq
+                sty     a,x
+                lda     ch_idx
+                ldx     #vm_cnt
+                stb     a,x
+                tstb
+                bne     va_keep
+                ldu     #0                      ; last entry: never advance again
+va_keep
+                lda     vm_ix
+                ldx     #vm_scr
+                stu     a,x
+                rts
+
+* ---------------------------------------------------------------
 * vm_start — point a character at a sequence.
 *   X -> slot record's sequence entry index in A, U = the stream.
 * ---------------------------------------------------------------
@@ -809,7 +979,7 @@ pri_demo
 * chx is mirrored by facing in the VM (P3.25-verified) and startV0 sets CharFace=-1
 * [SUBS.S:1147], so these positive deltas carry him LEFT from 197 toward the princess
 * at 120 -- 10 px per cycle, reaching her at step 45.
-viz_demo        fcb     SEQ_CHX,1               ; the one-off entry step
+viz_walk        fcb     SEQ_CHX,1               ; the one-off entry step
 viz_walk1       fcb     48,SEQ_CHX,2
                 fcb     49,SEQ_CHX,6
                 fcb     50,SEQ_CHX,1
@@ -818,6 +988,27 @@ viz_walk1       fcb     48,SEQ_CHX,2
                 fcb     53,SEQ_CHX,1
                 fcb     SEQ_GOTO
                 fdb     viz_walk1
+
+* Vstop [SEQTABLE.S:1527] — one more step, the two stopping cels, then he holds.
+*
+*     Vstop  db chx,1
+*            db 55,56
+*            db goto / dw Vstand
+*
+* HE DOES NOT WALK INTO HER, and that is the point of this sequence: the scene's
+* destination is the vizier standing in front of the princess [SUBS.S:716 "stops in
+* front of princess"], not passing through her. It is NOT what fixed the overlap
+* though -- the three-pass frame is (see vm_frameadv). Vstop stops him, and stopping
+* him would have HIDDEN the overlap defect rather than fixed it, which is why the
+* order here was fix first, then stop.
+viz_stop        fcb     SEQ_CHX,1
+                fcb     55,56
+                fcb     SEQ_GOTO
+                fdb     viz_stand
+
+* Vstand [SEQTABLE.S:1496] — `db 54,goto / dw Vstand`, one cel, held.
+viz_stand       fcb     54,SEQ_GOTO
+                fdb     viz_stand
 
 * --- the VM's cel-id table, generated from ALTSET2 ---------------------
                 include "content/cutscene/cel_table.s"
@@ -854,6 +1045,8 @@ ch_idx          fcb     0
 ch_bit          fcb     0
 ch_seen         fcb     0               ; bit per (character,slot): background saved?
 ch_move         fcb     0
+ch_cp           fcb     0               ; which pass is running (CP_ERASE/SAVE/DRAW)
+ch_anymove      fcb     0               ; did ANYTHING move this frame — see ch_scan
 ch_lastoff      fcb     0
 * Renderer-side, NOT character state: what each buffer last drew for each character —
 * x, y, WIDTH and HEIGHT. Two characters x two slots x 4 bytes.
