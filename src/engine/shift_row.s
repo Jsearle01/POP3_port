@@ -41,10 +41,10 @@
 * ---------------------------------------------------------------
 *     lda     ,x+          6    the source byte
 *     ldb     a,y          5    SHR[src] -- the in-byte part
-*     orb     <sr_carry    4    the previous byte's spill
+*     orb     sr_carry    4    the previous byte's spill
 *     stb     ,u+          6    the shifted byte
 *     ldb     a,s          5    SHL[src] -- this byte's spill
-*     stb     <sr_carry    4    carried into the next iteration
+*     stb     sr_carry    4    carried into the next iteration
 *                         30 cy/byte, unrolled
 *
 * Entry: X = source row, U = destination, B = byte count (1..9),
@@ -65,7 +65,7 @@ shift_row
                 sts     sr_saved_s              ; 7   park the real stack
                 ldy     #sr_shr_tab+128         ; 4   the signed-index bias
                 lds     #sr_shl_tab+128         ; 4
-                clr     <sr_carry               ; 6   nothing spills into byte 0
+                clr     sr_carry               ; 6   nothing spills into byte 0
 * Dispatch by width through a table of addresses rather than by arithmetic on the
 * rung size: a rung is six instructions of differing lengths, so scaling the width by
 * a constant would be wrong the moment an instruction's encoding changed.
@@ -84,60 +84,60 @@ sr_jmptab       fdb     sr_done                 ; width 0 — nothing to do
 * per byte (dec 6 + bne 3), 23% of a rolled loop, on rows that are only 4-9 bytes.
 sr_w9           lda     ,x+
                 ldb     a,y
-                orb     <sr_carry
+                orb     sr_carry
                 stb     ,u+
                 ldb     a,s
-                stb     <sr_carry
+                stb     sr_carry
 sr_w8           lda     ,x+
                 ldb     a,y
-                orb     <sr_carry
+                orb     sr_carry
                 stb     ,u+
                 ldb     a,s
-                stb     <sr_carry
+                stb     sr_carry
 sr_w7           lda     ,x+
                 ldb     a,y
-                orb     <sr_carry
+                orb     sr_carry
                 stb     ,u+
                 ldb     a,s
-                stb     <sr_carry
+                stb     sr_carry
 sr_w6           lda     ,x+
                 ldb     a,y
-                orb     <sr_carry
+                orb     sr_carry
                 stb     ,u+
                 ldb     a,s
-                stb     <sr_carry
+                stb     sr_carry
 sr_w5           lda     ,x+
                 ldb     a,y
-                orb     <sr_carry
+                orb     sr_carry
                 stb     ,u+
                 ldb     a,s
-                stb     <sr_carry
+                stb     sr_carry
 sr_w4           lda     ,x+
                 ldb     a,y
-                orb     <sr_carry
+                orb     sr_carry
                 stb     ,u+
                 ldb     a,s
-                stb     <sr_carry
+                stb     sr_carry
 sr_w3           lda     ,x+
                 ldb     a,y
-                orb     <sr_carry
+                orb     sr_carry
                 stb     ,u+
                 ldb     a,s
-                stb     <sr_carry
+                stb     sr_carry
 sr_w2           lda     ,x+
                 ldb     a,y
-                orb     <sr_carry
+                orb     sr_carry
                 stb     ,u+
                 ldb     a,s
-                stb     <sr_carry
+                stb     sr_carry
 sr_w1           lda     ,x+
                 ldb     a,y
-                orb     <sr_carry
+                orb     sr_carry
                 stb     ,u+
                 ldb     a,s
-                stb     <sr_carry
+                stb     sr_carry
 * The spill past the last source byte is the row's extra byte.
-                lda     <sr_carry
+                lda     sr_carry
                 sta     ,u+
 sr_done
                 lds     sr_saved_s              ; 6   restore the real stack
