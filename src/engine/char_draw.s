@@ -278,7 +278,7 @@ chars_frame
                 stu     vm_scr
                 ldu     #viz_stand              ; a non-zero seed; the script's first
                 stu     vm_seq                  ;   entry replaces it on step one
-                ldu     #pri_demo
+                ldu     #pri_stand
                 stu     vm_seq+2
 cf_running
                 jsr     vm_nextframe            ; decide
@@ -1196,6 +1196,31 @@ vm_start
 * The princess stands, steps 8 px, slumps, steps back, and repeats. 8 px keeps her on
 * one sub-byte phase, which one baked cel can serve; sub-byte steps need the phase
 * variants and are piece E.
+* Pstand [SEQTABLE.S:1558] — `db 11,goto / dw Pstand`. One cel, held, and she does not
+* move at all. THIS IS WHAT SHE IS ACTUALLY DOING during the vizier's approach (P3.61).
+*
+* The oracle's princess side of PlayCut0 is startP0 (CharX 120, Pstand) -> play 2 ->
+* play 5 -> Palert -> play 9 [SUBS.S:658-680], and Palert itself ENDS in Pstand:
+*
+*     Palert  db 2,3,4,5,6,7,8,9
+*             db aboutface,chx,9
+*             db 11,goto / dw Pstand      [SEQTABLE.S:1565]
+*
+* so she reacts to the door, turns, and is standing still well before the final approach
+* — which is the only part of the script the port renders. Jay, once the vizier was
+* right: "the princess is still flailing around."
+*
+* WHAT SHE WAS DOING INSTEAD was pri_demo, a P3.25 PLACEHOLDER whose only purpose was to
+* exercise the interpreter's opcodes before any real sequence could run. It stepped her
+* back and forth 8 px, and P3.58 doubled that to 16 — the scale fix made a placeholder
+* that had always been wrong twice as visible, which is why it surfaced now.
+*
+* pri_demo is KEPT, not deleted: harness/tools/peel_matrix.py rewrites its body to drive
+* the peel matrix and finds its end by matching the marker line above it. It is simply no
+* longer what the scene runs.
+pri_stand       fcb     11,SEQ_GOTO
+                fdb     pri_stand
+
 pri_demo
                 fcb     11
                 fcb     SEQ_CHX,4
