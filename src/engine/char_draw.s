@@ -1215,6 +1215,20 @@ vm_start
 * back and forth 8 px, and P3.58 doubled that to 16 — the scale fix made a placeholder
 * that had always been wrong twice as visible, which is why it surfaced now.
 *
+* SHE IS ALREADY FACING HIM, and the P3.61 commit message says otherwise — recorded here
+* because that message is wrong and cannot be unsaid. Jay, looking at the running port:
+* "no shes facing him." FCharFace -1 is NORMAL, i.e. unmirrored [FRAMEADV.S:1970 `lda #-1
+* ;normal`], which is how the port draws her — so her stored art simply faces right,
+* where the vizier's faces left. Both are unmirrored at CharFace -1; the two characters'
+* art was just drawn in opposite directions, which is ordinary for cutscene-only cels.
+*
+* So the mirror is NOT what stands between this and the oracle, and piece G is not a
+* prerequisite here. What is left of Palert is its `chx,9`: the oracle's princess spends
+* the approach at CharX 129, ours stands at 120, an 18 px difference that would also need
+* pstand baked at phase 3. Left alone deliberately — Jay has the running port in front of
+* him and she reads correctly on it, and a spatial move is his call (CLAUDE.md §3), not a
+* conclusion to be drawn from the same sequence I have already misread once.
+*
 * pri_demo is KEPT, not deleted: harness/tools/peel_matrix.py rewrites its body to drive
 * the peel matrix and finds its end by matching the marker line above it. It is simply no
 * longer what the scene runs.
