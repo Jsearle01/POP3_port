@@ -28,7 +28,12 @@ TORCH_COL = {0: 28, 1: 50}
 
 def load_cel(n):
     """the converted cel's packed CoCo bytes, one row per line"""
-    p = pathlib.Path(f'content/cutscene/flames/flame{n}/converted.s')
+    # THE CHECKER MUST READ THE CELS THAT WERE BUILT, not the pristine originals.
+    # P3.52 shifts the torch cels 1 px right into a generated directory and compiles
+    # THOSE; compositing the expectation from content/ would then report the engine as
+    # wrong for drawing exactly what it was given. --cel-dir names the source of truth
+    # for this run, and it defaults to content/ so nothing changes when no shift is in play.
+    p = pathlib.Path(CEL_DIR) / f'flame{n}' / 'converted.s'
     rows = []
     for line in p.read_text().splitlines():
         if 'fcb' not in line or 'row' not in line:
@@ -52,10 +57,16 @@ def composite(room, cel, col):
     return fb
 
 
+CEL_DIR = 'content/cutscene/flames'
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--room', required=True)
     ap.add_argument('--shot', required=True)
+    ap.add_argument('--cel-dir', default='content/cutscene/flames',
+                    help='directory holding flameN/converted.s as BUILT (default: the '
+                         'pristine originals)')
     ap.add_argument('--cel0', type=int, required=True)
     ap.add_argument('--cel1', type=int, required=True)
     ap.add_argument('--pos', help='recorded character positions; their footprints are '
@@ -63,6 +74,7 @@ def main():
                                   'a torch is content, not damage')
     ap.add_argument('--tag', default='first', help='which capture row in --pos')
     a = ap.parse_args()
+    globals()['CEL_DIR'] = a.cel_dir
 
     room = pathlib.Path(a.room).read_bytes()
     shot = pathlib.Path(a.shot).read_bytes()
