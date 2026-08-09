@@ -27,6 +27,7 @@ from celio import Cel
 
 CENTRING = 20                     # the 280->320 offset; a multiple of 4, so phase-neutral
 VIS_L, VIS_R = 5, 74              # the Apple's 280 px, centred: cols 5..74
+FORE_L, FORE_R, FORE_T, FORE_B = 60, 62, 104, 151   # the rightmost pillar, Jay-confirmed
 
 STRIDE = 80
 SP318 = pathlib.Path("C:/Users/jayse/AppData/Local/Temp/claude/"
@@ -146,6 +147,14 @@ def main():
                         continue
                     dst = (top + r) * STRIDE + col + c
                     want[dst] = 0 if not (VIS_L <= col + c <= VIS_R) else local[o]
+        # THE FOREGROUND PLANE GOES DOWN LAST, over every character (P3.60) — the
+        # oracle's addfore ordering, which is what puts the vizier BEHIND the rightmost
+        # pillar as he walks past it. Restored here from the ROOM ASSET, while the engine
+        # fills $FF, so this stays an independent check of the fill rather than a copy of
+        # its assumption: if that region were ever not solid white the two would disagree.
+        for rr in range(FORE_T, FORE_B + 1):
+            for cc in range(FORE_L, FORE_R + 1):
+                want[rr * STRIDE + cc] = room[rr * STRIDE + cc]
         shot = pathlib.Path(ROOT / shots[tag]).read_bytes()
         bad = [i for i in range(15360) if shot[i] != want[i] and not torch(i)]
         pos = ", ".join("%s top %d col %d" % (l, tp, cl) for l, _, _, tp, cl in rows)

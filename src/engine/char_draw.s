@@ -191,6 +191,26 @@ CH_PAR          equ     13              ; the cel's PARITY BIT — the odd scree
 * rows of the room asset, so blanking a spill is an exact restore of the background.
 VIS_L           equ     5
 VIS_R           equ     74
+
+* THE FOREGROUND PILLAR (P3.60). The oracle composes in planes and draws the foreground
+* AFTER the characters [addfore, EQ.S:182 / FRAMEADV.S:823], so a character passing a
+* near pillar goes BEHIND it. The port draws a flat converted room and then the
+* characters on top, so the vizier walked in front of one. Jay: "he's not occuled
+* properly when he walks behind the white pillar in the foreground", and on which one:
+* "yes its the rightmost pillar".
+*
+* Derived from the asset, not guessed (CLAUDE.md §3): cols 60..62 are $FF — solid white,
+* all four pixels colour 3 — unbroken from row 104 to row 191. THAT IS WHY THIS NEEDS NO
+* SAVED COPY OF THE ROOM: the restore is a fill, so there is no buffer to keep in a
+* window that has none to spare, and no second home for the pillar's pixels to drift from.
+*
+* Rows stop at 151, not 191: a character's baseline is y=151 and the tallest cel is 48
+* rows, so nothing can ever be drawn below it. 3 x 48 bytes, and only when someone is
+* actually standing on the pillar's columns.
+FORE_L          equ     60
+FORE_R          equ     62
+FORE_T          equ     104
+FORE_B          equ     151
 CH_PTR          equ     6
 CH_PEEL         equ     8
 CH_SIZE         equ     14
@@ -304,6 +324,7 @@ vm_frameadv
                 bsr     ch_pass
                 lda     #CP_DRAW
                 bsr     ch_pass
+                jsr     co_fore                 ; the foreground plane, over everybody
                 rts
 
 * ch_pass — run one pass over every character, in draw order.
@@ -543,6 +564,18 @@ co_draw
                 ldx     ch_dest
                 jsr     [BLIT_TAB]              ; blit_cel — clobbers X and Y
                 jsr     co_clip
+* DID THIS CHARACTER LAND ON THE PILLAR? Recorded, not acted on: the foreground must go
+* down after EVERY character, not after each one, or the second character would draw
+* over a pillar the first had already put back.
+                lda     ch_col
+                cmpa    #FORE_R+1
+                bhs     cd_nofore
+                adda    ch_w
+                cmpa    #FORE_L+1
+                blo     cd_nofore
+                lda     #1
+                sta     ch_fore
+cd_nofore
 
 * RECORD WHAT WAS ACTUALLY DRAWN INTO THIS BUFFER, for the checker to read.
 *
@@ -669,6 +702,31 @@ cc_byte
                 deca
                 bne     cc_row
 cc_done
+                rts
+
+* ---------------------------------------------------------------
+* co_fore — put the foreground pillar back, over whatever was drawn.
+*
+* Runs once, after every character, which is the ordering that makes it a PLANE rather
+* than a per-character fix-up. Skipped entirely unless someone actually drew on those
+* columns, so it costs one compare on the frames it does not apply to — which is most of
+* them, since the vizier crosses the pillar for a few steps of a 30-step walk.
+co_fore
+                lda     ch_fore
+                beq     cf_done
+                clr     ch_fore
+                ldx     ch_base
+                leax    FORE_T*FB_STRIDE_4C+FORE_L,x
+                lda     #FORE_B-FORE_T+1        ; rows
+cf_row
+                ldb     #$FF
+                stb     ,x
+                stb     1,x
+                stb     2,x
+                leax    FB_STRIDE_4C,x
+                deca
+                bne     cf_row
+cf_done
                 rts
 
 * ---------------------------------------------------------------
@@ -1268,6 +1326,7 @@ ch_fdx          fcb     0
 ch_lastcel      fcb     0
 ch_par          fcb     0               ; the parity of the cel being placed
 ch_col          fcb     0               ; the byte column co_setup placed the cel at
+ch_fore         fcb     0               ; did anyone draw on the pillar this frame?
 ch_tmp          fcb     0
 ch_cel          fdb     0               ; the variant resolved for THIS draw — not
 *                                       ; state, a value carried from char_one to
