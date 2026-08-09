@@ -35,6 +35,7 @@
                 ifdef   OBJTARGET
                 section prog
                 export  chars_frame
+                export  chars_due
                 endc
 
 FB_STRIDE_4C    equ     80              ; 320 px at 4 px/byte
@@ -185,6 +186,43 @@ CH_SIZE         equ     13
 * new column and there is exactly one baked cel per character here. 8 px = two byte
 * columns. Sub-byte motion is piece E's problem, not a limitation of the blitter.
 CH_STEP         equ     8
+
+* ---------------------------------------------------------------
+* chars_due — IS AN ANIMATION STEP DUE? A = 1 yes, 0 no.  U = the HAL's frame count.
+*
+* THE ROOM DRAWS ONCE PER ANIMATION STEP, NOT ONCE PER LOOP ITERATION (P3.51), which is
+* the oracle's own structure: `play` -> `FrameAdv` -> `DoFast` draws the torches, stars,
+* sand, hourglass and characters in ONE pass into the hidden page, then flips ONCE
+* [SUBS.S:876-914, :967, :1002-1007]. The port had been redrawing and flipping every
+* video frame, which is why the measured frame cost was 192% of budget against a per-step
+* work figure of 1.92 VBLs in a 2.60-VBL step.
+*
+* WHY THE ROOM HAS TO ASK, rather than the draw deciding for itself: `flicker` runs BEFORE
+* `chars_frame` and advances the torch, so a gate inside `chars_frame` would come too late
+* -- the torch would already have stepped. Reordering to chars-then-flicker instead would
+* change the draw order, and the torches would paint over the characters where they
+* overlap (the room suite reports "20 behind a character", so the overlap is real). Asking
+* first is the only order that leaves both alone. [P3.50 §3C]
+*
+* IT ASKS; IT DOES NOT DECIDE. `vm_nextframe` still owns the step and still advances
+* `cad_idx` -- this must stay side-effect free or there are two cadences again, which is
+* the exact defect `fl_div` was (a second divider running off loop iterations, giving the
+* torches 9.25 Hz against a commented ~20). It reads `vm_due`, writes only `vm_now`, and
+* touches no slot record.
+*
+* The comparison is `vm_nextframe`'s own, verbatim: signed 16-bit, correct until the
+* counter passes $7FFF (~9 minutes at 60 Hz).
+* ---------------------------------------------------------------
+chars_due
+                stu     vm_now                  ; the same store chars_frame makes
+                ldd     vm_now
+                subd    vm_due
+                bmi     cd_hold                 ; this step's frames have not elapsed
+                lda     #1
+                rts
+cd_hold
+                clra
+                rts
 
 chars_frame
                 stu     vm_now                  ; U = the HAL's real frame count

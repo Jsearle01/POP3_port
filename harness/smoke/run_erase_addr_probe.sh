@@ -48,12 +48,19 @@ export P_OUT="$LOG"
 # parity fix moves peel_base from $22C9 (unfixed) to $22C2 (fixed), so the map itself says
 # which binary is on the disk. Refuse to measure the wrong one.
 echo "[run_erase_addr_probe] peel_base $P_PEELBASE  fl_slot $P_FLSLOT  erase_tab $P_ERASETAB  save_tab $P_SAVETAB  seed=${P_SEED:-0}"
-# Keyed on the UNFIXED value rather than on one expected fixed value: the fixed layout
-# shifts depending on whether the fl_buf declaration is also removed ($22C2 with it, $22C1
-# without), and a guard that demands one exact address fails open when the other is built.
-if [ "${P_REQUIRE_FIXED:-1}" = "1" ] && [ "$P_PEELBASE" = "0x22C9" ]; then
-    echo "[run_erase_addr_probe] peel_base is $P_PEELBASE — the UNFIXED layout. The parity fix is not in this build. Refusing."
-    exit 1
+# STALENESS, NOT AN ADDRESS. This guard was keyed to peel_base twice and was wrong both
+# times: $22C2 (P3.49) rejected the very build it protected once P3.50 legitimately moved
+# it to $22C1, and $22C9 went stale again when P3.51 moved it to $22C7. An address literal
+# is a photograph of one build; the fault being guarded against is "build.bat silently did
+# nothing and returned 0", which is a question about FRESHNESS. Compare the disk image
+# against the sources that produce it -- that stays true however the layout shifts.
+if [ "${P_REQUIRE_FRESH:-1}" = "1" ]; then
+    for f in src/engine/cutscene_room.s src/engine/char_draw.s src/engine/flame_cels.s; do
+        if [ "$f" -nt "$SRC_DSK" ]; then
+            echo "[run_erase_addr_probe] $f is NEWER than $SRC_DSK — the build did not run (it returns 0 either way). Refusing."
+            exit 1
+        fi
+    done
 fi
 
 "$MAME" coco3 \

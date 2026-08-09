@@ -285,7 +285,41 @@ room_hold
 * VOFFSET moved mid-frame because the swap happened before any wait. The wait that
 * prevents it is the one INSIDE swap, which is still there and still runs first. The
 * order is unchanged -- draw, wait, move VOFFSET -- it is only counted once now.
+* ---------------------------------------------------------------
+* THE ANIMATION STEP IS THE UNIT OF DRAWING (P3.51), and it is the oracle's structure.
+*
+* This loop used to draw and flip EVERY video frame: flicker, chars_frame and
+* HAL_gfx_swap all unconditional. The oracle does not. `play` -> `FrameAdv` -> `DoFast`
+* draws the torches, stars, sand, hourglass and characters in ONE pass into the hidden
+* page and flips ONCE, per ANIMATION STEP [SUBS.S:876-914, :967, :1002-1007].
+*
+* The cost of the difference was measured: the frame is 57,074 cy against a 29,673 budget
+* -- 192% -- while the same work inside a 2.60-frame step has 77,150 cy to spend, which is
+* 70%. Nothing had to get faster; the work had to stop happening five times as often as
+* the content changes.
+*
+* ASK BEFORE DRAWING ANYTHING. chars_due reads the same vm_now/vm_due comparison
+* vm_nextframe uses and reports whether a step is due, without advancing it. The test has
+* to happen HERE, ahead of flicker, because flicker advances the torch: a gate inside
+* chars_frame would fire after the torch had already stepped, and reordering the two would
+* put the torches on top of the characters where they overlap.
+*
+* vm_nextframe STILL OWNS THE STEP. chars_due asks; cad_idx advances where it always did.
+* Two things deciding one cadence is exactly the defect this change removes from flicker.
 room_loop
+                jsr     HAL_time_frame_count    ; D = 16-bit frame count (race-safe)
+                tfr     d,u
+                jsr     [CHARS_TAB+2]           ; chars_due — A = 1 if a step is due
+                tsta
+                bne     rl_draw
+* IDLE: nothing changes this frame, so the displayed buffer is already correct -- do not
+* redraw it and do not flip. The VBL wait is NOT optional: HAL_gfx_swap is what paces this
+* loop, and skipping the draw without waiting would spin the CPU at full speed, burning
+* the budget this change exists to reclaim while putting nothing new on screen.
+                jsr     HAL_time_vbl_wait
+                bra     room_loop
+
+rl_draw
                 jsr     flicker                 ; into the back buffer
 * PIECE D lives in the disk-resident bundle, not in ROOM.BIN. Three dispatches have
 * now hit the LOADM ceiling by growing this program (P3.20 twice, P3.22 once), and
@@ -339,27 +373,27 @@ room_dead
 * ---------------------------------------------------------------
 * ---------------------------------------------------------------
 * THE RATE. Measured on the running oracle, its flames change every 2-3 video frames
-* under SPEED 7 and every 6 under SPEED 12 -- mean 2.6 frames, 22.8 Hz. The port
-* redraws every frame, which is 60 Hz and 2-6x too fast; Jay saw it immediately.
+* under SPEED 7 and every 6 under SPEED 12 -- mean 2.6 frames, 22.8 Hz.
 *
 * `play` is the reason: its loop is `pause SPEED` then NextFrame/FrameAdv, so ONE
 * engine frame spans many video frames and everything the engine animates -- flames,
 * stars, characters -- steps at that rate, not at the display's.
 *
-* So the STATE advances once every FLAME_DIV frames while the DRAW still happens every
-* frame. Those have to stay separate: the page flips every frame, so a buffer that is
-* not redrawn shows a stale flame. Skipping the draw would flicker between two states
-* at 30 Hz, which is the opposite of the fix.
+* THE DIVIDER IS DELETED, NOT RETUNED (P3.51). `FLAME_DIV equ 3` was a SECOND cadence,
+* counted in LOOP ITERATIONS rather than video frames -- the identical unit error P3.25
+* fixed for the VM and never fixed here. Measured, it gave a torch step every 3 iterations
+* x 2.159 frames = 6.48 frames = 9.25 Hz, against the "~20 Hz" its own comment claimed. It
+* was not merely mistuned: a second divider cannot be made to agree with the first, it can
+* only be removed.
+*
+* Now room_loop runs this routine ONLY on an animation step, so the torch advances once
+* per step and the state advance is unconditional. That is `pburn` in the oracle's
+* `DoFast` -- one advance per drawn frame, in the same pass as the characters, and the
+* flame rate IS the step rate rather than a number of its own [SUBS.S:967, :1002-1007].
 * ---------------------------------------------------------------
-FLAME_DIV       equ     3               ; ~20 Hz, the oracle's SPEED-7 cadence
 
 flicker
-                dec     fl_div
-                bne     fl_nostep
-                lda     #FLAME_DIV
-                sta     fl_div
-                inc     fl_step         ; this frame advances the state
-fl_nostep
+                inc     fl_step         ; every call is a step now — see room_loop
 * slot = buffer parity * 2 + torch. Each of the four slots owns a peel buffer and a
 * "cel last drawn there", because a buffer is redrawn only every other frame and its
 * erase must restore what was saved INTO IT, not into its twin.
@@ -812,7 +846,9 @@ ps_dur          fcb     0
 ps_val          fcb     0
 pend_cel0       fcb     0
 pend_cel1       fcb     0
-fl_div          fcb     FLAME_DIV
+* fl_div DELETED with FLAME_DIV at P3.51 — the second cadence. Its label fl_nostep went
+* too: nothing branches there now, and an unreferenced label below a deleted test is how
+* the fl_buf orphan started (P3.17 -> P3.50).
 fl_step         fcb     0
 
 t_off           fdb     0               ; the torch being stepped: framebuffer offset,
