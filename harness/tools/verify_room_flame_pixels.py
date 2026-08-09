@@ -25,7 +25,29 @@ import cel_blit_prep as cbp
 STRIDE = 80
 CEL_W, CEL_H = 2, 13
 FLAME_TOP = 101
-TORCH_COL = {0: 28, 1: 50}
+
+
+def torch_cols(src='src/engine/cutscene_room.s'):
+    """the torch byte columns, READ FROM THE ENGINE rather than duplicated here.
+
+    This held its own `{0: 28, 1: 50}` and that is the trap the pool row
+    a-constant-duplicated-across-files-survives-the-link-and-the-boot describes: two files
+    independently asserting the same fact, with nothing that can ever compare them. Moving
+    torch 0 to byte 27 (P3.56) would have left this checker compositing at 28 and calling
+    the CORRECTED render broken -- a check that fails on a good build teaches you to
+    distrust the check. One home, so the two cannot drift.
+    """
+    txt = pathlib.Path(src).read_text()
+    cols = {}
+    for t in (0, 1):
+        m = re.search(rf'^TORCH{t}_COL\s+equ\s+(\d+)', txt, re.M)
+        if not m:
+            raise SystemExit(f'  FAIL cannot find TORCH{t}_COL in {src}')
+        cols[t] = int(m.group(1))
+    return cols
+
+
+TORCH_COL = torch_cols()
 
 
 def load_segments(seg_dir, torch, n):

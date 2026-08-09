@@ -187,12 +187,12 @@ REM TWO SETS, BECAUSE THE TWO TORCHES SIT ON DIFFERENT SUB-BYTE PHASES. ptorchof
 REM db 0,6 [SUBS.S:307] and Apple hires is 7 px/byte against CoCo3's 4, so torch 0
 REM lands on phase 0 and torch 1 on phase 1. One set can only place both on the same
 REM phase, which is why the right torch was a pixel left of true. Torch 0 keeps phase
-REM 0 (px 112, unchanged -- Jay's call); torch 1 gets phase 1 (px 201, corrected).
+REM 3 (px 111) and torch 1 phase 1 (px 201) -- both at their TRUE positions now.
 REM cel_blit_prep REPLAYS the blit over a background before emitting, so a cel that
 REM does not reconstruct is never written.
 if not exist buildlames_seg mkdir buildlames_seg
 for %%N in (1 2 3 4 5 6 7 8 9) do (
-  python harness/tools/cel_blit_prep.py content/cutscene/flames/flame%%N/converted.s --phase 0 --label flseg0_%%N --out build/flames_seg/t0_%%N.s || goto :error
+  python harness/tools/cel_blit_prep.py content/cutscene/flames/flame%%N/converted.s --phase 3 --label flseg0_%%N --out build/flames_seg/t0_%%N.s || goto :error
   python harness/tools/cel_blit_prep.py content/cutscene/flames/flame%%N/converted.s --phase 1 --label flseg1_%%N --out build/flames_seg/t1_%%N.s || goto :error
 )
 lwasm --obj -DOBJTARGET -I . -o build/obj/flame_cels.o src/engine/flame_cels.s
