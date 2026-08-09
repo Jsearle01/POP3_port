@@ -296,8 +296,10 @@ chars_frame
                 stu     vm_scr
                 ldu     #viz_stand              ; a non-zero seed; the script's first
                 stu     vm_seq                  ;   entry replaces it on step one
-                ldu     #pri_stand
-                stu     vm_seq+2
+                ldu     #pri_stand              ; a non-zero seed; her script's first
+                stu     vm_seq+2                ;   entry replaces it on step one
+                ldu     #pri_script             ; SHE HAS A SCRIPT NOW TOO (P3.65)
+                stu     vm_scr+2
 cf_running
                 jsr     vm_nextframe            ; decide
                 jsr     vm_frameadv             ; draw
@@ -652,18 +654,50 @@ co_variant
                 bcs     cv_plain                ; below the walk's range
                 cmpa    #WALK_N
                 bhs     cv_plain                ; above it
-                lsla                            ; four phase slots per cel...
-                lsla
-                sta     ch_tmp
+* EIGHT SLOTS PER CEL NOW, NOT FOUR (P3.65, piece G): two facings x four phases. The
+* oracle mirrors at DRAW time — OPACITY bit 7 sends LAY to MLAY [HIRES.S:655] — and the
+* port cannot: blit_cel walks segment runs left to right, so a runtime mirror would need
+* reverse traversal AND bit-reversal inside each byte, against a merge path already at a
+* 6809 floor of 22 cy/byte. So the mirror is BAKED, and the facing selects which half of
+* this row to read.
+* SIXTEEN-BIT THROUGHOUT, and both halves of that are load-bearing.
+*
+* `ldu a,x` takes A as a SIGNED byte, so the old 4-slot form worked only while the table
+* stayed under 128 bytes — the signed-offset trap shift_row.s documents for its own
+* tables. That much was expected.
+*
+* THE ONE THAT BIT: the CEL INDEX overflows too. The table now spans cels 11..56, so
+* (cel - WALK_LO) reaches 45 and *8 is 360 — past a byte. Widening only the final index
+* left `lsla lsla lsla` truncating to 104, and the walk drew from the wrong rows: 180-odd
+* wrong bytes per capture with the POSITIONS all still correct, which is what an index
+* fault looks like from the outside. Every step of the arithmetic is 16-bit now.
+                tfr     a,b
+                clra                            ; D = cel - WALK_LO
+                lslb
+                rola
+                lslb
+                rola
+                lslb
+                rola                            ; D = that * 8 (two facings x four phases)
+                std     cv_ix
+                lda     CH_FACE,x
+                bmi     cv_lface                ; -1 = left = NORMAL [FRAMEADV.S:1970]
+                ldd     cv_ix
+                addd    #4                      ; facing right -> the mirrored half
+                std     cv_ix
+cv_lface
                 lda     CH_X,x
                 adda    CH_FDX,x                ; ...indexed by the sub-byte phase,
                 lsla                            ; 2*(x+Fdx) — mod 4 is all this needs
                 adda    CH_PAR,x                ; + the odd pixel
                 anda    #3                      ; co_setup's expression, mod 4
-                adda    ch_tmp
-                lsla                            ; two bytes per pointer
+                tfr     a,b
+                clra
+                addd    cv_ix
+                lslb
+                rola                            ; D = index * 2, unsigned in 16 bits
                 ldx     #walk_tab
-                ldu     a,x
+                ldu     d,x
                 cmpu    #0
                 bne     cv_done
 cv_plain
@@ -950,13 +984,13 @@ vm_due          fdb     0               ; the frame this step is due to fire on
 img_map         fcb     10
                 fdb     pslump
                 fcb     25
-                fdb     pstand_p1
+                fdb     p11_p1
                 fcb     80
-                fdb     vstand_p1
+                fdb     v54_p1
                 fcb     81
-                fdb     vstop55_p1
+                fdb     v55_p1
                 fcb     82
-                fdb     vstop56_p1
+                fdb     v56_p1
                 fcb     0               ; terminator
 
 vm_seq          fdb     0,0             ; sequence pointer per character
@@ -987,9 +1021,24 @@ vm_resolve
                 sta     vm_img
                 lda     1,x                     ; Fdx, signed
                 sta     CH_FDX,u
-* AND THE PARITY, +3 — read at last (P3.58). The cel table has carried this column
-* since P3.24 and nothing ever consumed it, so the odd screen pixel was never applied.
-                lda     3,x                     ; parity: 1 = odd, 0 = even
+* AND THE PARITY — DERIVED, not read (P3.65, piece G).
+*
+* +3 was a parity column baked by the generator against ONE CharFace, and cel_table.s
+* said what that cost: "a character that TURNS invalidates this column". Both characters
+* turn inside this scene — Palert ends `aboutface,chx,9` and Vexit ends `aboutface,chx,16`
+* — so each spends part of it at the other parity and a baked column cannot describe them.
+*
+* +3 is now raw Fcheck and the rule lives here, which is where SETUPCHAR keeps it:
+* parity = 1 when bit7(Fcheck) == bit7(CharFace) [CTRLSUBS.S:833-838]. EORA sets N from
+* the result, so the test is the EOR itself — no mask, no compare.
+                lda     3,x                     ; Fcheck
+                eora    CH_FACE,u               ; N = 1 when the hibits DIFFER
+                bmi     vr_even
+                lda     #1                      ; hibits match -> ODD x, +1 pixel
+                bra     vr_parst
+vr_even
+                clra                            ; hibits differ -> EVEN x
+vr_parst
                 sta     CH_PAR,u
 
                 ldx     #img_map
@@ -1264,6 +1313,25 @@ vm_start
 pri_stand       fcb     11,SEQ_GOTO
                 fdb     pri_stand
 
+* Palert [SEQTABLE.S:1565] — "princess hears something..." [SUBS.S:675]. THE SCENE'S
+* OPENING, BUILT AND THEN BACKED OUT, and the reason is worth keeping:
+*
+*     Palert  db 2,3,4,5,6,7,8,9 / aboutface,chx,9 / 11,goto Pstand
+*
+* It works and it does not FIT. Its eight turn cels take the bundle to 17,929 B against a
+* 14,848 B window — over by 3,081 — and lz_pack refuses it. P3.63 measured the scene's
+* PEAK residency at 5,631 B of cels and showed that fits comfortably; the peak is only
+* reachable if cels arrive DURING the scene, and this bundle loads ONCE. The wall is the
+* absence of a per-beat load (Jay's P3.45 question), not the window and not the encoding.
+*
+* WHAT SURVIVES IS THE MACHINERY IT NEEDED, which is piece G and is in the tree: parity
+* derived at run time from Fcheck ^ CH_FACE, a facing dimension on walk_tab, and a
+* mirroring bake. Her turn is one PLAN line in bake_scene.py the day the loader can stage.
+*
+* The sequence data is deliberately NOT left here. An unused declaration is an unverified
+* one with a live-looking name, and this project has already been bitten by exactly that
+* (CHAR_TAB, dead and wrong by 8 bytes since P3.54).
+
 pri_demo
                 fcb     11
                 fcb     SEQ_CHX,4
@@ -1338,7 +1406,6 @@ viz_stand       fcb     54,SEQ_GOTO
 
 * --- the baked cels: segment streams for the runtime blitter, from
 * --- harness/tools/cel_blit_prep.py. Data, not compiled sprites.
-                include "content/cutscene/chars/pstand_p1.s"
                 include "content/cutscene/chars/pslump.s"
 
 * --- the walk: 6 cels x 2 sub-byte phases, and the table that picks between
@@ -1350,14 +1417,14 @@ viz_stand       fcb     54,SEQ_GOTO
 * [SUBS.S:1131,1147,1040]. These remain the authority for where they stand.
 viz_slot        fcb     197,151,-1,54           ; x, y, face, cel id (chtab6.A #54)
                 fcb     48,5                    ; h, w
-                fdb     vstand_p1               ; resolved at link time now
+                fdb     v54_p1                  ; resolved at link time now
                 fdb     VIZ_PEEL_BASE
                 fcb     0                       ; Fdx — the VM writes this per cel
                 fdb     VIZ_PEEL                ; slot stride: widest vizier cel
                 fcb     1                       ; parity of cel 54 (Fcheck $80, ODD)
 pri_slot        fcb     120,151,-1,25           ; x, y, face, cel id (chtab6.A #25)
                 fcb     43,5
-                fdb     pstand_p1
+                fdb     p11_p1
                 fdb     PRI_PEEL_BASE
                 fcb     0                       ; Fdx
                 fdb     PRI_PEEL                ; slot stride: widest princess cel
@@ -1394,6 +1461,7 @@ ch_fdx          fcb     0
 ch_lastcel      fcb     0
 ch_par          fcb     0               ; the parity of the cel being placed
 ch_col          fcb     0               ; the byte column co_setup placed the cel at
+cv_ix           rmb     2               ; co_variant's 16-bit table index (P3.65)
 ch_fore         fcb     0               ; did anyone draw on the pillar this frame?
 ch_tmp          fcb     0
 ch_cel          fdb     0               ; the variant resolved for THIS draw — not

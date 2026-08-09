@@ -1,0 +1,237 @@
+#!/usr/bin/env python3
+r"""bake_scene.py — bake every cel the port's scene draws, at its phase AND its facing.
+
+SUPERSEDES bake_walk.py, which baked the vizier's nine and knew nothing about facing or
+about the princess. P3.65 (piece G) needs both:
+
+  * Palert ends `aboutface,chx,9`  [SEQTABLE.S:1565] — the princess TURNS to the door and
+    rests there, so her standing cel is drawn MIRRORED for the rest of the scene.
+  * Vexit ends `aboutface,chx,16`  [SEQTABLE.S:1550] — the vizier turns and walks OUT on
+    the walk cels, mirrored. (Not built yet; the table has the shape for it.)
+
+WHY THE MIRROR IS BAKED AND NOT RUN. The oracle mirrors at draw time: OPACITY bit 7 routes
+LAY to MLAY [HIRES.S:655]. blit_cel walks segment runs left to right, so a runtime mirror
+would need reverse traversal AND bit-reversal within every byte, against a merge path
+already at a 6809 floor of 22 cy/byte. sprite_convert has had `--mirror` since Karateka's
+guard-facing work; this is the first POP use of it.
+
+THE COLOUR RULE, WHICH IS THE PART THAT CAN GO WRONG SILENTLY. --mirror reverses the pixel
+list and PRESERVES each pixel's already-chosen colour; the chroma was decided at the
+PRE-mirror screen columns. So a mirrored cel is only correct at a render column whose
+parity matches, and for an even pixel width that is the OPPOSITE parity — which is what
+--flip-parity exists for [sprite_convert.py:152-167]. Both are applied here from the cel's
+real render column, not guessed.
+
+PHASES AND FACINGS COME FROM THE TRACE, NOT FROM THIS FILE. beat_recost walks the port's
+plan the way ANIMCHAR does, stepping both characters per `play N`, so what a cel needs is
+derived from where the machine actually puts it.
+"""
+import pathlib
+import re
+import subprocess
+import sys
+
+ROOT = pathlib.Path("C:/Projects/POP3_port")
+sys.path.insert(0, str(ROOT / "harness/tools"))
+import cel_parity_rule as R                                    # noqa: E402
+import beat_recost as B                                        # noqa: E402
+
+TABLE = ROOT / "oracle/source/01 POP Source/Images/IMG.CHTAB6.A"
+OUT = ROOT / "content/cutscene/chars"
+CONVERT = ROOT / "harness/tools/sprite_convert.py"
+PREP = ROOT / "harness/tools/cel_blit_prep.py"
+
+# THE SCENE AS THE PORT PLAYS IT — the current scene with Palert restored in front of it.
+# `play N` advances BOTH characters, so the princess's opening runs while the vizier still
+# stands at the door. The later beats (Vraise/Pback/Vexit/Pslump) are NOT here yet; adding
+# them is adding rows to this list.
+#
+# ★ Palert IS NOT HERE, AND IT IS NOT A SCOPE CHOICE — IT DOES NOT FIT (P3.65). Adding
+#   ("p", "Palert", 9) in front bakes her eight turn cels and takes the bundle to
+#   17,929 B against a 14,848 B window, OVER BY 3,081, and lz_pack refuses it. Measured:
+#
+#       vizier cels 6,906 + princess cels 5,841 + table 880 + torch 1,777 + code 2,525
+#
+#   P3.63 measured the scene's PEAK residency at 5,631 B of cels and showed it fits —
+#   but the peak is only reachable if cels arrive DURING the scene, and this bundle is
+#   loaded ONCE. So the wall is not the window and not the representation; it is that
+#   the port has no per-beat load. That is Jay's P3.45 question, deferred and now
+#   binding. Restore the line above the day the loader can stage.
+PLAN = [("v", "Vwalk", 30),
+        ("v", "Vstop", 4),
+        ("v", "Vstand", 0)]       # 0 = hold; the script's last entry
+
+STEM = {}                         # (who, cel) -> file stem
+
+
+def stem_for(who, cel):
+    return STEM.setdefault((who, cel), "%s%d" % ("v" if who == "viz" else "p", cel))
+
+
+def trace_scene():
+    labels, toks = B.sequences()
+    alt = R.altset2()
+    viz = B.Char(197, R.FACE_LEFT, "Vstand", labels)
+    pri = B.Char(120, R.FACE_LEFT, "Pstand", labels)
+    plays = []
+    for w, seq, n in PLAN:
+        if w == "v":
+            viz.jump(seq, labels)
+        if w == "p":
+            pri.jump(seq, labels)
+        for _ in range(n):
+            viz.step(toks, labels, alt)
+            pri.step(toks, labels, alt)
+        plays.append((w, seq, n))
+    return viz, pri
+
+
+def needed():
+    """{(who, cel, facing): sorted phases} — facing 0 = left/normal, 1 = right/mirrored."""
+    viz, pri = trace_scene()
+    out = {}
+    for who, ch in (("viz", viz), ("pri", pri)):
+        for cel, ph, _x, face in ch.drawn:
+            out.setdefault((who, cel, 0 if face == R.FACE_LEFT else 1), set()).add(ph)
+    return {k: tuple(sorted(v)) for k, v in out.items()}
+
+
+def convert_src(who, cel, mirror, render_col, quiet=True):
+    """Convert the cel; mirrored variants get their own source at their own column."""
+    alt = R.altset2()
+    fimg, fdx, fdy, fchk, lab = alt[cel]
+    stem = stem_for(who, cel) + ("_m" if mirror else "")
+    src = OUT / ("%s_src.s" % stem)
+    cmd = [sys.executable, str(CONVERT), "--table", str(TABLE),
+           "--index", str(fimg & 0x7F), "--out", str(src), "--label", "%s_src" % stem,
+           "--start-col", str(render_col)]
+    if mirror:
+        cmd.append("--mirror")
+    if quiet:
+        cmd.append("--quiet")
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0 or not src.exists():
+        return None, (r.stderr or r.stdout or "")[:80]
+    # THE EVEN-WIDTH FLIP, applied from the cel's own measured width rather than assumed.
+    if mirror:
+        m = re.search(r"fcb\s+(\d+)\s*,\s*(\d+)", src.read_text(errors="replace"))
+        if m and (int(m.group(2)) * 4) % 2 == 0:
+            r2 = subprocess.run(cmd + ["--flip-parity"], capture_output=True, text=True)
+            if r2.returncode != 0:
+                return None, "flip-parity pass failed"
+    return src, None
+
+
+def main():
+    alt = R.altset2()
+    want = needed()
+    print("=== baking the scene: %d (cel, facing) combinations ===" % len(want))
+    ok = fail = 0
+    includes, table = [], {}
+    for (who, cel, facing) in sorted(want):
+        fimg, fdx, fdy, fchk, lab = alt[cel]
+        base = 197 if who == "viz" else 120
+        face = R.FACE_LEFT if facing == 0 else 0
+        rc = R.draw_x(base, fdx, fchk, face)
+        src, err = convert_src(who, cel, facing == 1, rc)
+        if src is None:
+            print("  %s cel %-3d facing %d: CONVERT FAILED %s" % (who, cel, facing, err))
+            fail += 1
+            continue
+        stem = stem_for(who, cel) + ("_m" if facing else "")
+        for ph in want[(who, cel, facing)]:
+            label = "%s_p%d" % (stem, ph)
+            dst = OUT / ("%s.s" % label)
+            b = subprocess.run([sys.executable, str(PREP), str(src), "--phase", str(ph),
+                                "--label", label, "--out", str(dst)],
+                               capture_output=True, text=True)
+            good = "replay OK" in (b.stdout or "")
+            print("  %-4s cel %-3d %-8s col %-4d phase %d  %s"
+                  % (who, cel, "MIRRORED" if facing else "normal", rc, ph,
+                     "OK" if good else "REPLAY FAILED"))
+            if good:
+                ok += 1
+                includes.append(label)
+                table[(cel, facing, ph)] = label
+            else:
+                fail += 1
+                print("      %s" % (b.stdout or b.stderr or "").strip()[:110])
+    print("\n  %d baked, %d failed" % (ok, fail))
+    if fail:
+        return 1
+    emit(includes, table)
+    return 0
+
+
+def emit(includes, table):
+    """walk_baked.s — the includes and the [cel][facing][phase] lookup over them."""
+    lo = min(c for c, _f, _p in table)
+    hi = max(c for c, _f, _p in table)
+    L = ["* walk_baked.s " + chr(0x2014) + " the scene's bake, and the lookup over it.",
+         "* GENERATED by harness/tools/bake_scene.py " + chr(0x2014) + " do not hand-edit.",
+         "*",
+         "* EIGHT SLOTS PER CEL: two facings x four phases (P3.65, piece G). The facing",
+         "* half is chosen by co_variant from CH_FACE; -1 is left and NORMAL, 0 is right",
+         "* and MIRRORED [FRAMEADV.S:1970]. Cels drawn at one facing leave the other half",
+         "* zero, which co_variant treats as 'fall back to the record's own pointer'.",
+         "*",
+         "* Which phases and facings each cel needs is DERIVED, not written: beat_recost",
+         "* walks the port's plan the way ANIMCHAR does. Nothing here may disagree with it.",
+         "*"]
+    for cel in range(lo, hi + 1):
+        got = [(f, p) for (c, f, p) in table if c == cel]
+        if got:
+            L.append("*   cel %-3d %s" % (cel, ", ".join(
+                "%s ph%d" % ("mirrored" if f else "normal", p) for f, p in sorted(got))))
+    L.append("")
+    for lab in includes:
+        L.append('                include "content/cutscene/chars/%s.s"' % lab)
+    L += ["",
+          "WALK_LO         equ     %d" % lo,
+          "WALK_N          equ     %d" % (hi - lo + 1),
+          "walk_tab"]
+    for cel in range(lo, hi + 1):
+        row = []
+        for f in (0, 1):
+            for p in range(4):
+                row.append(table.get((cel, f, p), "0"))
+        L.append("                fdb     " + ",".join(row) + "   ; cel %d" % cel)
+    L += scripts()
+    pathlib.Path(OUT / "walk_baked.s").write_text("\n".join(L) + "\n", encoding="utf-8")
+    print("  walk_baked.s: cels %d..%d, %d slots" % (lo, hi, (hi - lo + 1) * 8))
+
+
+# The two scene scripts, DERIVED FROM THE SAME PLAN as the phases, because they are the
+# same fact: which sequence runs for how many steps is what decides the positions, and the
+# positions are what decide the phases. Written by hand in one place and derived in the
+# other, they would drift, and the symptom would be a cel drawn at a phase nobody baked.
+LABEL = {"Vstand": "viz_stand", "Vwalk": "viz_walk", "Vstop": "viz_stop",
+         "Pstand": "pri_stand", "Palert": "pri_alert"}
+
+
+def scripts():
+    out = {"v": [["Vstand", 0]], "p": [["Pstand", 0]]}
+    for w, seq, n in PLAN:
+        for who in ("v", "p"):
+            if w == who:
+                out[who].append([seq, 0])
+            out[who][-1][1] += n
+    L = ["",
+         "* THE SCENE SCRIPTS: (sequence, plays), derived from bake_scene.PLAN.",
+         "* A count of 0 means the sequence holds and the script is finished.",
+         "* `play N` advances BOTH characters [SUBS.S:876], so the vizier's leading Vstand",
+         "* is exactly as long as the princess's opening — he waits at the door while she",
+         "* hears it."]
+    for who, name in (("v", "viz_script"), ("p", "pri_script")):
+        rows = [r for r in out[who] if r[1] > 0]
+        L.append(name)
+        for seq, n in rows[:-1]:
+            L.append("                fdb     %s" % LABEL[seq])
+            L.append("                fcb     %d" % n)
+        L.append("                fdb     %s" % LABEL[rows[-1][0]])
+        L.append("                fcb     0               ; hold")
+    return L
+
+
+if __name__ == "__main__":
+    sys.exit(main())

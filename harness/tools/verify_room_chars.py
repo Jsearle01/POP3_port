@@ -52,11 +52,17 @@ SP318 = pathlib.Path("C:/Users/jayse/AppData/Local/Temp/claude/"
 # anything: both are derived below from the oracle's own SETUPCHAR expression, so the
 # engine picking a variant out of walk_tab and this compositing a shift from the source
 # cel agree only if the table, the bake and the draw all line up.
-SRC = {c: ROOT / ("content/cutscene/chars/vwalk%d_src.s" % c) for c in range(48, 54)}
-SRC.update({54: ROOT / "content/cutscene/chars/vstand_src.s",     # Vstand
-            55: ROOT / "content/cutscene/chars/vstop55_src.s",    # Vstop
-            56: ROOT / "content/cutscene/chars/vstop56_src.s",
-            11: ROOT / "content/cutscene/chars/pstand_src.s",     # Pstand
+# THE STEMS bake_scene.py ACTUALLY WRITES (P3.65). These were vwalk48_src.s .. and the
+# bake renamed to v48_src.s when it grew to cover both characters. The old files are still
+# on disk and byte-identical, so this kept passing while checking sources the build no
+# longer produces — a checker quietly reading a different tree than the one under test.
+# Named from the bake's own scheme so a rename breaks this loudly instead of silently.
+def _src(who, cel):
+    return ROOT / ("content/cutscene/chars/%s%d_src.s" % (who, cel))
+
+
+SRC = {c: _src("v", c) for c in range(48, 57)}          # Vwalk / Vstop / Vstand
+SRC.update({11: _src("p", 11),                          # Pstand
             1:  ROOT / "content/cutscene/chars/pslump_src.s",     # Pslump
             18: ROOT / "content/cutscene/chars/pslump_src.s"})
 
