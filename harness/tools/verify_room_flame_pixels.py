@@ -19,6 +19,8 @@ import argparse
 import pathlib
 import re
 import sys
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import cel_blit_prep as cbp
 
 STRIDE = 80
 CEL_W, CEL_H = 2, 13
@@ -26,47 +28,60 @@ FLAME_TOP = 101
 TORCH_COL = {0: 28, 1: 50}
 
 
-def load_cel(n):
-    """the converted cel's packed CoCo bytes, one row per line"""
-    # THE CHECKER MUST READ THE CELS THAT WERE BUILT, not the pristine originals.
-    # P3.52 shifts the torch cels 1 px right into a generated directory and compiles
-    # THOSE; compositing the expectation from content/ would then report the engine as
-    # wrong for drawing exactly what it was given. --cel-dir names the source of truth
-    # for this run, and it defaults to content/ so nothing changes when no shift is in play.
-    p = pathlib.Path(CEL_DIR) / f'flame{n}' / 'converted.s'
-    rows = []
+def load_segments(seg_dir, torch, n):
+    """the EMITTED segment stream for this torch's cel: (rows, width, segment bytes).
+
+    THE CHECKER READS WHAT THE BUILD SHIPPED, and replays it with the blitter's own
+    consumer. It used to lay converted.s over the room OPAQUELY at a byte column, which
+    is a faithful model of a PHASE-0 torch and nothing else. P3.54 put torch 1 on phase
+    1: three bytes wide, with the partial edge bytes emitted as SEG_MERGE so the
+    background shows through. The opaque model called that 21 wrong bytes when the render
+    was right -- Jay cleared it by eye ("the right flame looks good") and the check could
+    not.
+
+    Replaying is NOT circular. cel_blit_prep.simulate walks the emitted stream the way
+    the 6809 does and is "independent of encode_row on purpose" (its own docstring): the
+    encoder turns pixels into segments, this turns segments back into pixels, so an
+    encoder bug shows up as a wrong reconstruction rather than cancelling out.
+    """
+    p = pathlib.Path(seg_dir) / f't{torch}_{n}.s'
+    vals = []
     for line in p.read_text().splitlines():
-        if 'fcb' not in line or 'row' not in line:
+        if 'fcb' not in line:
             continue
-        vals = [int(t, 16) for t in re.findall(r'\$([0-9A-Fa-f]{2})', line)]
-        if vals:
-            rows.append(vals)
-    return rows
+        vals += [int(t, 16) for t in re.findall(r'\$([0-9A-Fa-f]{2})', line)]
+    # the header is `fcb 13,2` in DECIMAL and the segments are $hh — read the header
+    # separately rather than letting a hex scan miss it.
+    hdr = None
+    for line in p.read_text().splitlines():
+        m = re.search(r'fcb\s+(\d+)\s*,\s*(\d+)', line)
+        if m:
+            hdr = (int(m.group(1)), int(m.group(2)))
+            break
+    if hdr is None:
+        raise SystemExit(f'  FAIL {p}: no `fcb rows,width` header')
+    return hdr[0], hdr[1], vals
 
 
-def composite(room, cel, col):
-    """lay the cel over the room, OPAQUELY.
-
-    The oracle's PSETUPFLAME sets OPACITY = sta -- a plain store -- so every pixel of
-    the flame is written, black included. The cels are compiled with an all-opaque
-    sidecar to match, so the expected image is a straight overwrite, not a key."""
+def composite_replay(room, seg_dir, torch, n, col):
+    """lay the cel over the room by REPLAYING the emitted stream onto it."""
+    h, w, segs = load_segments(seg_dir, torch, n)
+    origin = FLAME_TOP * STRIDE + col
+    initial = {r * STRIDE + c: room[origin + r * STRIDE + c]
+               for r in range(h) for c in range(w + 1)}
+    out = cbp.simulate(segs, h, w, dest_stride=STRIDE, initial=initial)
     fb = bytearray(room)
-    for r, row in enumerate(cel):
-        for c, cb in enumerate(row):
-            fb[(FLAME_TOP + r) * STRIDE + col + c] = cb
-    return fb
-
-
-CEL_DIR = 'content/cutscene/flames'
+    for off, b in out.items():
+        fb[origin + off] = b
+    return bytes(fb)
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--room', required=True)
     ap.add_argument('--shot', required=True)
-    ap.add_argument('--cel-dir', default='content/cutscene/flames',
-                    help='directory holding flameN/converted.s as BUILT (default: the '
-                         'pristine originals)')
+    ap.add_argument('--seg-dir', default='build/flames_seg',
+                    help='the EMITTED segment streams the build shipped (tN_M.s)')
     ap.add_argument('--cel0', type=int, required=True)
     ap.add_argument('--cel1', type=int, required=True)
     ap.add_argument('--pos', help='recorded character positions; their footprints are '
@@ -74,7 +89,6 @@ def main():
                                   'a torch is content, not damage')
     ap.add_argument('--tag', default='first', help='which capture row in --pos')
     a = ap.parse_args()
-    globals()['CEL_DIR'] = a.cel_dir
 
     room = pathlib.Path(a.room).read_bytes()
     shot = pathlib.Path(a.shot).read_bytes()
@@ -82,8 +96,8 @@ def main():
         print(f"  FAIL capture is {len(shot)} B, expected {len(room)}")
         return 1
 
-    want = composite(room, load_cel(a.cel0), TORCH_COL[0])
-    want = composite(want, load_cel(a.cel1), TORCH_COL[1])
+    want = composite_replay(room, a.seg_dir, 0, a.cel0, TORCH_COL[0])
+    want = composite_replay(want, a.seg_dir, 1, a.cel1, TORCH_COL[1])
 
     # A CHARACTER MAY STAND IN FRONT OF A TORCH. Until P3.32 the vizier stood at column
     # 54 forever and could not; now he walks the width of the room and passes both
@@ -107,10 +121,17 @@ def main():
                     for c in range(col - 1, col + W + 1):
                         covered.add(r * STRIDE + c)
 
+    # WIDTH PER TORCH, FROM THE EMITTED HEADER. CEL_W was 2 because every torch was
+    # byte-aligned; torch 1 is three bytes wide at phase 1, and checking only two of them
+    # would leave its spill column untested — the exact column the phase change creates.
+    widths = {t: load_segments(a.seg_dir, t, n)[1]
+              for t, n in ((0, a.cel0), (1, a.cel1))}
+    total = sum(w * CEL_H for w in widths.values())
+
     bad, checked = [], 0
     for t, col in TORCH_COL.items():
         for r in range(FLAME_TOP, FLAME_TOP + CEL_H):
-            for c in range(col, col + CEL_W):
+            for c in range(col, col + widths[t]):
                 o = r * STRIDE + c
                 if o in covered:
                     continue
@@ -118,7 +139,7 @@ def main():
                 if shot[o] != want[o]:
                     bad.append((t, r, c, shot[o], want[o]))
     if not bad:
-        hidden = 2 * CEL_W * CEL_H - checked
+        hidden = total - checked
         print(f"  PASS flame pixels are exactly cel {a.cel0}/{a.cel1} over the room: "
               f"{checked} bytes byte-identical"
               + (f" ({hidden} behind a character)" if hidden else ""))
