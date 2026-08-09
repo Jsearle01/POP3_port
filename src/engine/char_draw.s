@@ -185,6 +185,12 @@ CH_W            equ     5
 CH_FDX          equ     10              ; per-frame x offset, from the cel table
 CH_STRIDE       equ     11              ; 2 B — constant peel slot stride
 CH_PAR          equ     13              ; the cel's PARITY BIT — the odd screen pixel
+
+* THE VIRTUAL SCREEN IS THE APPLE'S 280 px, CENTRED — cols 5..74 (P3.59).
+* Apple byte 0 -> CoCo col 5, Apple byte 39 -> col 74. Both margins are $00 for all 192
+* rows of the room asset, so blanking a spill is an exact restore of the background.
+VIS_L           equ     5
+VIS_R           equ     74
 CH_PTR          equ     6
 CH_PEEL         equ     8
 CH_SIZE         equ     14
@@ -536,6 +542,7 @@ co_draw
                 ldu     ch_cel                  ; the variant char_one resolved
                 ldx     ch_dest
                 jsr     [BLIT_TAB]              ; blit_cel — clobbers X and Y
+                jsr     co_clip
 
 * RECORD WHAT WAS ACTUALLY DRAWN INTO THIS BUFFER, for the checker to read.
 *
@@ -614,6 +621,57 @@ cv_plain
 cv_done
                 rts
 
+* co_clip — blank whatever fell outside the virtual screen.
+*
+* THE ORACLE CLIPS EVERY IMAGE TO LEFTCUT..RIGHTCUT, in BYTES, RIGHTCUT normally 40
+* [HIRES.S CROP] — so the vizier entering at FCharX 277 is XCO 39 with VISWIDTH 1 and
+* shows as a single byte at the edge, growing as he walks in. The port drew all of him,
+* twenty pixels into a margin the Apple does not have. Jay: "he's not clipped properly
+* to the right screen virtual egde (x=279)."
+*
+* Blanking after the fact rather than clipping inside the blitter is deliberate: the
+* segments encode runs, not columns, so a width clamp cannot be applied to a stream
+* without a bounds test on every byte, and blit_cel's merge path is already a 6809 floor
+* at 22 cy/byte. This costs nothing on a character that is fully on screen, which is all
+* of them for all but the first few steps.
+*
+* The wrap is handled for free: a spill of nine bytes from col 75 runs 75..79 then 0..3
+* of the row below, which is exactly where the blit put it — both walk the same linear
+* memory.
+co_clip
+                lda     ch_col
+                cmpa    #VIS_L
+                bhs     cc_right
+                ldb     #VIS_L
+                subb    ch_col                  ; B = bytes off the LEFT edge
+                ldx     ch_dest                 ; which start at ch_dest itself
+                bra     cc_blank
+cc_right
+                adda    ch_w
+                cmpa    #VIS_R+1
+                bls     cc_done                 ; entirely inside the window
+                suba    #VIS_R+1
+                tfr     a,b                     ; B = bytes past the RIGHT edge
+                lda     #VIS_R+1
+                suba    ch_col                  ; A = distance from ch_col to col 75
+                ldx     ch_dest
+                leax    a,x
+cc_blank
+                lda     ch_h
+cc_row
+                pshs    a,b,x
+cc_byte
+                clr     ,x+
+                decb
+                bne     cc_byte
+                puls    a,b,x
+                leax    FB_STRIDE_4C,x
+                deca
+                bne     cc_row
+cc_done
+                rts
+
+* ---------------------------------------------------------------
 * co_dims — ch_h/ch_w := the RESOLVED VARIANT's own header, which is the only thing
 * that knows how big this draw is. One routine because both callers must agree: the
 * extent a peel is saved with has to be the extent it is drawn with, and the two are
@@ -688,6 +746,7 @@ co_setup
                 rorb
                 lsra
                 rorb                            ; col = px / 4
+                stb     ch_col                  ; kept for co_clip
                 addd    ch_tmp16
                 addd    ch_base
                 std     ch_dest
@@ -1208,6 +1267,7 @@ ch_w            fcb     0
 ch_fdx          fcb     0
 ch_lastcel      fcb     0
 ch_par          fcb     0               ; the parity of the cel being placed
+ch_col          fcb     0               ; the byte column co_setup placed the cel at
 ch_tmp          fcb     0
 ch_cel          fdb     0               ; the variant resolved for THIS draw — not
 *                                       ; state, a value carried from char_one to

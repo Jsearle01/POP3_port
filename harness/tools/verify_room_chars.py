@@ -26,6 +26,7 @@ import cel_parity_rule as R
 from celio import Cel
 
 CENTRING = 20                     # the 280->320 offset; a multiple of 4, so phase-neutral
+VIS_L, VIS_R = 5, 74              # the Apple's 280 px, centred: cols 5..74
 
 STRIDE = 80
 SP318 = pathlib.Path("C:/Users/jayse/AppData/Local/Temp/claude/"
@@ -132,11 +133,19 @@ def main():
             local = P.simulate(segs, cel.h, w, dest_stride=STRIDE,
                                initial={r * STRIDE + c: want[(top + r) * STRIDE + col + c]
                                         for r in range(cel.h) for c in range(w)})
+            # CLIPPED TO THE VIRTUAL SCREEN, as the oracle clips every image to
+            # LEFTCUT..RIGHTCUT in whole bytes [HIRES.S CROP] — RIGHTCUT 40, i.e. Apple
+            # byte 39 / CoCo col 74. The vizier ENTERS through the right-hand door, so
+            # for the first few steps most of him is off the edge; compositing him whole
+            # called the correct clip 149 wrong bytes. The margins are $00 in the asset,
+            # which is what makes blanking and clipping the same operation.
             for r in range(cel.h):
                 for c in range(w):
                     o = r * STRIDE + c
-                    if o in local:
-                        want[(top + r) * STRIDE + col + c] = local[o]
+                    if o not in local:
+                        continue
+                    dst = (top + r) * STRIDE + col + c
+                    want[dst] = 0 if not (VIS_L <= col + c <= VIS_R) else local[o]
         shot = pathlib.Path(ROOT / shots[tag]).read_bytes()
         bad = [i for i in range(15360) if shot[i] != want[i] and not torch(i)]
         pos = ", ".join("%s top %d col %d" % (l, tp, cl) for l, _, _, tp, cl in rows)
