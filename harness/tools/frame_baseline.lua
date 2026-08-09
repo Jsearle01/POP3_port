@@ -67,6 +67,13 @@ local B_SAVE   = tonumber(os.getenv("P_BSAVE")   or "0x39BF")
 local B_ERASE  = tonumber(os.getenv("P_BERASE")  or "0x39F8")
 local B_CEL    = tonumber(os.getenv("P_BCEL")    or "0x391B")
 local CHARSFRAME = tonumber(os.getenv("P_CHARSFRAME") or "0x3A4A")
+-- P3.44: the real BLIT_TAB (blit_cel / blit_save / blit_erase pointers) and the address
+-- range of char_draw's code, both map-derived. NOTE the map lists BLIT_TAB as an `equ`
+-- biased by char_draw's section base ($6A84, not $303A) — the runner un-biases it, and
+-- `blit_tab` in flame_cels.o is the same value as a real label, which is the cross-check.
+local BLITTAB  = tonumber(os.getenv("P_BLITTAB") or "0x303A")
+local CHAR_LO  = tonumber(os.getenv("P_CHARLO")  or "0x3A4A")
+local CHAR_HI  = tonumber(os.getenv("P_CHARHI")  or "0x3E4A")
 local FIRST    = tonumber(os.getenv("P_FIRST")   or "1900")
 local LAST     = tonumber(os.getenv("P_LAST")    or "3400")
 local CY_PER_FRAME = 29859
@@ -95,6 +102,9 @@ local NOP = 0x12
 local patches = {
     flicker  = { addr = LOOP,     want = {0xBD, (FLICKER  >> 8) & 0xFF, FLICKER  & 0xFF} },
     chars    = { addr = nil,      want = {0xAD, 0x9F, (CHARSTAB >> 8) & 0xFF, CHARSTAB & 0xFF} },
+    draw     = { addr = nil, want = nil },
+    save     = { addr = nil, want = nil },
+    erase    = { addr = nil, want = nil },
 }
 
 -- The chars call site is not at a symbol, so it is FOUND by scanning the loop for the
@@ -109,6 +119,30 @@ local patches = {
 -- the section base, so CHARS_TAB read $5040 where the instruction holds $3040.
 -- Uniqueness is required too — two indirect JSRs in the loop would make "the one I found"
 -- an assumption.
+-- P3.44 extends this to the THREE PEEL/DRAW call sites inside char_draw, which are the
+-- same shape: `jsr [BLIT_TAB+n]`, n = 0 draw / 2 save / 4 erase. Ablating them one at a
+-- time is what separates erase from save, and turns P3.43's draw figure from a residual
+-- into a direct measurement.
+local function find_indirect(operand, lo, hi, what)
+    local hits = {}
+    for a = lo, hi do
+        if mem:read_u8(a) == 0xAD and mem:read_u8(a + 1) == 0x9F
+           and mem:read_u8(a + 2) * 256 + mem:read_u8(a + 3) == operand then
+            hits[#hits + 1] = a
+        end
+    end
+    if #hits == 0 then
+        aborted = string.format("no `jsr [$%04X]` (%s) in $%04X..$%04X", operand, what, lo, hi)
+        return nil
+    end
+    if #hits > 1 then
+        aborted = string.format("%d `jsr [$%04X]` sites (%s) — which one to ablate would be an assumption",
+                                #hits, operand, what)
+        return nil
+    end
+    return hits[1]
+end
+
 local function find_chars_call()
     local hits = {}
     for a = LOOP, LOOP + 0x80 do
@@ -135,11 +169,20 @@ local function find_chars_call()
     return a
 end
 
+local BLIT_SITES = { draw = 0, save = 2, erase = 4 }
+
 local function verify_and_nop(name)
     local p = patches[name]
     if name == "chars" then p.addr = find_chars_call() end
+    if BLIT_SITES[name] then
+        local operand = BLITTAB + BLIT_SITES[name]
+        p.addr = find_indirect(operand, CHAR_LO, CHAR_HI, name)
+        p.want = {0xAD, 0x9F, (operand >> 8) & 0xFF, operand & 0xFF}
+    end
     if not p.addr then
-        aborted = string.format("could not locate the %s call site in $%04X..$%04X", name, LOOP, LOOP + 0x80)
+        if not aborted then
+            aborted = string.format("could not locate the %s call site", name)
+        end
         return false
     end
     for i, b in ipairs(p.want) do
@@ -289,6 +332,9 @@ local function tick()
             local ok = true
             if MODE == "nochars"   or MODE == "neither" then ok = verify_and_nop("chars")   and ok end
             if MODE == "noflicker" or MODE == "neither" then ok = verify_and_nop("flicker") and ok end
+            if MODE == "nodraw"  then ok = verify_and_nop("draw")  and ok end
+            if MODE == "nosave"  then ok = verify_and_nop("save")  and ok end
+            if MODE == "noerase" then ok = verify_and_nop("erase") and ok end
             if not ok then report(); manager.machine:exit(); return end
             armed, state = true, "watch"
         end

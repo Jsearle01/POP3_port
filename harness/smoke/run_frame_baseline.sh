@@ -48,13 +48,27 @@ export P_BSAVE="0x$(sym "$FMAP" blit_save)"
 export P_BERASE="0x$(sym "$FMAP" blit_erase)"
 export P_BCEL="0x$(sym "$FMAP" blit_cel)"
 export P_CHARSFRAME="0x$(sym "$FMAP" chars_frame)"
+# P3.44 — the three peel/draw call sites. BLIT_TAB is taken from `blit_tab` in
+# flame_cels.o, which is a REAL LABEL and therefore unbiased; char_draw's `BLIT_TAB` equ
+# is listed biased by its own section base ($6A84) and is used only as a cross-check.
+BLITTAB=$(grep -F 'Symbol: blit_tab (build/obj/flame_cels.o)' "$FMAP" | sed -E 's/.*= *//')
+CD_BASE=$(grep -F 'Symbol: \02prog (build/obj/char_draw.o)' "$FMAP" | sed -E 's/.*= *//')
+BT_EQU=$(sym "$FMAP" BLIT_TAB)
+BT_CHK=$(printf '%04X' $(( 0x$BT_EQU - 0x$CD_BASE )))
+if [ "$BT_CHK" != "$BLITTAB" ]; then
+    echo "[run_frame_baseline] BLIT_TAB disagreement: label \$$BLITTAB vs un-biased equ \$$BT_CHK — refusing"
+    exit 1
+fi
+export P_BLITTAB="0x$BLITTAB"
+export P_CHARLO="0x$CD_BASE"
+export P_CHARHI=$(printf '0x%04X' $(( 0x$CD_BASE + 0x600 )))
 export P_FIRST="${P_FIRST:-1900}"
 export P_LAST="${P_LAST:-3400}"
 
 echo "[run_frame_baseline] room_loop $P_LOOP  flicker $P_FLICKER  CHARS_TAB $P_CHARSTAB  ch_anymove $P_ANYMOVE"
 : > "$SUM"
 
-for MODE in full nopeel nochars noflicker neither; do
+for MODE in ${P_MODES:-full nopeel nochars noflicker neither nodraw nosave noerase}; do
     DSK="build/run_fb_$MODE.dmk"
     # MAME opens a floppy read-write and saves back (idiom 24) — mount a COPY per run.
     cp -f "$SRC_DSK" "$DSK" || exit 1
