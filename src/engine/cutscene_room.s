@@ -111,8 +111,16 @@ DISK_ROOM_SEC   equ     ROOM_TRACKS*SECS_PER_TRACK
 FLAME_BASE      equ     $3000
                 endc
 FLAME_BASE_TAB  equ     FLAME_BASE
-BLIT_TAB        equ     FLAME_BASE_TAB+58       ; blit_cel / blit_save / blit_erase
-CHARS_TAB       equ     FLAME_BASE_TAB+64       ; chars_frame (piece D)
+* ★ THESE TRACK flame_cels.s'S DECLARATION ORDER AND MUST MOVE WITH IT. P3.54 retired
+* the third compiled table (flame_erase, 18 B) -- a segment stream needs no per-cel erase
+* routine -- and everything after it shifted up by 18: blit_tab +58 -> +40, chars_tab
+* +64 -> +46. The build LINKED CLEANLY with the old values and would have jumped into the
+* middle of a cel table at run time. Verified by symbol after every change:
+*   blit_tab  $3028 = FLAME_BASE+40      chars_tab $302E = FLAME_BASE+46
+* This is a second home for flame_cels.s's layout (P3.31) and the only thing keeping the
+* two honest is that a mismatch takes the room down instantly rather than subtly.
+BLIT_TAB        equ     FLAME_BASE_TAB+40       ; blit_cel / blit_save / blit_erase
+CHARS_TAB       equ     FLAME_BASE_TAB+46       ; chars_frame (piece D), +2 = chars_due
 
 ROOM_BLOB       equ     $3000
 
@@ -424,6 +432,8 @@ flicker
 
                 ldd     #TORCH0_OFF
                 std     t_off
+                ldd     #TORCH0_CELS            ; phase-0 cels — px 112, unchanged
+                std     t_tab
                 lda     fl_slot
                 jsr     slot_peel
                 std     t_peel
@@ -446,6 +456,8 @@ fl_keep0
 
                 ldd     #TORCH1_OFF
                 std     t_off
+                ldd     #TORCH1_CELS            ; phase-1 cels — px 201, the correction
+                std     t_tab
                 lda     fl_slot
                 inca
                 jsr     slot_peel
@@ -496,35 +508,52 @@ torch_step
                 sta     t_cel
                 puls    a
 
-                lda     t_prev                  ; erase what the last frame drew
-                beq     ts_nosave               ; 0 = nothing drawn yet
-                ldx     #erase_tab      ; a disk-resident table
-                jsr     torch_call
-ts_nosave
-                lda     t_cel
-                sta     t_prev
-                ldx     #save_tab               ; capture the background this cel covers
-                jsr     torch_call
-                ldx     #draw_tab
-                jsr     torch_call
-                lda     t_cel
-                rts
-
-* torch_call — X = one of the three dispatch tables; t_cel selects the entry.
-* The compiled routines take U = the cel origin in the framebuffer and Y = the peel
-* cursor, so placing a sprite is setting U. [harness/tools/sprite_compiler.py]
-torch_call
-                pshs    x
-                ldd     HAL_gfx_draw_base
-                addd    t_off
-                tfr     d,u                     ; U -> the cel origin
-                ldy     t_peel                  ; Y -> this torch's peel slot
-                puls    x
+* THE CEL'S OWN HEADER IS THE ONE HOME FOR ITS DIMENSIONS (P3.54). blit_save and
+* blit_erase need rows and width; taking them from anywhere but the cel about to be
+* drawn is how P3.25's stride bug worked -- a save at one extent and an erase at
+* another. All nine cels of a torch happen to share dimensions, so this cannot bite
+* today; reading them from the header anyway is what keeps that true if it changes.
                 lda     t_cel
                 deca                            ; cels are 1..9; the tables are 0-based
                 lsla                            ; two bytes per entry
-                ldx     a,x
-                jmp     ,x                      ; tail-call; the cel routine rts's
+                ldx     t_tab                   ; this torch's cel table
+                ldu     a,x                     ; U -> the segment stream
+                stu     t_data
+                lda     ,u                      ; rows
+                sta     t_rows
+                lda     1,u                     ; width in bytes
+                sta     t_wide
+
+                ldd     HAL_gfx_draw_base
+                addd    t_off
+                std     t_dest                  ; where this torch lands this frame
+
+                lda     t_prev                  ; erase what the last frame drew
+                beq     ts_nosave               ; 0 = nothing drawn yet
+                ldx     t_dest
+                ldy     t_peel
+                lda     t_rows
+                ldb     t_wide
+                jsr     [BLIT_TAB+4]            ; blit_erase (preserves X,Y,U)
+ts_nosave
+                lda     t_cel
+                sta     t_prev
+                ldx     t_dest                  ; capture the background this cel covers
+                ldy     t_peel
+                lda     t_rows
+                ldb     t_wide
+                jsr     [BLIT_TAB+2]            ; blit_save (preserves X,Y,U)
+* DRAW LAST, because blit_cel clobbers A,B,D,X,Y,U -- only the peel primitives preserve
+* them, which is why the order is erase, save, draw and not any other.
+                ldx     t_dest
+                ldu     t_data
+                jsr     [BLIT_TAB]              ; blit_cel
+                lda     t_cel
+                rts
+
+* torch_call DELETED at P3.54 — it existed to tail-jump into a COMPILED sprite routine
+* selected from one of three per-cel tables. With segment streams there is one generic
+* blitter and one generic peel, so the dispatch has nothing left to dispatch.
 
 * ---------------------------------------------------------------
 * pstars — the four stars outside the princess's window. [SUBS.S:360 pstars]
@@ -775,7 +804,11 @@ TORCH0_COL      equ     28              ; true px 111 -> byte 27.75, rounded
 TORCH1_COL      equ     50              ; true px 201 -> byte 50.25, rounded
 TORCH0_OFF      equ     FLAME_TOP*FB_STRIDE_4C+TORCH0_COL
 TORCH1_OFF      equ     FLAME_TOP*FB_STRIDE_4C+TORCH1_COL
-PEEL_BYTES      equ     26              ; 13 rows x 2 bytes — one cel's footprint
+* SIZED TO THE WIDEST TORCH FOOTPRINT, not to one cel. Torch 1 sits on sub-byte phase 1,
+* so its 8 px straddle THREE byte columns where torch 0's byte-aligned cel needs two.
+* An undersized peel does not fail loudly -- the save writes past its slot into whatever
+* follows and the erase restores garbage (P3.25 found exactly that on the character side).
+PEEL_BYTES      equ     39              ; 13 rows x 3 bytes — torch 1's footprint
 
 * The flames are a DISK-RESIDENT code bundle, not part of this program. A LOADM'd
 * engine has to stay under $25FF -- above it is BASIC's program/variable area, which
@@ -784,9 +817,11 @@ PEEL_BYTES      equ     26              ; 13 rows x 2 bytes — one cel's footpr
 * "OK", first segment in memory, second absent. So the flames go on a raw track and
 * are read at run time, exactly as the intro reads every screen it shows.
 * [src/engine/flame_cels.s, link/pop_flames.link]
-draw_tab        equ     FLAME_BASE+0
-save_tab        equ     FLAME_BASE+18
-erase_tab       equ     FLAME_BASE+36
+* The bundle's cel tables. Same offsets the compiled draw/save tables used, so blit_tab
+* (+58) and chars_tab (+64) do not move. +36 (the old erase table) is now free: a
+* segment stream needs no per-cel erase routine.
+TORCH0_CELS     equ     FLAME_BASE+0    ; 9 fdb, phase 0, 13x2B — px 112
+TORCH1_CELS     equ     FLAME_BASE+18   ; 9 fdb, phase 1, 13x3B — px 201
 DISK_FLAME_TRK  equ     30
 * FLAME_LOAD, FLAME_TRACKS and FLAME_RAW are GENERATED by lz_pack.py from the bundle it
 * actually packed (build/obj/flame_load.inc). They are not editable constants: the load
@@ -854,7 +889,12 @@ fl_step         fcb     0
 t_off           fdb     0               ; the torch being stepped: framebuffer offset,
 t_peel          fdb     0               ;   peel slot,
 t_cel           fcb     0               ;   cel to draw,
-t_prev          fcb     0               ;   cel to erase
+t_prev          fcb     0
+t_tab           fdb     0               ; which torch's cel table (P3.54)
+t_data          fdb     0               ; the segment stream for this cel
+t_dest          fdb     0               ; its framebuffer origin this frame
+t_rows          fcb     0               ; from the cel's own header —
+t_wide          fcb     0               ;   one home for the dimensions               ;   cel to erase
 
 peel_base       rmb     PEEL_BYTES*4    ; one per (buffer, torch) slot
 

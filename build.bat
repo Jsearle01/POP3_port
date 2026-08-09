@@ -177,6 +177,24 @@ lwasm --obj -DOBJTARGET -DFLAME_BASE=%FLAME_BASE% -I . -o build/obj/char_draw.o 
 if errorlevel 1 goto :error
 lwasm --obj -DOBJTARGET -I . -o build/obj/blit_core.o src/engine/blit_core.s
 if errorlevel 1 goto :error
+REM --- the torch flames as SEGMENT STREAMS, one set per torch (P3.54) ------------
+REM They were COMPILED SPRITES until now -- the last ones in the tree. P3.18 measured
+REM that representation at 8.2x the RAM of packed bitmaps and it is what put the
+REM cutscene outside 128 KB; the characters moved to segment streams and the flames
+REM never did. Retiring them frees 532 B AND fixes the alignment in the same change.
+REM
+REM TWO SETS, BECAUSE THE TWO TORCHES SIT ON DIFFERENT SUB-BYTE PHASES. ptorchoff is
+REM db 0,6 [SUBS.S:307] and Apple hires is 7 px/byte against CoCo3's 4, so torch 0
+REM lands on phase 0 and torch 1 on phase 1. One set can only place both on the same
+REM phase, which is why the right torch was a pixel left of true. Torch 0 keeps phase
+REM 0 (px 112, unchanged -- Jay's call); torch 1 gets phase 1 (px 201, corrected).
+REM cel_blit_prep REPLAYS the blit over a background before emitting, so a cel that
+REM does not reconstruct is never written.
+if not exist buildlames_seg mkdir buildlames_seg
+for %%N in (1 2 3 4 5 6 7 8 9) do (
+  python harness/tools/cel_blit_prep.py content/cutscene/flames/flame%%N/converted.s --phase 0 --label flseg0_%%N --out build/flames_seg/t0_%%N.s || goto :error
+  python harness/tools/cel_blit_prep.py content/cutscene/flames/flame%%N/converted.s --phase 1 --label flseg1_%%N --out build/flames_seg/t1_%%N.s || goto :error
+)
 lwasm --obj -DOBJTARGET -I . -o build/obj/flame_cels.o src/engine/flame_cels.s
 if errorlevel 1 goto :error
 lwlink --decb --script=link/pop_flames.link --map=build/obj/flames.map -o build/flame_cels.bin build/obj/flame_cels.o build/obj/blit_core.o build/obj/char_draw.o

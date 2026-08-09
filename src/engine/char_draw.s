@@ -109,7 +109,14 @@ PRI_PEEL        equ     43*8            ; 344 B — widest princess cel (7)
 * just scratch RAM and need no load at all, so they are fixed addresses in the
 * free space above the blob.
 CHAR_TAB        equ     FLAME_BASE+54
-BLIT_TAB        equ     FLAME_BASE+58   ; blit_cel / blit_save / blit_erase
+* ★ SECOND HOME, AND IT BIT (P3.54). cutscene_room.s declares this same offset
+* independently, and P3.54 moved the table from +58 to +40 by retiring flame_cels.s's
+* third dispatch table. Updating the room's copy alone LINKED CLEANLY and booted: the
+* room came up, the VM stepped, and then the character draw jumped through $303A -- which
+* is now cel DATA -- and hung with probe_frames stuck at 0. Nothing said the two had
+* drifted, because nothing compares them (P3.31: one home per fact; this is the hazard
+* named, not a new one). If the bundle's table layout moves again, BOTH must move.
+BLIT_TAB        equ     FLAME_BASE+40   ; blit_cel / blit_save / blit_erase
 * MOVED at P3.25: the peel buffers were at $5200, which is inside the two-track
 * bundle's new extent ($4200..$65FF). $6C00 is clear of the bundle, of the disk
 * parameter block at $6A00, and of the trace ring at $7800.

@@ -44,4 +44,4 @@
 
 section prog load 3000
 
-entry flame_draw
+entry torch0_cels
