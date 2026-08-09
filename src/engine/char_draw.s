@@ -734,8 +734,26 @@ SEQ_SETFALL     equ     $F8             ; setfall   = -8, operand consumed unuse
 *
 * 19 frames over 5 steps = 3.8, against the oracle's measured 3.9. The shape keeps a
 * spread rather than flattening to a constant, for the reason the note below gives.
-cad_tab         fcb     4,4,4,4,3       ; 19 frames over 5 steps = 3.8 (was 13/5 = 2.6)
-CAD_LEN         equ     5
+* P3.57: THE TABLE'S LENGTH MUST DIVIDE THE GAIT, and 5 does not divide 6. With
+* CAD_LEN 5 against Vwalk's six-step cycle the short hold ROTATES: cycle 0 clips pose
+* 4, cycle 1 clips pose 3, cycle 2 pose 2 ... a different pose is held one frame short
+* every cycle. That is a limp, it has a 30-step period, and the walk is only about 45
+* steps, so it never settles. It is OURS -- the oracle sets a flat `SPEED 7` for this
+* scene [SUBS.S:683] and has no such beat. Jay: "the x change in his walk is off ...
+* he moves back a bit while walking forward."
+*
+* Six entries pin each pose to its own hold for good. 23/6 = 3.833 f/step against the
+* old 19/5 = 3.800 and the oracle's measured 3.9 -- so this is also NEARER the oracle
+* in rate, not a trade of pace for rhythm.
+*
+* The step Jay saw go backwards is NOT this and is not a defect: Vwalk really does
+* carry `db 51,chx,-1` [SEQTABLE.S:1518] and Fdx is 0 for all six walk frames
+* [FRAMEDEF.S:378-383], so his x genuinely runs 187 -> 188 -> 187 once per cycle in the
+* original. Checked against ADDCHARX [CTRLSUBS.S:353] and ANIMCHAR [COLL.S:994] for the
+* facing-negate and the opcode/frame pairing. We reproduce that exactly; what we ALSO
+* did was clip a rotating pose on top of it.
+cad_tab         fcb     4,4,4,4,4,3     ; 23 frames over 6 steps = 3.833, one per gait pose
+CAD_LEN         equ     6
 cad_idx         fcb     0
 vm_now          fdb     0               ; the HAL's frame count, handed in per call
 vm_due          fdb     0               ; the frame this step is due to fire on
