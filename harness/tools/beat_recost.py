@@ -175,11 +175,141 @@ def measure(occ, scratch, stem_of):
     return out
 
 
+# ---------------------------------------------------------------------------
+# THE PEAK WORKING SET (P3.63) — and why it is NOT the sum.
+#
+# P3.62 costed the whole scene's cels and got 37,602 B against a 14,848 B window, which
+# reads as a representation crisis. But the beats PLAY IN SEQUENCE: Vwalk, Vstop, Vraise,
+# Pback, Vexit and Pslump are consecutive, not simultaneous. Summing them charges the
+# window for every cel at once when the machine only ever draws two per step.
+#
+# The binding figure is what must be RESIDENT AT ONCE. Modelled here the way an interval
+# does: a cel is live from the first step that draws it to the last, because anything
+# narrower means loading it twice. Peak = the largest total over any single step.
+#
+# THAT MODEL IS DELIBERATELY PESSIMISTIC IN ONE PLACE AND HONEST ABOUT IT: Vexit ends
+# `goto Vwalk2` [SEQTABLE.S:1553], so the vizier walks OUT on the walk cels. Their span
+# therefore stretches from step 1 to nearly the last, and they are resident across every
+# beat in between even though nothing draws them in the middle. A scheme that unloads and
+# reloads them would pay twice; the span model charges once and holds. Both are worth
+# knowing, so `spans` reports the gap as well as the extent.
+def spans(char, key):
+    """{key: (first_step, last_step, n_draws)} over this character's drawn list."""
+    out = {}
+    for i, (cel, ph, _x, _f) in enumerate(char.drawn):
+        k = key(cel, ph)
+        if k in out:
+            f, _l, n = out[k]
+            out[k] = (f, i, n + 1)
+        else:
+            out[k] = (i, i, 1)
+    return out
+
+
+def peak(all_spans, sizes, n_steps):
+    """(peak_bytes, step, live_keys) under the interval model."""
+    best = (0, -1, ())
+    for s in range(n_steps):
+        live = [k for k, (f, l, _n) in all_spans.items() if f <= s <= l]
+        tot = sum(sizes.get(k, 0) for k in live)
+        if tot > best[0]:
+            best = (tot, s, tuple(live))
+    return best
+
+
+# The PORT's plan, not PlayCut0's absolute timeline: the port drops the entrance pair and
+# runs the final approach from startV0's own x, so its positions — and therefore its phases
+# — differ. Beats after Vstop follow SUBS.S:713-750 in order.
+PORT_PLAN = [("v", "Vwalk", 30), ("v", "Vstop", 4), ("v", "Vraise", 1),
+             ("p", "Pback", 13), (None, None, 5), ("v", "Vexit", 17),
+             (None, None, 12), ("p", "Pslump", 28)]
+
+
+def port_trace():
+    labels, toks = sequences()
+    alt = R.altset2()
+    viz = Char(197, R.FACE_LEFT, "Vstand", labels)
+    pri = Char(120, R.FACE_LEFT, "Pstand", labels)
+    bounds = []
+    for w, seq, n in PORT_PLAN:
+        if w == "v":
+            viz.jump(seq, labels)
+        if w == "p":
+            pri.jump(seq, labels)
+        for _ in range(n):
+            viz.step(toks, labels, alt)
+            pri.step(toks, labels, alt)
+        bounds.append((seq or "(continue)", n, len(viz.drawn)))
+    return viz, pri, bounds
+
+
+def working_set(scratch):
+    viz, pri, bounds = port_trace()
+    n_steps = len(viz.drawn)
+    print("=== the PORT's plan, and where each beat ends ===")
+    for seq, n, at in bounds:
+        print("    %-11s x%-3d -> step %d" % (seq, n, at))
+    print("    %d animation steps in all\n" % n_steps)
+
+    # measure every variant and every distinct cel, once, into scratch
+    occ_v, occ_p = occupancy(viz), occupancy(pri)
+    sz_var, sz_cel = {}, {}
+    for who, occ, base in (("viz", occ_v, 197), ("pri", occ_p, 120)):
+        sizes = measure(occ, pathlib.Path(scratch) / who,
+                        lambda c, w=who: ("v" if w == "viz" else "p") + str(c))
+        for (cel, ph), b in sizes.items():
+            if b:
+                sz_var[(who, cel, ph)] = b
+        for cel in occ:
+            src = pathlib.Path(scratch) / who / ("c%d_src.s" % cel)
+            if src.exists():
+                m = re.search(r"fcb\s+(\d+)\s*,\s*(\d+)", src.read_text(errors="replace"))
+                if m:
+                    sz_cel[(who, cel)] = int(m.group(1)) * int(m.group(2)) + 2
+
+    sp_var, sp_cel = {}, {}
+    for who, ch in (("viz", viz), ("pri", pri)):
+        for k, v in spans(ch, lambda c, p, w=who: (w, c, p)).items():
+            sp_var[k] = v
+        for k, v in spans(ch, lambda c, p, w=who: (w, c)).items():
+            sp_cel[k] = v
+
+    print("=== residency SPANS (first step drawn -> last), longest first ===")
+    rows = sorted(sp_cel.items(), key=lambda kv: -(kv[1][1] - kv[1][0]))
+    for (who, cel), (f, l, n) in rows[:10]:
+        gap = (l - f + 1) - n
+        print("    %-4s cel %-3d live steps %3d..%-3d  span %3d  drawn %2d  idle-inside %3d%s"
+              % (who, cel, f, l, l - f + 1, n, gap,
+                 "   <-- Vexit -> Vwalk2" if 48 <= cel <= 53 and who == "viz" else ""))
+    print("    (%d cels in all)\n" % len(sp_cel))
+
+    WIN, FREE = 14848, 3632
+    for label, sp, sz in (("segment streams (today)", sp_var, sz_var),
+                          ("raw bitmaps + shifter  ", sp_cel, sz_cel)):
+        total = sum(sz.values())
+        pk, step, live = peak(sp, sz, n_steps)
+        print("=== %s ===" % label.strip())
+        print("    whole-scene SUM      %6d B   (what P3.62 costed)" % total)
+        print("    PEAK simultaneous    %6d B   at step %d, %d items live"
+              % (pk, step, len(live)))
+        print("    peak is %.0f%% of the sum" % (100.0 * pk / total if total else 0))
+        print("    vs window %d B: %s" % (WIN, "FITS, %d B spare" % (WIN - pk) if pk <= WIN
+                                          else "OVER by %d B" % (pk - WIN)))
+        print("    vs free   %d B: %s\n" % (FREE, "fits" if pk <= FREE
+                                            else "over by %d B" % (pk - FREE)))
+    return 0
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scratch", required=True)
     ap.add_argument("--no-measure", action="store_true")
+    ap.add_argument("--working-set", action="store_true",
+                    help="P3.63: peak SIMULTANEOUS residency, not the sum")
     a = ap.parse_args()
+
+    if a.working_set:
+        return working_set(a.scratch)
 
     who, marks = trace()
     print("=== PlayCut0 traced: `play N` advances BOTH characters ===")
