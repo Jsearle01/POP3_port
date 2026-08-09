@@ -363,7 +363,28 @@ fl_nostep
 * slot = buffer parity * 2 + torch. Each of the four slots owns a peel buffer and a
 * "cel last drawn there", because a buffer is redrawn only every other frame and its
 * erase must restore what was saved INTO IT, not into its twin.
-                ldb     fl_buf
+*
+* THE PARITY IS READ FROM THE HAL, NOT KEPT HERE (P3.50). It used to be a local `fl_buf`
+* toggled at the foot of this routine -- and P3.17, moving HAL_gfx_swap out to room_loop,
+* put the replacement `rts` ABOVE that toggle instead of below it. Three instructions went
+* unreachable, `fl_buf` stayed 0 forever, and `fl_slot` was therefore ALWAYS 0: both
+* buffers shared slots 0-1, slots 2-3 were never touched, and every erase restored into
+* the twin of the buffer it was saved from -- exactly what the paragraph above forbids.
+* Thirty dispatches passed without notice, because the room beneath the torches is static
+* and identical in both buffers, so the wrong copy almost always wrote the right bytes.
+*
+* A SECOND COPY OF "WHICH BUFFER" IS WHAT MADE THAT SILENT. HAL_gfx_cur_back already holds
+* it, and room_loop already passes it to chars_frame as the character side's slot index --
+* so a local toggle was a parallel home for a fact that has an owner, and a parallel home
+* can drift with nothing disagreeing out loud (P3.31: one home per fact). Derived here,
+* the torch slots and the character slots cannot disagree about which buffer is being
+* drawn, because they read the same byte.
+*
+* Measured after this change (P3.48, re-confirmed P3.49): `fl_slot` written 0:347 2:347
+* where it had been 0 for every frame, parity agreeing with the HAL 694/694, and all four
+* slots saving AND erasing at their own addresses.
+                ldb     HAL_gfx_cur_back
+                andb    #1                      ; the same mask room_loop applies
                 lslb                            ; slot base for this buffer
                 stb     fl_slot
 
@@ -417,10 +438,12 @@ fl_keep1
                 jsr     pstars                  ; and the window
                 clr     fl_step
                 rts
-                lda     fl_buf
-                eora    #1
-                sta     fl_buf
-                rts
+* THE ORPHAN IS DELETED, NOT MADE REACHABLE (P3.50). Three instructions -- `lda fl_buf` /
+* `eora #1` / `sta fl_buf` -- sat below this `rts` from P3.17 until now, unreachable and
+* still carrying every appearance of live bookkeeping: valid syntax, assembled into the
+* image, and described by a comment forty lines up. Restoring them would put the parity
+* back in two places; it comes from HAL_gfx_cur_back at the point of use now, so there is
+* nothing left to toggle.
 
 * slot_peel — A = slot 0..3; returns D = that slot's peel buffer address.
 slot_peel
@@ -746,7 +769,10 @@ ptorchflame     fcb     1,2,3,4,5,6,7,8,9,3,5,7,1,4,9,2,8,6
 * torches start out of phase, which is why they never flicker in lockstep.
 fl_state0       fcb     1
 fl_state1       fcb     6
-fl_buf          fcb     0               ; which buffer this frame draws into
+* fl_buf DELETED at P3.50 -- a second home for "which buffer is being drawn", which
+* HAL_gfx_cur_back owns. Its only write had been unreachable since P3.17, so it read 0
+* forever and pinned fl_slot to 0. The declaration goes with the dead store on purpose: a
+* leftover variable invites the toggle being put back.
 fl_slot         fcb     0
 fl_prev         fcb     0,0,0,0         ; cel last drawn, per (buffer, torch) slot
 fl_tmp          fcb     0

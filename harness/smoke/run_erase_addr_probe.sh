@@ -48,8 +48,11 @@ export P_OUT="$LOG"
 # parity fix moves peel_base from $22C9 (unfixed) to $22C2 (fixed), so the map itself says
 # which binary is on the disk. Refuse to measure the wrong one.
 echo "[run_erase_addr_probe] peel_base $P_PEELBASE  fl_slot $P_FLSLOT  erase_tab $P_ERASETAB  save_tab $P_SAVETAB  seed=${P_SEED:-0}"
-if [ "${P_REQUIRE_FIXED:-1}" = "1" ] && [ "$P_PEELBASE" != "0x22C2" ]; then
-    echo "[run_erase_addr_probe] peel_base is $P_PEELBASE, not 0x22C2 — the parity fix is NOT in this build. Refusing."
+# Keyed on the UNFIXED value rather than on one expected fixed value: the fixed layout
+# shifts depending on whether the fl_buf declaration is also removed ($22C2 with it, $22C1
+# without), and a guard that demands one exact address fails open when the other is built.
+if [ "${P_REQUIRE_FIXED:-1}" = "1" ] && [ "$P_PEELBASE" = "0x22C9" ]; then
+    echo "[run_erase_addr_probe] peel_base is $P_PEELBASE — the UNFIXED layout. The parity fix is not in this build. Refusing."
     exit 1
 fi
 
