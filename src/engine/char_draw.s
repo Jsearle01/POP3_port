@@ -1215,19 +1215,30 @@ vm_start
 * back and forth 8 px, and P3.58 doubled that to 16 — the scale fix made a placeholder
 * that had always been wrong twice as visible, which is why it surfaced now.
 *
-* SHE IS ALREADY FACING HIM, and the P3.61 commit message says otherwise — recorded here
-* because that message is wrong and cannot be unsaid. Jay, looking at the running port:
-* "no shes facing him." FCharFace -1 is NORMAL, i.e. unmirrored [FRAMEADV.S:1970 `lda #-1
-* ;normal`], which is how the port draws her — so her stored art simply faces right,
-* where the vizier's faces left. Both are unmirrored at CharFace -1; the two characters'
-* art was just drawn in opposite directions, which is ordinary for cutscene-only cels.
+* SHE IS FACING AWAY FROM HIM, and getting to the truth of that took two wrong turns
+* which are recorded rather than tidied. P3.61 said she faces away; Jay said "no shes
+* facing him"; P3.61a wrote that up, reasoning that her art must simply be drawn facing
+* right; Jay then corrected himself — "sorry i was incorrect she is facing away." The
+* first answer was right. FCharFace -1 is NORMAL, i.e. unmirrored [FRAMEADV.S:1970 `lda
+* #-1 ;normal`], both characters start there, and both sets of art face LEFT.
 *
-* So the mirror is NOT what stands between this and the oracle, and piece G is not a
-* prerequisite here. What is left of Palert is its `chx,9`: the oracle's princess spends
-* the approach at CharX 129, ours stands at 120, an 18 px difference that would also need
-* pstand baked at phase 3. Left alone deliberately — Jay has the running port in front of
-* him and she reads correctly on it, and a spatial move is his call (CLAUDE.md §3), not a
-* conclusion to be drawn from the same sequence I have already misread once.
+* So the mirror IS a prerequisite here, and piece G is on this scene's path after all.
+* The oracle's princess, once Palert's `aboutface,chx,9` has run — which happens well
+* before the approach the port renders — stands TURNED and 9 CharX units along:
+*
+*                     CharX  CharFace  parity  CoCo px  col  phase
+*     the port         120     -1         1      145     36    1     pstand_p1
+*     the oracle       129      0         0      162     40    2     needs a MIRRORED
+*                                                                    pstand at phase 2
+*
+* Three things, and they only work together: a mirrored conversion of image 25; that cel
+* baked at phase 2; and her slot moved to CharX 129 with CharFace 0. Note the parity
+* FLIPS with the facing — cel_table's parity column is generated for CharFace=left and
+* says 1, while she needs 0, which is the "a character that TURNS invalidates this
+* column" caveat coming due. The durable fix is for vm_resolve to carry Fcheck and derive
+* parity against CH_FACE at runtime, rather than read a column baked for one facing.
+*
+* Left for Jay to call: it is a spatial correction (CLAUDE.md §3) and an 18 px move.
 *
 * pri_demo is KEPT, not deleted: harness/tools/peel_matrix.py rewrites its body to drive
 * the peel matrix and finds its end by matching the marker line above it. It is simply no
