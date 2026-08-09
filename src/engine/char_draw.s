@@ -716,7 +716,25 @@ SEQ_SETFALL     equ     $F8             ; setfall   = -8, operand consumed unuse
 * a constant 3 runs +15.3% slow, which IS the 20.0-vs-22.8 Hz gap carried since
 * P3.17. A 13/5 cadence lands within 0.01 ms of the oracle AND reproduces its own
 * measured 2-3 frame spread instead of flattening it.
-cad_tab         fcb     3,3,2,3,2       ; 13 frames over 5 steps = 2.6
+* ★ POLICY REVISIT (P3.55, Jay). "Floor at SPEED, overrun naturally" gave 2.70
+* frames/step, and at that rate the torches run 20.0 Hz — MEASURED, against the oracle's
+* 15.4 Hz in the condition that compares (characters animating). Jay, on the live gate:
+* "the flames do seem a bit fast to the eye." He had passed the pacing at 22 Hz when the
+* torches were still on their own slow divider; with one clock driving both, the flame
+* rate is what the step rate looks like, and it reads too fast.
+*
+* THIS OVERRIDES THE §PACING POLICY ABOVE, WHICH IS JAY'S TO OVERRIDE. That policy chose
+* the oracle's INTENT (SPEED 7 = 2.6 frames) over its OBSERVED rate (3.9 when animating),
+* on the reasoning that hard-coding 3.9 "would mean inserting delay to reproduce the
+* Apple's inability to keep up — porting a limitation as if it were a design." That
+* argument is unchanged and still correct in principle. It is overruled by the eye, which
+* CLAUDE.md §2 ranks first, and the policy's own caveat — "REVISITABLE BY EYE (Jay's
+* caveat) — if it looks wrong side by side with the oracle, the policy changes, not the
+* measurement" — is the clause being exercised.
+*
+* 19 frames over 5 steps = 3.8, against the oracle's measured 3.9. The shape keeps a
+* spread rather than flattening to a constant, for the reason the note below gives.
+cad_tab         fcb     4,4,4,4,3       ; 19 frames over 5 steps = 3.8 (was 13/5 = 2.6)
 CAD_LEN         equ     5
 cad_idx         fcb     0
 vm_now          fdb     0               ; the HAL's frame count, handed in per call
