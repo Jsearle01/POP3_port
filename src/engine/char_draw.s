@@ -184,9 +184,10 @@ CH_H            equ     4
 CH_W            equ     5
 CH_FDX          equ     10              ; per-frame x offset, from the cel table
 CH_STRIDE       equ     11              ; 2 B — constant peel slot stride
+CH_PAR          equ     13              ; the cel's PARITY BIT — the odd screen pixel
 CH_PTR          equ     6
 CH_PEEL         equ     8
-CH_SIZE         equ     13
+CH_SIZE         equ     14
 
 * Motion step. MUST be a multiple of 4 px: the phase is baked into the cel data
 * (P3.19/P3.20), so moving by anything else would need the phase variant for the
@@ -358,13 +359,21 @@ ch_scan_one
                 rts
 
 * ch_index — ch_lastoff and ch_bit for this (character, slot).
-* ch_last[] index = (character*2 + slot) * 4  — four bytes: x, y, w, h
+* ch_last[] index = (character*2 + slot) * 8  — x, y, w, h, parity (3 spare).
+*
+* THE PARITY HAS TO BE REMEMBERED WITH THE POSITION (P3.58). The erase recomputes
+* the old destination from the stored x, and the drawn column is now
+* 2*(x-58)+parity+20 — so an erase that assumed parity 0 would restore a byte to
+* the LEFT of what the save captured for four of the six walk cels. Fdx has the
+* same shape and has always been zeroed here; it is zero for every cel in this
+* scene, which is why that never showed.
 ch_index
                 lda     ch_idx
                 lsla
                 adda    ch_slot
                 lsla
                 lsla
+                lsla                            ; 8 B per (character, slot)
                 sta     ch_lastoff
 * FOUR seen bits, not two: one per (character, slot). Keying on the slot alone would
 * make character 0 and character 1 share a bit, so the second character would
@@ -471,6 +480,9 @@ co_erase
                 inca
                 ldb     a,y
                 stb     ch_h                    ; and the height
+                inca
+                ldb     a,y
+                stb     ch_par                  ; the parity the SAVE was taken at
                 clr     ch_fdx                  ; the old position already included it
                 jsr     co_setup
                 ldx     ch_dest
@@ -508,6 +520,9 @@ co_save
                 stb     a,y
                 inca
                 ldb     ch_h
+                stb     a,y
+                inca
+                ldb     ch_par                  ; and the PARITY it was placed at
                 stb     a,y
                 lda     ch_seen
                 ora     ch_bit
@@ -584,8 +599,9 @@ co_variant
                 sta     ch_tmp
                 lda     CH_X,x
                 adda    CH_FDX,x                ; ...indexed by the sub-byte phase,
-                adda    #20                     ; from co_setup's own expression
-                anda    #3
+                lsla                            ; 2*(x+Fdx) — mod 4 is all this needs
+                adda    CH_PAR,x                ; + the odd pixel
+                anda    #3                      ; co_setup's expression, mod 4
                 adda    ch_tmp
                 lsla                            ; two bytes per pointer
                 ldx     #walk_tab
@@ -619,13 +635,34 @@ co_here
                 sta     ch_ty
                 lda     CH_FDX,x
                 sta     ch_fdx
+                lda     CH_PAR,x
+                sta     ch_par
                 rts
 
 * ---------------------------------------------------------------
 * co_setup — from ch_tx / ch_ty / ch_h, compute ch_dest and ch_peel.
 *
-*   col = (x + 20) / 4        the 280->320 centring is +20 px, a multiple of 4, so
-*                             it does not change the sub-byte phase
+*   px  = 2*(x + Fdx - 58) + parity + 20        SETUPCHAR [CTRLSUBS.S:794-840]
+*   col = px / 4
+*
+* CHARX IS IN TWO-PIXEL UNITS and the parity bit is the odd pixel (P3.58). This read
+* `x + 20` — half scale, no parity — from P3.17 until Jay said "theres still a visible
+* hitch in his walk thats not in the oracle visually". The hitch itself is authentic
+* (`Vwalk db 51,chx,-1` [SEQTABLE.S:1518], verified six ways). What was wrong is the
+* SCALE: at half scale the same leg artwork carries him half as far, so his planted foot
+* slides backwards, and an authentic +1 px against a 20 px stride becomes +2 against 10
+* — a fifth of the stride instead of a twentieth, which is the difference between
+* invisible and a stumble.
+*
+* The port's OWN converter had the formula all along: cel_parity_rule.draw_x, written
+* "for the record" and wired to nothing, is what stamped start_col 279 into the walk
+* cels and 124/125 into the princess's. Two halves of one tree encoding one fact, and
+* only the half nobody read was right.
+*
+* WHY IT SURVIVED EVERY GATE: the two formulas agree at x=116. The princess sits at 120,
+* so she rendered 4 px off — invisible — and she is what placement was validated against.
+* The vizier was 82 px off. ScrnLeft = 58 [EQ.S:479], and 2*(197-58) = 278 is the
+* right-hand door, which is where he is supposed to come in.
 *   top = y - h + 1           CharY is the BASELINE, as P3.17 confirmed for the
 *                             torches (a 13-row flame ending at 113 starts at 101)
 *   dest = draw_base + top*80 + col
@@ -640,11 +677,17 @@ co_setup
                 std     ch_tmp16
                 lda     ch_tx
                 adda    ch_fdx                  ; the frame's own offset (signed)
-                adda    #20                     ; the centring
-                lsra
-                lsra                            ; col = (x + Fdx + 20)/4
                 tfr     a,b
                 clra
+                lslb
+                rola                            ; D = 2*(x + Fdx)
+                addb    ch_par                  ; + the odd pixel
+                adca    #0
+                addd    #20-116                 ; + centring, - 2*ScrnLeft
+                lsra
+                rorb
+                lsra
+                rorb                            ; col = px / 4
                 addd    ch_tmp16
                 addd    ch_base
                 std     ch_dest
@@ -763,12 +806,22 @@ vm_due          fdb     0               ; the frame this step is due to fire on
 * the rest needs the per-cel parity conversion volume, which is E's scope. A cel
 * whose image is not here leaves the slot showing what it had -- visible as a stall,
 * not as a crash.
+* P3.58: every entry now names the variant baked at the parity SETUPCHAR actually
+* places it at. vstand.s and pstand.s were converted/shifted for the half-scale
+* placement and are superseded: vstand_src.s carried start_col 197 — the raw CharX —
+* where the oracle's own FCharX for that cel is 279, so it had the wrong colour parity
+* baked in and has been re-derived. pstand's source column (125) was already right; only
+* its shift was wrong (phase 0, needs 1).
 img_map         fcb     10
                 fdb     pslump
                 fcb     25
-                fdb     pstand
+                fdb     pstand_p1
                 fcb     80
-                fdb     vstand
+                fdb     vstand_p1
+                fcb     81
+                fdb     vstop55_p1
+                fcb     82
+                fdb     vstop56_p1
                 fcb     0               ; terminator
 
 vm_seq          fdb     0,0             ; sequence pointer per character
@@ -799,6 +852,10 @@ vm_resolve
                 sta     vm_img
                 lda     1,x                     ; Fdx, signed
                 sta     CH_FDX,u
+* AND THE PARITY, +3 — read at last (P3.58). The cel table has carried this column
+* since P3.24 and nothing ever consumed it, so the odd screen pixel was never applied.
+                lda     3,x                     ; parity: 1 = odd, 0 = even
+                sta     CH_PAR,u
 
                 ldx     #img_map
 vr_find
@@ -1096,8 +1153,7 @@ viz_stand       fcb     54,SEQ_GOTO
 
 * --- the baked cels: segment streams for the runtime blitter, from
 * --- harness/tools/cel_blit_prep.py. Data, not compiled sprites.
-                include "content/cutscene/chars/vstand.s"
-                include "content/cutscene/chars/pstand.s"
+                include "content/cutscene/chars/pstand_p1.s"
                 include "content/cutscene/chars/pslump.s"
 
 * --- the walk: 6 cels x 2 sub-byte phases, and the table that picks between
@@ -1109,16 +1165,18 @@ viz_stand       fcb     54,SEQ_GOTO
 * [SUBS.S:1131,1147,1040]. These remain the authority for where they stand.
 viz_slot        fcb     197,151,-1,54           ; x, y, face, cel id (chtab6.A #54)
                 fcb     48,5                    ; h, w
-                fdb     vstand                  ; resolved at link time now
+                fdb     vstand_p1               ; resolved at link time now
                 fdb     VIZ_PEEL_BASE
                 fcb     0                       ; Fdx — the VM writes this per cel
                 fdb     VIZ_PEEL                ; slot stride: widest vizier cel
+                fcb     1                       ; parity of cel 54 (Fcheck $80, ODD)
 pri_slot        fcb     120,151,-1,25           ; x, y, face, cel id (chtab6.A #25)
                 fcb     43,5
-                fdb     pstand
+                fdb     pstand_p1
                 fdb     PRI_PEEL_BASE
                 fcb     0                       ; Fdx
                 fdb     PRI_PEEL                ; slot stride: widest princess cel
+                fcb     1                       ; parity of cel 11 (Fcheck $80, ODD)
 
 ch_base         fdb     0
 ch_slot         fcb     0
@@ -1138,7 +1196,7 @@ ch_lastoff      fcb     0
 * column that was never saved — visible as $AA, the uninitialised-peel signature, and
 * as captures that disagreed because the error accumulated. Found the moment the VM
 * first switched a cel, which is what D's checks could not reach on a fixed cel.
-ch_last         rmb     16              ; 2 chars x 2 slots x (x,y,w,h)
+ch_last         rmb     32              ; 2 chars x 2 slots x (x,y,w,h,par + 3 spare)
 ch_drawn        rmb     4               ; the cel each buffer was last DRAWN with
 ch_bits         fcb     1,2,4,8         ; seen bit for (character, slot)
 ch_tick         fcb     0
@@ -1149,6 +1207,7 @@ ch_h            fcb     0
 ch_w            fcb     0
 ch_fdx          fcb     0
 ch_lastcel      fcb     0
+ch_par          fcb     0               ; the parity of the cel being placed
 ch_tmp          fcb     0
 ch_cel          fdb     0               ; the variant resolved for THIS draw — not
 *                                       ; state, a value carried from char_one to

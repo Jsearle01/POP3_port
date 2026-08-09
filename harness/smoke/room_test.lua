@@ -50,6 +50,7 @@ local VIZ = tonumber(os.getenv("P_VIZ") or "0")
 local PRI = tonumber(os.getenv("P_PRI") or "0")
 local DRAWN = tonumber(os.getenv("P_DRAWN") or "0")
 local LAST  = tonumber(os.getenv("P_LAST") or "0")
+local LAST_STRIDE = tonumber(os.getenv("P_LAST_STRIDE") or "8")
 local function log_positions(tag)
     if VIZ == 0 then return end
     local f2 = io.open("build/room_chars_pos.txt", "a")
@@ -77,7 +78,11 @@ local function log_positions(tag)
     -- ch_last is (x,y,w,h) per (character, slot), written when that slot last saved --
     -- and a position change always takes the peel path, so it IS where that buffer drew.
     local function lastxy(ch)
-        local o = LAST + (ch * 2 + shown) * 4
+        -- STRIDE FROM THE MAP, NOT A LITERAL (P3.58). This held its own `* 4` while
+        -- ch_last's entry grew to 8 bytes to carry the parity, so it read the vizier's
+        -- record for both characters and reported the princess standing where he was.
+        -- Third home of one constant; the runner now derives it from the symbols.
+        local o = LAST + (ch * 2 + shown) * LAST_STRIDE
         return rd8(o), rd8(o + 1)
     end
     local vx, vy = lastxy(0)

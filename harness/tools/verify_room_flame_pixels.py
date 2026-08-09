@@ -21,6 +21,7 @@ import re
 import sys
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import cel_blit_prep as cbp
+import cel_parity_rule as R
 
 STRIDE = 80
 CEL_W, CEL_H = 2, 13
@@ -136,9 +137,11 @@ def main():
             # a check that widens itself is a check that stops failing.
             if len(f) != 7 or f[0] != a.tag:
                 continue
-            vx, vy, _vc, px, py, _pc = map(int, f[1:])
-            for x, y in ((vx, vy), (px, py)):
-                col = (x + 20) >> 2
+            vx, vy, vc, px, py, pc = map(int, f[1:])
+            for x, y, cel in ((vx, vy, vc), (px, py, pc)):
+                # SETUPCHAR's expression (P3.58) — see verify_room_flicker.py
+                _i, fdx, _fy, fchk, _l = R.altset2()[cel]
+                col = (R.draw_x(x, fdx, fchk) + 20) >> 2
                 for r in range(y - H + 1, y + 1):
                     for c in range(col - 1, col + W + 1):
                         covered.add(r * STRIDE + c)

@@ -22,7 +22,10 @@ sys.path.insert(0, str(ROOT / "harness/tools"))
 sys.path.insert(0, str(ROOT / "harness/tools/sprite_tool"))
 
 import cel_blit_prep as P
+import cel_parity_rule as R
 from celio import Cel
+
+CENTRING = 20                     # the 280->320 offset; a multiple of 4, so phase-neutral
 
 STRIDE = 80
 SP318 = pathlib.Path("C:/Users/jayse/AppData/Local/Temp/claude/"
@@ -39,26 +42,22 @@ SP318 = pathlib.Path("C:/Users/jayse/AppData/Local/Temp/claude/"
 # where these characters actually stand — Jay saw it as orange and blue swapped.
 # Verifying against them would have confirmed the bug instead of catching it, which is
 # the whole hazard of a checker sharing its input with the thing it checks.
-#   vizier   start_col 197 (ODD)   princess start_col 120 (EVEN)   both Fdx=0
+#   vizier   start_col 279 (ODD)   princess start_col 124/125   both Fdx=0
 # CEL NUMBER -> (converted source, phase, rows). Keyed by the number the VM writes into
 # the slot record, because with an interpreter running there is no fixed answer to
 # "which cel is on screen" — it must be read from the machine, like the position.
-CELS = {54: (ROOT / "content/cutscene/chars/vstand_src.s", 1, 48),   # Vstand
-        11: (ROOT / "content/cutscene/chars/pstand_src.s", 0, 43),   # Pstand
-        1:  (ROOT / "content/cutscene/chars/pslump_src.s", 0, 43),   # Pslump
-        18: (ROOT / "content/cutscene/chars/pslump_src.s", 0, 43)}   # Pslump, same image
+# CEL NUMBER -> its converted source. The PHASE and COLUMN are no longer tabulated for
+# anything: both are derived below from the oracle's own SETUPCHAR expression, so the
+# engine picking a variant out of walk_tab and this compositing a shift from the source
+# cel agree only if the table, the bake and the draw all line up.
+SRC = {c: ROOT / ("content/cutscene/chars/vwalk%d_src.s" % c) for c in range(48, 54)}
+SRC.update({54: ROOT / "content/cutscene/chars/vstand_src.s",     # Vstand
+            55: ROOT / "content/cutscene/chars/vstop55_src.s",    # Vstop
+            56: ROOT / "content/cutscene/chars/vstop56_src.s",
+            11: ROOT / "content/cutscene/chars/pstand_src.s",     # Pstand
+            1:  ROOT / "content/cutscene/chars/pslump_src.s",     # Pslump
+            18: ROOT / "content/cutscene/chars/pslump_src.s"})
 
-# THE WALK'S CELS CARRY NO FIXED PHASE, and that is the whole difference (P3.31). Every
-# cel above is drawn at one sub-byte phase for the life of the scene, so the phase could
-# be written next to it. Cels 48-53 are drawn at TWO, alternating as x moves 10 px per
-# cycle, so the phase is a function of the position -- and the position is read off the
-# machine. Deriving it here with co_setup's own expression is what keeps this a CHECK:
-# the engine picks a variant out of walk_tab, this composites the shift from the source
-# cel, and the two agree only if the table, the bake and the draw all line up.
-#
-# Fdx is 0 for every walk cel [ALTSET2 via cel_parity_rule], so it is not carried here;
-# a walk cel with a non-zero Fdx would need it, and cel_table.s is where it lives.
-WALK = {c: ROOT / ("content/cutscene/chars/vwalk%d_src.s" % c) for c in range(48, 54)}
 POSFILE = ROOT / "build/room_chars_pos.txt"
 
 
@@ -81,14 +80,15 @@ def placements(posfile=None):
         vx, vy, vc, px, py, pc = map(int, f[1:])
         rows = []
         for cel, x, y in ((vc, vx, vy), (pc, px, py)):
-            if cel in WALK:
-                src, phase = WALK[cel], (x + 20) & 3
-                h = cel_rows(src)
-            elif cel in CELS:
-                src, phase, h = CELS[cel]
-            else:
+            if cel not in SRC:
                 raise SystemExit("  cel %d is on screen but has no baked source" % cel)
-            rows.append(("cel%d" % cel, src, phase, y - h + 1, (x + 20) >> 2))
+            src = SRC[cel]
+            h = cel_rows(src)
+            # SETUPCHAR's own expression, from the ORACLE's tables — not from the port.
+            # CharX is in two-pixel units and the parity bit is the odd pixel (P3.58).
+            _img, fdx, _fdy, fcheck, _lab = R.altset2()[cel]
+            spx = R.draw_x(x, fdx, fcheck) + CENTRING
+            rows.append(("cel%d" % cel, src, spx & 3, y - h + 1, spx >> 2))
         out.append((tag, rows))
     return out
 

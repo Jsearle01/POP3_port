@@ -26,10 +26,26 @@ THE RULES, all four already in the port and none invented here:
      of phase — so taking the quoted script would have baked the stopping cels at the
      wrong phase for the same reason the walk cels were wrong.
 
-  4. THE PHASE IS co_setup'S OWN EXPRESSION, term for term: `col = (x + Fdx + 20) / 4`
-     [char_draw.s co_setup], so the phase is `(x + Fdx + 20) & 3`. The +20 centring is
-     a multiple of 4 and cannot change the phase, but it is carried because leaving it
-     out of ONE of the two places is how the values drifted in the first place.
+  4. THE PHASE IS SETUPCHAR'S OWN EXPRESSION [CTRLSUBS.S:794-840], which this file
+     reaches through cel_parity_rule.draw_x rather than restating:
+
+         FCharX = 2 * (CharX + Fdx - ScrnLeft) + parity      ScrnLeft = 58 [EQ.S:479]
+         parity = 1 when bit7(Fcheck) == bit7(CharFace)
+
+     CHARX IS IN TWO-PIXEL UNITS and the parity bit supplies the odd pixel. P3.58: the
+     port had been drawing at `x + 20`, i.e. half scale with no parity, which put the
+     vizier at 217 where the oracle has him at 299 -- the right-hand door -- and halved
+     his stride so the SAME leg artwork carried him half as far, sliding his planted
+     foot backwards. Jay: "theres still a visible hitch in his walk thats not in the
+     oracle visually."
+
+     The `+ 20` centring stays: it is the 280->320 offset and, being a multiple of 4,
+     cannot change the phase. It is carried anyway because leaving it out of ONE of the
+     two places is how the values drifted in the first place.
+
+     A CONSEQUENCE WORTH STATING, because it halves the bake: at true scale one walk
+     cycle advances 20 px = 5 whole bytes, so every cel's phase is now INVARIANT. One
+     variant per cel where the half-scale port needed two.
 
 Fdx comes from ALTSET2 via cel_parity_rule, not from a constant here.
 """
@@ -60,32 +76,29 @@ HOLD_STEPS = 4
 TRACE_FOREVER = 36
 
 # ---------------------------------------------------------------------------
-# HOW MUCH OF THE SCRIPT THE PORT CAN RUN, AND IT IS A MEMORY LIMIT, NOT A SCOPE ONE.
+# HOW MUCH OF THE SCRIPT THE PORT RUNS. P3.32 measured that Vstop did not fit and was
+# right at the time; P3.58 changed the arithmetic underneath that measurement, so it is
+# restated here rather than inherited.
 #
-# Vstop needs three more baked variants -- cels 55 and 56 at phase 2, and cel 54 at
-# phase 2 for the Vstand he holds afterwards. They bake correctly (15 variants, 0
-# failed) and they DO NOT FIT. Measured, P3.32:
+# The port drew at `x + 20` -- HALF SCALE, no parity. At half scale a walk cycle nets
+# 10 px, 10 mod 4 = 2, so every cel is drawn at TWO phases and needs two baked variants.
+# At the oracle's true scale a cycle nets 20 px = 5 WHOLE BYTES, so every cel's phase is
+# INVARIANT and needs one:
 #
-#     bundle with the walk's 12 variants      14,525 B
-#     bundle with Vstop's 15                  16,785 B   ($3000..$7190)
-#     window $3000..$69FF (below DR_VARBASE)  14,848 B
-#                                             ---------
-#     over by                                  1,937 B
+#     half scale, approach only          6 cels / 12 variants      (what shipped)
+#     true scale, approach only          6 cels /  6 variants
+#     true scale, approach + stop + stand 9 cels /  9 variants     <-- PORT_ENTRIES = 3
 #
-# and lz_pack refused it rather than letting it load through the disk driver's
-# parameter block: "in-place UNSAFE: stream starts at 9809, needs >= 11747".
+# So the stop now costs THREE FEWER variants than the walk alone did before. The thing
+# that made it unaffordable was the half-scale bug, not the window: fixing the scale
+# paid for the stop and left change over.
 #
-# Relocating everything above the bundle -- DR_VARBASE, and the peel buffers at $6C00 --
-# raises the ceiling to the trace ring at $7800 = 18,432 B, against 16,785 + 1,648 of
-# peel + 7 = 18,440. EIGHT BYTES SHORT. Moving the trace ring too would fit it with 248
-# to spare, and would spend every remaining byte between the bundle and the kernel on
-# three cels. That is the shape of the answer being wrong, not of the window being
-# small: 49 cels at two phases each is not a thing this layout can hold, and the
-# remedy is a representation that does not store every phase (a runtime shifter, or
-# cels the blitter can walk packed) rather than another relocation.
-#
-# 1 = the approach only, which is what P3.31 shipped. Raise it when the window does.
-PORT_ENTRIES = 1
+# The full source script (both approach/stop pairs) is 9 cels / 18 variants, because the
+# entrance leaves him on the other parity for the second approach. That is still more
+# than the window holds, so the port continues to run the FINAL pair from startV0's own
+# x -- the counts come from the source, what is dropped is the entrance, and the visible
+# consequence is where he comes to rest (reported by both traces below).
+PORT_ENTRIES = 3
 
 
 def sequences():
@@ -181,7 +194,9 @@ def trace(plan=None):
                     cel = int(t)
                     break
             fdx = alt[cel][1]
-            out.append((cel, x, (x + fdx + CENTRING) & 3, fdx, seq))
+            fcheck = alt[cel][3]
+            dx = R.draw_x(x, fdx, fcheck)           # SETUPCHAR's own FCharX
+            out.append((cel, x, (dx + CENTRING) & 3, fdx, seq))
     return labels, out
 
 

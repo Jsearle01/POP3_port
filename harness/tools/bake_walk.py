@@ -37,19 +37,22 @@ CHARX = 197                       # startV0 [SUBS.S:1147]
 
 PHASES = W.occupancy(W.port_plan())
 
-# cel -> (source stem, convert it?). The walk's six each get their own conversion; the
-# vizier's standing cel already has one from P3.22 and is reused rather than re-derived,
-# because a second conversion of the same image at the same start_col is a second chance
-# to differ from the file everything else already checks against.
+# cel -> (source stem, convert it?). ALL of them convert now. P3.22's vstand was reused
+# rather than re-derived, on the argument that a second conversion at the SAME start_col
+# is a second chance to differ. P3.58 removed the premise: that file was converted at
+# start_col 197 -- the raw CharX -- where the oracle's own FCharX for it is 279. The
+# column is not the same, so the cel had the wrong colour parity baked in and has to be
+# re-derived.
 STEMS = {48: ("vwalk48", True), 49: ("vwalk49", True), 50: ("vwalk50", True),
          51: ("vwalk51", True), 52: ("vwalk52", True), 53: ("vwalk53", True),
-         54: ("vstand", False), 55: ("vstop55", True), 56: ("vstop56", True)}
+         54: ("vstand", True), 55: ("vstop55", True), 56: ("vstop56", True)}
 
 
 def main():
     alt = R.altset2()
     ok = fail = 0
-    print("=== baking Vwalk: 6 cels x 2 phases ===")
+    print("=== baking Vwalk/Vstop/Vstand: %d cels, %d variants ==="
+          % (len(PHASES), sum(len(p) for p in PHASES.values())))
     for cel in sorted(PHASES):
         fimg, fdx, fdy, fchk, lab = alt[cel]
         idx = fimg & 0x7F

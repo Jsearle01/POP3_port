@@ -48,6 +48,15 @@ export P_VIZ="0x$(sym "$FMAP" viz_slot)"
 export P_PRI="0x$(sym "$FMAP" pri_slot)"
 export P_DRAWN="0x$(sym "$FMAP" ch_drawn)"
 export P_LAST="0x$(sym "$FMAP" ch_last)"
+# THE ch_last STRIDE, DERIVED — never a literal in the Lua (P3.58). ch_last holds four
+# (character, slot) entries, so (ch_drawn - ch_last)/4 is its per-entry size. When that
+# entry grew from 4 to 8 bytes to carry the cel's parity, the Lua's own hard-coded `* 4`
+# read the vizier's record for BOTH characters and reported the princess standing exactly
+# where he was. One home, computed from symbols the map already carries.
+CHLAST=$(grep -E "^Symbol: ch_last " "$FMAP" | sed -E 's/.*= *//')
+CHDRAWN=$(grep -E "^Symbol: ch_drawn " "$FMAP" | sed -E 's/.*= *//')
+export P_LAST_STRIDE=$(( (0x$CHDRAWN - 0x$CHLAST) / 4 ))
+
 export P_SHOTS="${P_SHOTS:-28}"
 export P_GAP="${P_GAP:-10}"
 

@@ -21,6 +21,7 @@ captures, differenced across frames, put them there.
 import argparse
 import pathlib
 import sys
+import cel_parity_rule as R
 
 STRIDE = 80                     # 320 px at 4 px/byte
 BOXES = [(26, 31, 99, 115),     # torch 0: true px 111 -> byte 27.75
@@ -72,9 +73,14 @@ def recorded_boxes(posfile):
         f = line.split()
         if len(f) != 7:
             continue
-        vx, vy, _vc, px, py, _pc = map(int, f[1:])
-        for x, y in ((vx, vy), (px, py)):
-            col = (x + 20) >> 2
+        vx, vy, vc, px, py, pc = map(int, f[1:])
+        for x, y, cel in ((vx, vy, vc), (px, py, pc)):
+            # SETUPCHAR's expression, not `x + 20` (P3.58): CharX is in two-pixel units
+            # and the parity bit is the odd pixel. The half-scale form put the vizier's
+            # footprint 20 byte-columns left of where he is now drawn, so his real
+            # position read as damage to the room.
+            _i, fdx, _fy, fchk, _l = R.altset2()[cel]
+            col = (R.draw_x(x, fdx, fchk) + 20) >> 2
             boxes.append((col - 1, col + W, y - H + 1, y))
     return boxes
 

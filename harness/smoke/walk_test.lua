@@ -34,6 +34,7 @@ local VIZ     = tonumber(os.getenv("P_VIZ") or "0")
 local PRI     = tonumber(os.getenv("P_PRI") or "0")
 local DRAWN   = tonumber(os.getenv("P_DRAWN") or "0")
 local LAST    = tonumber(os.getenv("P_LAST") or "0")
+local LAST_STRIDE = tonumber(os.getenv("P_LAST_STRIDE") or "8")
 
 local FB_BASE, FB_SIZE = 0x8000, 15360
 local ROOM_MAGIC = 0x4B00
@@ -78,7 +79,11 @@ local function log_positions(tag)
     if VIZ == 0 or not pf then return end
     local shown = 1 - (rd8(CUR_BACK) % 2)
     local function lastxy(ch)
-        local o = LAST + (ch * 2 + shown) * 4
+        -- STRIDE FROM THE MAP, NOT A LITERAL (P3.58). This held its own `* 4` while
+        -- ch_last's entry grew to 8 bytes to carry the parity, so it read the vizier's
+        -- record for both characters and reported the princess standing where he was.
+        -- Third home of one constant; the runner now derives it from the symbols.
+        local o = LAST + (ch * 2 + shown) * LAST_STRIDE
         return rd8(o), rd8(o + 1)
     end
     local vx, vy = lastxy(0)

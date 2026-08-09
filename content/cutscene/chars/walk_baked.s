@@ -4,38 +4,45 @@
 * Phases are derived by walk_phases.py from the oracle's sequence table and the
 * port's own co_setup expression; see that file for why they are not written by hand.
 *
-*   cel 48 -> phases {0,2}
-*   cel 49 -> phases {0,2}
-*   cel 50 -> phases {0,2}
-*   cel 51 -> phases {1,3}
-*   cel 52 -> phases {0,2}
-*   cel 53 -> phases {1,3}
+*   cel 48 -> phases {1}
+*   cel 49 -> phases {1}
+*   cel 50 -> phases {1}
+*   cel 51 -> phases {2}
+*   cel 52 -> phases {0}
+*   cel 53 -> phases {3}
+*   cel 54 -> phases {1}
+*   cel 55 -> phases {1}
+*   cel 56 -> phases {1}
 
-                include "content/cutscene/chars/vwalk48_p0.s"
-                include "content/cutscene/chars/vwalk48_p2.s"
-                include "content/cutscene/chars/vwalk49_p0.s"
-                include "content/cutscene/chars/vwalk49_p2.s"
-                include "content/cutscene/chars/vwalk50_p0.s"
-                include "content/cutscene/chars/vwalk50_p2.s"
-                include "content/cutscene/chars/vwalk51_p1.s"
-                include "content/cutscene/chars/vwalk51_p3.s"
+                include "content/cutscene/chars/vwalk48_p1.s"
+                include "content/cutscene/chars/vwalk49_p1.s"
+                include "content/cutscene/chars/vwalk50_p1.s"
+                include "content/cutscene/chars/vwalk51_p2.s"
                 include "content/cutscene/chars/vwalk52_p0.s"
-                include "content/cutscene/chars/vwalk52_p2.s"
-                include "content/cutscene/chars/vwalk53_p1.s"
                 include "content/cutscene/chars/vwalk53_p3.s"
+                include "content/cutscene/chars/vstand_p1.s"
+                include "content/cutscene/chars/vstop55_p1.s"
+                include "content/cutscene/chars/vstop56_p1.s"
 
 WALK_LO         equ     48
-WALK_N          equ     6
+WALK_N          equ     9
 walk_tab
-                fdb     vwalk48_p0,0,vwalk48_p2,0
-                fdb     vwalk49_p0,0,vwalk49_p2,0
-                fdb     vwalk50_p0,0,vwalk50_p2,0
-                fdb     0,vwalk51_p1,0,vwalk51_p3
-                fdb     vwalk52_p0,0,vwalk52_p2,0
-                fdb     0,vwalk53_p1,0,vwalk53_p3
+                fdb     0,vwalk48_p1,0,0
+                fdb     0,vwalk49_p1,0,0
+                fdb     0,vwalk50_p1,0,0
+                fdb     0,0,vwalk51_p2,0
+                fdb     vwalk52_p0,0,0,0
+                fdb     0,0,0,vwalk53_p3
+                fdb     0,vstand_p1,0,0
+                fdb     0,vstop55_p1,0,0
+                fdb     0,vstop56_p1,0,0
 
 * the vizier's scene script: (sequence, plays), from PlayCut0 [SUBS.S].
 * A count of 0 means the sequence holds and the script is finished.
 viz_script
                 fdb     viz_walk
+                fcb     30
+                fdb     viz_stop
+                fcb     4
+                fdb     viz_stand
                 fcb     0
