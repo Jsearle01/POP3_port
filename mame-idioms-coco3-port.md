@@ -258,6 +258,33 @@ Stage-1 Fuji cel-data fix.
 *Established:* cross-target instrumentation note + the M1 `$010C` watchpoint + the shared
 debugger toolkit from the `$6540` pass (commit `634e0c3`).
 
+### 10a. A read-tap hit is **NOT** proof of execution — compare **PC against the tapped address**
+§10 says 6809 read-taps fire on opcode fetch, and they do. What it does not say is that they
+fire on **data and dummy reads of the same address too**, so *counting tap hits is not counting
+calls.* Measured on `blit_cel` (P3.43): with its only caller NOPped out, the tap still logged
+**0.23 hits/iteration** — which reads as "the routine still runs" and is wrong.
+- **The discriminator is the PC at the moment of the hit** (`cpu.state["PC"].value`, wrap in
+  `pcall` — the accessor is not guaranteed across builds):
+  - **`PC == addr`** → the byte was read but **not executed as an opcode** (data/dummy read).
+  - **`PC == addr + 1`** → the opcode was fetched and the PC advanced: **a real execution.**
+  Both were observed on the *same* address in the *same* session, which is what makes this a
+  discriminator rather than a theory: ablated run → `PC=$391B`, live run → `PC=$391C`.
+- **⚠ The inflation is not uniform, so a ratio will not save you.** In the same run `blit_save`
+  tapped at exactly `2.00`/iteration (true) while `blit_erase` tapped at `4.01` for **two** real
+  calls — one primitive doubled, its neighbour did not. There is no constant to divide out.
+- **So: gate an ablation on the ENTRY COUNT of the routine you ablated, not on a downstream
+  primitive.** Entry taps on `chars_frame` / `flicker` came out as clean `1.00` / `0.00` per
+  iteration and were unambiguous; the primitive counts were not. Keying on a shared primitive
+  additionally forces an argument about *which caller* reaches it — the character path and the
+  flame path both reach `blit_cel` — and that argument is an assumption, not evidence.
+- **Corollary for cost work:** a difference between two runs is only a component cost if the
+  ablation is independently confirmed. Report it as UNCONFIRMED otherwise — a subtraction
+  between two runs that did the same work is noise with a plausible magnitude.
+Tools: `harness/tools/frame_baseline.lua` (the PC diagnostic + entry-count gates),
+`harness/tools/frame_baseline_report.py` (refuses to print an unconfirmed component).
+*Established:* P3.43 frame re-baseline. *Candidate:*
+`a-tap-hit-is-not-an-execution-check-the-pc`.
+
 ---
 
 ## 11. Visual authority is **Jay's live MAME**, never a Clyde snapshot
