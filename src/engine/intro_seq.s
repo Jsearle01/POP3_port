@@ -102,7 +102,7 @@ dr_r_count      equ     DR_VARBASE+6
 * ---------------------------------------------------------------
 STACK_TOP       equ     $7F00           ; below the $8000 draw window, above the kernel
 FB_STRIDE       equ     160             ; 320x192x16: 2 px/byte
-BEAT_SIZE       equ     8
+BEAT_SIZE       equ     9       ; +1 for BEAT_SONG (P3.52)
 BEAT_COUNT      equ     6
 SEQ_MAGIC       equ     $5E92
 
@@ -204,6 +204,14 @@ BEAT_WIPE       equ     1               ; frames the picture SWEEPS in over (0 =
 BEAT_PATCH      equ     2               ; sparse caption patch, in the bundle
 BEAT_PRE        equ     4               ; frames the clean base is held first
 BEAT_HOLD       equ     6               ; frames the caption stays up
+BEAT_SONG       equ     8               ; the SONG whose length this beat's hold is (0 = none)
+
+* --- the oracle's song numbers, Set 1 (title) [MASTER.S:114-121] ---------
+S_PRESENTS      equ     1
+S_BYLINE        equ     2
+S_TITLE         equ     3
+S_PROLOG        equ     4
+S_SUMUP         equ     5
 
 * ---------------------------------------------------------------
 intro_seq_entry jmp     seq_start       ; $0200 — EXEC address
@@ -388,6 +396,8 @@ sq_beat
                 std     beat_pre
                 ldd     BEAT_HOLD,x
                 std     beat_hold
+                lda     BEAT_SONG,x
+                sta     beat_song
 
 * -- this beat's screen, if it brings one --------------------------
 * Read into the back buffer, show it, read again into the other one, so both pages
@@ -451,8 +461,9 @@ sq_nobase
                 lda     #1
                 sta     probe_phase
 
-                ldd     beat_hold
-                jsr     hold_frames
+                ldx     beat_hold
+                lda     beat_song
+                jsr     play_song       ; the caption stays up for its song's length
 
 * -- hide it, then repair the page that carries it ----------------
 * The flip is the disappearance. The repair happens afterwards, on the page nobody
@@ -471,8 +482,9 @@ sq_nopatch
 * for a caption, so a watcher needs no special case.
                 lda     #1
                 sta     probe_phase
-                ldd     beat_hold
-                jsr     hold_frames
+                ldx     beat_hold
+                lda     beat_song
+                jsr     play_song       ; the picture stays up for its song's length
                 lda     #2
                 sta     probe_phase
 
@@ -724,6 +736,45 @@ bk_block_end
 * the loop still runs, the counters still advance, and the timing is fiction.
 * Clobbers: A, B, CC
 * ---------------------------------------------------------------
+* ---------------------------------------------------------------
+* play_song — the oracle's PlaySongI, in the state this port is actually in.
+*
+*   Entry: A = song number (MASTER.S:114-121),  X = frames the song lasts
+*   Exit:  the frames are spent.  Clobbers D.
+*
+* THE INTERVAL IS THIS ROUTINE'S BODY, NOT A DELAY BESIDE IT. The intro's "pauses"
+* are not pauses: `PlaySongI` BLOCKS while the music plays [SUBS.S:822-842] and
+* contains no wait instruction at all. On the Apple II sound is bit-banged, so a
+* routine that plays a note is indistinguishable from one that waits -- the duration
+* is a CONSEQUENCE of the song, not a designed hold. Recording it as a bare frame
+* count loses that, and a reader cannot then tell a song's length from a deliberate
+* pause. BEAT_SONG carries the cause; this routine owns the interval.
+*
+* WHY THAT MATTERS MORE THAN THE CODE: when sound arrives it replaces this BODY.
+* There is no delay sitting next to a call for someone to remember to delete, and no
+* comment asking them to. (P3.41: a lesson recorded is not a lesson applied -- a fix
+* that was documented and not made hung the machine one dispatch later. A structure
+* that makes the wrong thing impossible beats a note asking for care.)
+*
+* AND THE ORACLE ALREADY DEFINES THIS EXACT STUB. With sound off, PlaySongI is
+* `txa / beq ]rts / jmp play` -- song ignored, X frames spent animating. So the
+* contract (A = song, X = frames) is Mechner's, not an invention, and the
+* sound-disabled path is the state this port is in.
+*
+* IT WAITS RATHER THAN ANIMATING, and that is established rather than assumed: the
+* things the oracle's song loop drives -- `pburn`, `pstars`, `pflow` -- are the
+* PRINCESS ROOM's torches, stars and hourglass, drawn at fixed coordinates from
+* scene state the intro never initialises. Nothing on these six screens moves; the
+* port's own intro regression holds all twelve of them byte-identical. If a beat
+* ever gains a live element, it is driven from here.
+*
+* A = 0 means NO SONG -- a real designed pause. Beat 5 is the only one: the oracle's
+* gap there is the PrincessScene cutscene, which is not built.
+play_song
+                tfr     x,d             ; the frame count; the song id is not used yet
+* falls through into hold_frames -- deliberately, so there is ONE loop that spends
+* frames rather than two that could drift apart.
+
 hold_frames
                 pshs    y
                 tfr     d,y             ; TFR does not touch CC on the 6809
@@ -825,6 +876,7 @@ beat_track      fcb     0               ; the current descriptor, copied out ONC
 beat_patch      fdb     0               ;   at beat entry. Nothing indexes the table
 beat_pre        fdb     0               ;   again for the rest of the beat.
 beat_hold       fdb     0
+beat_song       fcb     0               ; which song this beat's hold is the length of
 seq_beat        fdb     0               ; the beat under way. Held in a variable
 *                                       ; rather than re-read from 1,S after every
 *                                       ; call: the stack offset was correct but it
@@ -886,12 +938,14 @@ beat_table
                 fdb     BUNDLE_PRESENTS ; BEAT_PATCH   "Broderbund Software Presents"
                 fdb     99              ; BEAT_PRE
                 fdb     281             ; BEAT_HOLD
+                fcb     S_PRESENTS      ; BEAT_SONG    its song [MASTER.S:753-755, jsr PlaySongI, X=80]
 
                 fcb     0               ; BEAT_TRACK   none — inherit beat 1's picture
                 fcb       0               ; BEAT_WIPE    no track — a caption over the picture already up
                 fdb     BUNDLE_BYLINE   ; BEAT_PATCH   "A Game by Jordan Mechner"
                 fdb     96              ; BEAT_PRE
                 fdb     283             ; BEAT_HOLD
+                fcb     S_BYLINE        ; BEAT_SONG    its song [MASTER.S:795-797, jsr, X=80]
 
                 fcb     0               ; BEAT_TRACK   none — the title is a caption too
                 fcb       0               ; BEAT_WIPE    same
@@ -903,6 +957,7 @@ beat_table
 *                                       ; is big enough that the draw has to be paid
 *                                       ; out of the hold to land on the oracle's frame.
                 fdb     537             ; BEAT_HOLD    f1720 - f1183
+                fcb     S_TITLE         ; BEAT_SONG    its song [MASTER.S:832-834, jsr, X=140]
 
                 fcb     DISK_PROLOG1_TRK ; BEAT_TRACK  its OWN picture — first beat to
                 fcb     101               ; BEAT_WIPE    measured: the oracle's edge runs x=32..524 in 81 frames
@@ -910,6 +965,7 @@ beat_table
                 fdb     101              ; BEAT_PRE     the oracle spends these wiping
 *                                        ;              the picture in over the splash
                 fdb     760              ; BEAT_HOLD    f1822 - f2582
+                fcb     S_PROLOG        ; BEAT_SONG    its song [MASTER.S:850-852, jmp -- a TAIL CALL, X=250]
 
                 fcb     DISK_PROLOG2_TRK ; BEAT_TRACK   the second prologue picture
                 fcb       0               ; BEAT_WIPE    NO sweep, and no invented duration:
@@ -919,6 +975,7 @@ beat_table
 *                                        ;              here is the PrincessScene
 *                                        ;              cutscene, which is not built
                 fdb     1564             ; BEAT_HOLD    f5753 - f7317
+                fcb     0               ; BEAT_SONG    NO SONG -- the oracle's gap here is the PrincessScene cutscene, not built
 
                 fcb     DISK_SCREEN_TRK ; BEAT_TRACK   RE-ESTABLISH the splash. It is
 *                                       ; not resident anywhere -- P3.4 put the
@@ -933,6 +990,7 @@ beat_table
                 fdb     178             ; BEAT_PRE     f7501 - f7317 = 184, less the
 *                                       ; ~6 frames the title patch takes to draw
                 fdb     310             ; BEAT_HOLD    f7811 - f7501
+                fcb     S_SUMUP         ; BEAT_SONG    its song [MASTER.S:882-884, jmp -- a TAIL CALL, X=250]
 
                 ifdef   OBJTARGET
                 endsection
