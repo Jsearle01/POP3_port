@@ -36,23 +36,36 @@
                 section prog
                 export  chars_frame
                 export  chars_due
+* THE BLITTER BY SYMBOL, NOT BY OFFSET (P3.62). This file is LINKED INTO THE BUNDLE
+* alongside blit_core.o [build.bat: lwlink ... flame_cels.o blit_core.o char_draw.o],
+* so the blitter's addresses are the linker's to resolve and were never this file's to
+* know. It had been calling `jsr [BLIT_TAB]` through a hard-coded FLAME_BASE+40 — the
+* room's mechanism, which the room needs because it is a SEPARATE program that loads
+* the bundle at a fixed address, and which this file copied without needing.
+*
+* That copy is what bit at P3.54: the offset moved +58 -> +40, the room was updated,
+* this file was not, and the build LINKED CLEANLY and BOOTED before jumping into cel
+* data. An import cannot drift — a wrong symbol fails the link, where a wrong literal
+* fails a minute into the first workload.
+                import  blit_cel
+                import  blit_save
+                import  blit_erase
                 endc
 
 FB_STRIDE_4C    equ     80              ; 320 px at 4 px/byte
 
-* WHERE THE BUNDLE LIVES, and it is ONE literal for the whole build (P3.31).
+* THIS FILE NO LONGER KNOWS WHERE THE BUNDLE LIVES, and does not need to (P3.62).
 *
-* It was three: this file, cutscene_room.s, and link/pop_flames.link, all saying $4200
-* independently. Moving the bundle to $3000 needs all three to move together, and the
-* two that are assembled would have moved silently out of step -- the loader would read
-* the image to one address while the code inside it called its own tables at another.
-* build.bat passes -DFLAME_BASE to both sources from one variable, and decb_to_raw
-* refuses an image whose first segment is not exactly at the stated base, which is what
-* ties the link script to the same number. 0x3000, not $3000: lwasm's -D takes a
-* C-style literal and silently defines a $-prefixed value as ZERO (see build.bat).
-                ifndef  FLAME_BASE
-FLAME_BASE      equ     $3000
-                endc
+* It used FLAME_BASE for exactly two things, BLIT_TAB and CHAR_TAB, and both are gone:
+* it is linked INTO the bundle, so the linker resolves what it calls. The declaration
+* went with them rather than being left dead — a dead constant is what CHAR_TAB was, and
+* CHAR_TAB was also wrong.
+*
+* FLAME_BASE itself was never the problem and is still handled properly: build.bat passes
+* -DFLAME_BASE from one variable, and decb_to_raw refuses an image whose first segment is
+* not exactly at the stated base, which ties the link script to the same number. What had
+* two homes was the OFFSETS INTO it, and now only cutscene_room.s declares those, because
+* only cutscene_room.s is a separate program that has to reach in from outside.
 
 * ---------------------------------------------------------------
 * PIECE D — THE CHARACTER DRAW, exercised by HARDCODED position.
@@ -105,18 +118,23 @@ PRI_PEEL        equ     43*8            ; 344 B — widest princess cel (7)
 * arrived. link/pop_flames.link already documents the rule ("a LOADM'd engine must
 * stay under $25FF"); this is the same wall, hit from the other side.
 *
-* The cels ride the flame track (char_tab at FLAME_BASE+54). The peel buffers are
-* just scratch RAM and need no load at all, so they are fixed addresses in the
-* free space above the blob.
-CHAR_TAB        equ     FLAME_BASE+54
-* ★ SECOND HOME, AND IT BIT (P3.54). cutscene_room.s declares this same offset
-* independently, and P3.54 moved the table from +58 to +40 by retiring flame_cels.s's
-* third dispatch table. Updating the room's copy alone LINKED CLEANLY and booted: the
-* room came up, the VM stepped, and then the character draw jumped through $303A -- which
-* is now cel DATA -- and hung with probe_frames stuck at 0. Nothing said the two had
-* drifted, because nothing compares them (P3.31: one home per fact; this is the hazard
-* named, not a new one). If the bundle's table layout moves again, BOTH must move.
-BLIT_TAB        equ     FLAME_BASE+40   ; blit_cel / blit_save / blit_erase
+* The cels ride the flame track. The peel buffers are just scratch RAM and need no load
+* at all, so they are fixed addresses in the free space above the blob.
+*
+* ★ THE TWO BUNDLE OFFSETS THAT LIVED HERE ARE GONE (P3.62), and the fact they encoded
+* now has exactly one home, in cutscene_room.s, which is the only file that legitimately
+* needs it — the room is a SEPARATE program that loads the bundle at a fixed address and
+* must reach into it by arithmetic. This file is INSIDE the bundle and can just import.
+*
+*   BLIT_TAB equ FLAME_BASE+40  -> import blit_cel / blit_save / blit_erase (see §OBJTARGET)
+*   CHAR_TAB equ FLAME_BASE+54  -> deleted; it had NO USE SITE ANYWHERE, and it was also
+*                                  WRONG: chars_tab links at $302E, i.e. +46, so this had
+*                                  been stale by 8 bytes since P3.54 and was waiting for
+*                                  the first caller to jump into the middle of a pointer.
+*
+* That is the P3.54 failure with the fuse still in it — the same +58 -> +40 move that
+* linked cleanly, booted, read the disk twice, stepped the VM, and only then jumped
+* through $303A into cel data. A dead constant is not a harmless one when it is wrong.
 * MOVED at P3.25: the peel buffers were at $5200, which is inside the two-track
 * bundle's new extent ($4200..$65FF). $6C00 is clear of the bundle, of the disk
 * parameter block at $6A00, and of the trace ring at $7800.
@@ -516,7 +534,7 @@ co_erase
                 ldy     ch_peel
                 lda     ch_h
                 ldb     ch_w
-                jsr     [BLIT_TAB+4]            ; blit_erase (preserves X,Y,U)
+                jsr     blit_erase              ; preserves X,Y,U
                 rts
 * THE DIMENSIONS NO LONGER HAVE TO BE PUT BACK HERE, because the save is a separate
 * pass and re-resolves them from the variant on entry. When the erase and the save ran
@@ -534,7 +552,7 @@ co_save
                 ldy     ch_peel
                 lda     ch_h
                 ldb     ch_w
-                jsr     [BLIT_TAB+2]            ; blit_save
+                jsr     blit_save
                 ldy     #ch_last
                 lda     ch_lastoff
                 ldb     ch_tx
@@ -562,7 +580,7 @@ co_draw
                 jsr     co_setup
                 ldu     ch_cel                  ; the variant char_one resolved
                 ldx     ch_dest
-                jsr     [BLIT_TAB]              ; blit_cel — clobbers X and Y
+                jsr     blit_cel                ; clobbers X and Y
                 jsr     co_clip
 * DID THIS CHARACTER LAND ON THE PILLAR? Recorded, not acted on: the foreground must go
 * down after EVERY character, not after each one, or the second character would draw

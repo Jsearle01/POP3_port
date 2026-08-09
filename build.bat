@@ -173,7 +173,10 @@ REM OUTPUT and not merely on its existence: lz_pack emits build/obj/flame_load.i
 REM which tells cutscene_room.s where the packed blob has to be read to. That address
 REM is `FLAME_BASE + window - blob` and steps by a whole track when the bundle grows,
 REM so it is generated rather than written down. Build order is the dependency.
-lwasm --obj -DOBJTARGET -DFLAME_BASE=%FLAME_BASE% -I . -o build/obj/char_draw.o src/engine/char_draw.s
+REM char_draw.s NO LONGER TAKES -DFLAME_BASE (P3.62): it is linked into the bundle
+REM alongside blit_core.o below, so it imports blit_cel/blit_save/blit_erase instead of
+REM calling them through a hard-coded offset. Only cutscene_room.s needs the base now.
+lwasm --obj -DOBJTARGET -I . -o build/obj/char_draw.o src/engine/char_draw.s
 if errorlevel 1 goto :error
 lwasm --obj -DOBJTARGET -I . -o build/obj/blit_core.o src/engine/blit_core.s
 if errorlevel 1 goto :error
@@ -198,6 +201,16 @@ for %%N in (1 2 3 4 5 6 7 8 9) do (
 lwasm --obj -DOBJTARGET -I . -o build/obj/flame_cels.o src/engine/flame_cels.s
 if errorlevel 1 goto :error
 lwlink --decb --script=link/pop_flames.link --map=build/obj/flames.map -o build/flame_cels.bin build/obj/flame_cels.o build/obj/blit_core.o build/obj/char_draw.o
+if errorlevel 1 goto :error
+REM ★ THE CHECK THAT WAS MISSING AT P3.54 (P3.62). cutscene_room.s is a SEPARATE image and
+REM must reach into this bundle by arithmetic (BLIT_TAB equ FLAME_BASE+40), so its numbers
+REM and the linker's layout are two independent assertions of one fact with nothing
+REM comparing them. When they drifted, the build linked cleanly, the room booted, the disk
+REM read twice and the VM stepped before it jumped into cel data -- so neither a green
+REM link nor a good boot is evidence here. This compares the room's `equ`s against the map
+REM and fails the build on any divergence. It must run AFTER the flames link (it reads the
+REM map) and BEFORE the room is assembled against those same constants.
+python harness/tools/bundle_offsets_check.py --room src/engine/cutscene_room.s --map build/obj/flames.map
 if errorlevel 1 goto :error
 REM --base must equal the link script's load address EXACTLY; decb_to_raw fails the
 REM build if the two have drifted, which is the only check that can see that pair.

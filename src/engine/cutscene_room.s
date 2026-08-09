@@ -103,24 +103,31 @@ DISK_ROOM_SEC   equ     ROOM_TRACKS*SECS_PER_TRACK
 * The cutscene bundle moved to $4200 and grew to TWO tracks at P3.25. It could not
 * grow in place: two tracks from $0A00 reach $2E00 and this program starts at $2000,
 * so the bundle would have loaded over the engine. See link/pop_flames.link.
-* P3.31: $4200 -> $3000, and the base is now ONE literal for the whole build, passed
-* as -DFLAME_BASE by build.bat to this file and to char_draw.s together. It was three
-* independent copies of $4200; see char_draw.s for what moving one without the others
-* does. FLAME_BASE_TAB was a second name for the same address in this file alone.
+* P3.31: $4200 -> $3000, and the base is ONE literal for the whole build, passed as
+* -DFLAME_BASE by build.bat. P3.62: it now goes to THIS FILE ONLY. char_draw.s used to
+* take it too and declare its own copies of the offsets below; it is linked inside the
+* bundle, so it imports blit_cel/blit_save/blit_erase instead and no longer knows or
+* needs the base. FLAME_BASE_TAB, a second name for the same address in this file alone,
+* is retired with it.
                 ifndef  FLAME_BASE
 FLAME_BASE      equ     $3000
                 endc
-FLAME_BASE_TAB  equ     FLAME_BASE
-* ★ THESE TRACK flame_cels.s'S DECLARATION ORDER AND MUST MOVE WITH IT. P3.54 retired
-* the third compiled table (flame_erase, 18 B) -- a segment stream needs no per-cel erase
-* routine -- and everything after it shifted up by 18: blit_tab +58 -> +40, chars_tab
-* +64 -> +46. The build LINKED CLEANLY with the old values and would have jumped into the
-* middle of a cel table at run time. Verified by symbol after every change:
-*   blit_tab  $3028 = FLAME_BASE+40      chars_tab $302E = FLAME_BASE+46
-* This is a second home for flame_cels.s's layout (P3.31) and the only thing keeping the
-* two honest is that a mismatch takes the room down instantly rather than subtly.
-BLIT_TAB        equ     FLAME_BASE_TAB+40       ; blit_cel / blit_save / blit_erase
-CHARS_TAB       equ     FLAME_BASE_TAB+46       ; chars_frame (piece D), +2 = chars_due
+* ★ THE ONLY HOME FOR THE BUNDLE'S LAYOUT (P3.62), and it is here because this program is
+* SEPARATE from the bundle: the room is LOADM'd to $2000 and reads the bundle to $3000 at
+* run time, so it must reach in by arithmetic. Everything else that needs the blitter is
+* linked with it and uses symbols.
+*
+* THESE TRACK flame_cels.s'S DECLARATION ORDER AND MUST MOVE WITH IT. P3.54 retired the
+* third compiled table (flame_erase, 18 B) and everything after it shifted up by 18:
+* blit_tab +58 -> +40, chars_tab +64 -> +46. The build LINKED CLEANLY with the old values,
+* booted, read the disk twice, stepped the VM, and only then jumped into cel data.
+*
+* SO IT IS NO LONGER TRUSTED TO A COMMENT. build.bat runs bundle_offsets_check.py after
+* the flames link: it reads these `equ`s out of this file, reads blit_tab/chars_tab out of
+* build/obj/flames.map, and FAILS THE BUILD if they disagree. A clean link and a good boot
+* were never the check — both passed while these were wrong.
+BLIT_TAB        equ     FLAME_BASE+40           ; blit_cel / blit_save / blit_erase
+CHARS_TAB       equ     FLAME_BASE+46           ; chars_frame (piece D), +2 = chars_due
 
 ROOM_BLOB       equ     $3000
 
