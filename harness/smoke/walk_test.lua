@@ -107,8 +107,13 @@ local state, t0, started, loaded = "boot", nil, nil, nil
 local shot_n, next_shot, first_fn = 0, nil, nil
 local occ, prev_cel, last_change, gaps, steps = {}, nil, nil, {}, 0
 local xs = {}
+local bank_bad = 0        -- captures at which the $C000 cel bank was NOT mapped
 
 local function finish(reason)
+    -- THE BANK GUARD FIRST, because everything below it is meaningless if the window
+    -- was not showing the cels. This is the assertion P3.69 needed and did not have.
+    log(string.format("# bank_mapped_at_every_capture %s (%d of %d captures unmapped)",
+                      bank_bad == 0 and "PASS" or "FAIL", bank_bad, shot_n))
     log("# --- PHASE OCCUPANCY, measured on the running machine ---")
     local cels = {}
     for c in pairs(occ) do cels[#cels + 1] = c end
@@ -194,8 +199,24 @@ local function tick()
     if fn >= next_shot and shot_n < SHOTS then
         shot_n = shot_n + 1
         local tag = string.format("%02d", shot_n)
+        -- THE BANK, SAMPLED AT THE CAPTURE FRAME AND AGAIN AFTER THE CAPTURE (P3.71).
+        --
+        -- P3.69 checked the mapping on a schedule unrelated to the captures and read it
+        -- as sound; P3.70 showed that could not be evidence, because the capture path is
+        -- itself an MMU writer and a probe that never lands on the perturbed window
+        -- cannot see it. So the sample is taken HERE, at the one moment that was blind,
+        -- and again on the far side of dump_front -- which is where the old four-register
+        -- restore did its damage. $C000/$C001 are the image's own WALK_LO/WALK_N; $FF
+        -- means the window is showing the framebuffer's unwritten reserved tail instead.
+        local pre_lo, pre_n = rd8(0xC000), rd8(0xC001)
         log_positions(tag)
         local ok = dump_front(string.format(SHOTFMT, tag))
+        local post_lo, post_n = rd8(0xC000), rd8(0xC001)
+        if pre_lo ~= 11 or pre_n ~= 46 or post_lo ~= 11 or post_n ~= 46 then
+            bank_bad = bank_bad + 1
+            log(string.format("#   BANK UNMAPPED at capture %s: before %d/%d after %d/%d"
+                              .. " (want 11/46)", tag, pre_lo, pre_n, post_lo, post_n))
+        end
         log(string.format("# capture %s at frame %d (+%d): %s",
                           tag, fn, fn - first_fn, ok and "ok" or "WRITE FAILED"))
         next_shot = fn + GAP
