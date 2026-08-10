@@ -75,6 +75,32 @@ DISK_ROOM_TRK   equ     29              ; clear of the intro's spans and the dir
 ROOM_TRACKS     equ     1
 DISK_ROOM_SEC   equ     ROOM_TRACKS*SECS_PER_TRACK
 
+* ---------------------------------------------------------------
+* THE CEL BANK (P3.71) — 16 KB of GIME RAM mapped where 4-colour leaves a hole.
+*
+* The scene's cel pixels are their own link unit at $C000 (link/pop_cels.link), read off
+* disk into two GIME blocks mapped at CPU $C000-$FFFF through $FFA6/$FFA7. char_draw.s
+* indexes them there and reads the image's own first two bytes for its bounds.
+*
+* WHY $C000 IS FREE. The draw window is $8000-$FFFF (gfx.s GFX_DB_WINDOW, four registers
+* $FFA4-$FFA7), but a 4-colour framebuffer is only 15,360 B and reaches $BBFF. The upper
+* half of the window is the reserved tail of a 32 KB-per-buffer allocation that this mode
+* never uses. In 16-colour it would not be free — a 30,720 B framebuffer needs all four
+* blocks, which is the same fact HAL_gfx_mirror's guard tests before borrowing $C000.
+*
+* WHY BLOCKS $0E/$0F AND NOT $3E/$3F. The GIME masks a block number to the RAM actually
+* installed, so on 128 KB only $00-$0F exist and everything aliases mod 16. $0E/$0F alias
+* to themselves there, and on 512 KB they sit below both framebuffers ($10-$17) and below
+* the default CPU map ($38-$3F). The same two numbers are therefore free in BOTH sizes —
+* where $3E/$3F would be the CPU's own map at 512 KB. This is the P3.10 lesson that put
+* buffer B at $14 instead of $18, applied one register along.
+CEL_BASE        equ     $C000
+CEL_MMU         equ     $FFA6           ; the register covering $C000-$DFFF
+CEL_BLOCK       equ     $0E             ; and $0F at $FFA7 — free at 128 KB and 512 KB
+DISK_CEL_TRK    equ     11              ; the span packing freed; build.bat CEL_TRACK
+CEL_TRACKS      equ     2
+DISK_CEL_SEC    equ     CEL_TRACKS*SECS_PER_TRACK
+
 * WHERE THE PACKED BLOB LIVES, and it is main RAM rather than the draw window.
 *
 * It used to load high in the window (offset 32256-4608) and expand down over itself,
@@ -188,7 +214,7 @@ room_start
                 lda     #DISK_ROOM_TRK
                 ldb     #DISK_ROOM_SEC
                 jsr     load_tracks
-                bne     room_failed
+                lbne    room_failed             ; LONG: the cel read below moved the target
 
 * THE BUNDLE ARRIVES PACKED, AND IT LANDS ABOVE WHERE IT WILL LIVE.
 *
@@ -201,7 +227,7 @@ room_start
                 lda     #DISK_FLAME_TRK
                 ldb     #DISK_FLAME_SEC
                 jsr     load_tracks
-                bne     room_failed
+                lbne    room_failed             ; LONG: the cel read below moved the target
 
                 ldx     HAL_gfx_draw_base       ; X -> the picture
                 ldu     #ROOM_BLOB              ; U -> the blob, in main RAM
@@ -219,7 +245,25 @@ room_start
                 bcs     room_mirror_slow        ; 16-colour would refuse; this is not
 
                 jsr     bundle_expand           ; the blob is spent — expand over it
-                jsr     HAL_gfx_swap            ; the room appears, ready to animate
+
+* THE CEL IMAGE, AND IT MUST BE READ AFTER THE MIRROR, NOT BEFORE.
+*
+* HAL_gfx_mirror borrows $FFA6/$FFA7 for the FRONT buffer and copies 15,360 B into
+* $C000..$FBFF — straight through the window this bank occupies. Reading the cels first
+* would put them exactly where the mirror is about to write. Here the copy is finished,
+* nothing else wants $C000, and the read lands in the bank and stays there.
+*
+* This is the THIRD disk read of the scene (room blob, flame bundle, cels) and it is
+* still before the first swap, so it costs the viewer nothing: the screen is black until
+* the swap below. room_test's disk_reads_ok counts these.
+                jsr     cel_bank_map
+                ldx     #CEL_BASE
+                lda     #DISK_CEL_TRK
+                ldb     #DISK_CEL_SEC
+                jsr     load_tracks
+                lbne    room_failed
+
+                jsr     room_present            ; the room appears, ready to animate
 
 * AND AGAIN INTO THE OTHER BUFFER. The flames are drawn per frame and the page is
 * flipped per frame, so BOTH buffers have to hold the room -- otherwise every other
@@ -235,7 +279,7 @@ room_start
 * second buffer still has to be filled, and expanding the blob again is exactly how
 * this worked before. The scene stays correct; it just costs the 15 frames back.
 room_mirror_slow
-                jsr     HAL_gfx_swap
+                jsr     room_present
                 ldx     HAL_gfx_draw_base
                 ldu     #ROOM_BLOB
                 jsr     lz_unpack
@@ -354,7 +398,7 @@ rl_draw
                 anda    #1
                 ldx     HAL_gfx_draw_base
                 jsr     [CHARS_TAB]             ; chars_frame, in the bundle
-                jsr     HAL_gfx_swap            ; waits for VBL, THEN moves VOFFSET
+                jsr     room_present            ; waits for VBL, moves VOFFSET, re-maps
 * The probes must name what is DISPLAYED, not what was last drawn. flicker draws into
 * the back buffer; only the swap makes it the front. Publishing the cel numbers here
 * -- after the swap -- is what makes them describe the buffer the test actually reads.
@@ -777,6 +821,49 @@ bundle_expand
 * file learned the hard way: the FDC must run at NORMAL speed (double speed breaks
 * it), and the drive must be RELEASED afterwards or it spins forever.
 * ---------------------------------------------------------------
+* ---------------------------------------------------------------
+* cel_bank_map — bring the cel bank into the window at $C000.
+*
+* Two MMU writes under one interrupt mask. The mask is not ceremony: between the first
+* write and the second the window is half bank and half framebuffer tail, and anything
+* that ran in that gap would see a map that describes nothing. gfx_map_blocks documents
+* the same hazard for its own four writes.
+*
+* Clobbers A only. Safe to call with the bank already mapped.
+* ---------------------------------------------------------------
+cel_bank_map
+                pshs    cc
+                orcc    #$50
+                lda     #CEL_BLOCK
+                sta     CEL_MMU                 ; $FFA6 -> $C000-$DFFF
+                inca
+                sta     CEL_MMU+1               ; $FFA7 -> $E000-$FFFF
+                puls    cc
+                rts
+
+* ---------------------------------------------------------------
+* room_present — swap the buffers, then put the cel bank back.
+*
+* ★ THE MAP CANNOT HAPPEN ONCE, and P3.68 established that as a measured hard stop
+* rather than a preference: HAL_gfx_swap ends by calling gfx_map_blocks, which writes
+* ALL FOUR window registers unconditionally to bring the new back buffer in. $FFA6 and
+* $FFA7 are two of those four, so every flip destroys the bank mapping. There is no
+* "map it at startup" version of this design.
+*
+* SO THE RE-MAP IS A PROPERTY OF ONE ROUTINE RATHER THAN A RULE EVERY CALL SITE HAS TO
+* REMEMBER. That is the whole reason this wrapper exists: three call sites flip the
+* buffers, and a rule of the form "always re-map after a swap" is the kind that holds
+* until someone adds a fourth. Nothing in this file may call HAL_gfx_swap directly while
+* the bank is live — call this instead.
+*
+* Preserves nothing HAL_gfx_swap does not already clobber; cel_bank_map touches only A,
+* which HAL_gfx_swap has already spent.
+* ---------------------------------------------------------------
+room_present
+                jsr     HAL_gfx_swap
+                jsr     cel_bank_map
+                rts
+
 load_tracks
                 pshs    cc
                 orcc    #$50

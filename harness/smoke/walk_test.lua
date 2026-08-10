@@ -50,8 +50,17 @@ local f = io.open(OUT, "w")
 local function log(s) if f then f:write(s .. "\n"); f:flush() end end
 local function rd8(a) return mem:read_u8(a) end
 
+-- TWO REGISTERS, NOT FOUR (P3.71). This wrote $FFA4-$FFA7 and restored all four to the
+-- back buffer's blocks -- a restore scheme that predates the $C000 cel bank and does not
+-- know it exists. Every capture therefore silently UN-MAPPED the bank, and the engine's
+-- next chars_frame read WALK_LO/WALK_N out of the framebuffer's unwritten reserved tail
+-- ($FF), which is how a checker came to cause the failure it was measuring.
+--
+-- The read below covers $8000..$BBFF = 15,360 B, which lies entirely within $FFA4
+-- ($8000-$9FFF) and $FFA5 ($A000-$BFFF). $FFA6/$FFA7 were never needed for it. Touching
+-- only what the read requires is what makes this instrument passive.
 local function map_blocks(first)
-    for i = 0, 3 do mem:write_u8(0xFFA4 + i, first + i) end
+    for i = 0, 1 do mem:write_u8(0xFFA4 + i, first + i) end
 end
 
 local function dump_front(path)

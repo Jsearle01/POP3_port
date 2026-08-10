@@ -101,8 +101,11 @@ local function check(name, ok, detail)
     log(string.format("%-28s %s %s", name, ok and "PASS" or "FAIL", detail or ""))
 end
 
+-- TWO REGISTERS, NOT FOUR (P3.71) — see the same note in walk_test.lua. Writing all
+-- four un-mapped the $C000 cel bank on every capture; the 15,360 B read at $8000..$BBFF
+-- only ever needed $FFA4 and $FFA5.
 local function map_blocks(first)
-    for i = 0, 3 do mem:write_u8(0xFFA4 + i, first + i) end
+    for i = 0, 1 do mem:write_u8(0xFFA4 + i, first + i) end
 end
 
 -- P_DUMP_BACK captures the DRAWN buffer rather than the displayed one. It exists for
@@ -289,8 +292,14 @@ local function tick()
         -- already on screen. The blob now lives in main RAM and expands twice from
         -- there, so this count is the assertion that the delay has not crept back:
         -- a regression to 3 is exactly the visible pause returning.
-        check("disk_reads_ok", rd8(ENGINE + 4) == 2,
-              string.format("loads=%d (want 2: room + flame bundle), status $%02X",
+        -- THREE READS FROM P3.71, not two: room blob, flame bundle, and the cel image
+        -- into the $C000 bank. This is re-KEYED rather than relaxed -- the count is a
+        -- real assertion, because a read that silently does not happen is a black scene
+        -- or a screen of garbage cels, and `>= 2` would pass for both. It is also the
+        -- P3.50 shape from the safe side: a guard keyed to the expected-good value,
+        -- where the good value legitimately moved and the guard correctly fired.
+        check("disk_reads_ok", rd8(ENGINE + 4) == 3,
+              string.format("loads=%d (want 3: room + flame bundle + cel image), status $%02X",
                             rd8(ENGINE + 4), rd8(ENGINE + 5)))
         -- The GIME's VRES register is write-only: reading $FF99 returns bus noise,
         -- not what was written ($1B came back for a register set to $15). Check the

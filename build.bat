@@ -116,6 +116,13 @@ REM value as ZERO, with no warning (see the DR_VARBASE note below).
 REM ======================================================================
 set DR_VARBASE=0x6A00
 set FLAME_BASE=0x3000
+REM CEL_BASE is the third address of this kind (P3.71): where the cel image is linked,
+REM where cutscene_room.s maps the bank, and what char_draw.s's CEL_BASE equ names. Same
+REM 0x-not-$ rule as the two above -- and link/pop_cels.link needs it a THIRD way, as
+REM bare `C000`, because lwlink's script parser takes neither prefix.
+set CEL_BASE=0xC000
+REM Whole tracks, on the free span packing opened up (tracks 11-15 and 20-24 are unused).
+set CEL_TRACK=11
 REM The window the bundle is expanded inside: FLAME_BASE up to (not into) the disk
 REM driver's parameter block. Loading through DR_VARBASE while the driver is using it
 REM is what hung the room in P3.30, and it hung silently -- a read that lands on a live
@@ -176,7 +183,10 @@ REM so it is generated rather than written down. Build order is the dependency.
 REM char_draw.s NO LONGER TAKES -DFLAME_BASE (P3.62): it is linked into the bundle
 REM alongside blit_core.o below, so it imports blit_cel/blit_save/blit_erase instead of
 REM calling them through a hard-coded offset. Only cutscene_room.s needs the base now.
-lwasm --obj -DOBJTARGET -I . -o build/obj/char_draw.o src/engine/char_draw.s
+REM %SEEDFLAG% is normally EMPTY. It exists so a deliberately-seeded fault can be built
+REM without editing this file (P3.71 §2 — a probe's silence counts only once it has been
+REM shown to detect a seeded failure). Set it in the environment, never here.
+lwasm --obj -DOBJTARGET %SEEDFLAG% -I . -o build/obj/char_draw.o src/engine/char_draw.s
 if errorlevel 1 goto :error
 lwasm --obj -DOBJTARGET -I . -o build/obj/blit_core.o src/engine/blit_core.s
 if errorlevel 1 goto :error
@@ -225,6 +235,24 @@ REM memory-to-memory, which has no track granularity at all.
 python harness/tools/lz_pack.py build/assets/flames.raw --out-dir build/assets ^
        --window-cap %FLAME_WINDOW% --dest-base %FLAME_BASE% --emit-inc build/obj/flame_load.inc
 if errorlevel 1 goto :error
+
+echo --- Assemble: the CEL IMAGE, its own unit at $C000 (P3.71) ---
+REM The scene's cel pixels and their [cel][facing][phase] table, linked SEPARATELY from
+REM the bundle and read off disk into a GIME bank mapped at CPU $C000. See
+REM link/pop_cels.link for why $C000, and why the load address is bare hex there.
+REM
+REM UNPACKED, DELIBERATELY, unlike the flame bundle one step above. The bundle is packed
+REM because it must land in the 14,848 B between FLAME_BASE and the disk parameter block
+REM and no whole-track count fits it. This has no such neighbour: it is read straight
+REM into a bank whose 16,384 B belong to nothing else, so whole tracks are free and an
+REM expand step would only add a copy and a second failure mode.
+lwasm --obj -DOBJTARGET -I . -o build/obj/cel_image.o content/cutscene/chars/cel_image.s
+if errorlevel 1 goto :error
+lwlink --decb --script=link/pop_cels.link --map=build/obj/cels.map -o build/cel_image.bin build/obj/cel_image.o
+if errorlevel 1 goto :error
+python harness/tools/decb_to_raw.py --bin build/cel_image.bin --out build/assets/cel_image.raw --base %CEL_BASE%
+if errorlevel 1 goto :error
+call :size build/assets/cel_image.raw
 
 echo --- Assemble: P3.17 princess room (4-colour, static) ---
 
@@ -357,6 +385,12 @@ if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/princess_room.lz --track 29 --tracks 1 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/flames.lz --track 30 --tracks 2 --reserve --imgtool "%IMGTOOL%"
+if errorlevel 1 goto :error
+REM The cel image, onto the span packing opened up. Two whole tracks is 9,216 B against
+REM an image of ~7.6 KB; the room reads whole tracks, so the count is the ceiling, not
+REM the size. Update CEL_TRACKS in cutscene_room.s if this changes -- decb_to_raw and
+REM the room's own sector count are the two places that have to agree.
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/cel_image.raw --track %CEL_TRACK% --tracks 2 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 
 "%IMGTOOL%" dir coco_dmk_rsdos build\probe.dmk

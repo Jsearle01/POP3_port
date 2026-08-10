@@ -145,6 +145,28 @@ VIZ_PEEL_BASE   equ     $6C00
 PRI_PEEL_BASE   equ     $6C00+VIZ_PEEL*2
 
 * ---------------------------------------------------------------
+* THE CEL IMAGE, AND WHY ITS ADDRESS IS A LITERAL HERE (P3.71).
+*
+* The scene's cel PIXELS no longer live in this bundle. They are their own link unit
+* (content/cutscene/chars/cel_image.s, link/pop_cels.link), read off disk into a GIME
+* bank that cutscene_room.s maps at CPU $C000 through $FFA6/$FFA7. The bundle had
+* reached 11,921 B against a 14,848 B window with five beats still to add, and the cels
+* are the half of it that never executes -- so they are the half that can live behind a
+* window register.
+*
+* THIS IS NOT A DUPLICATED CONSTANT, and the distinction matters because "one home per
+* fact" would otherwise forbid it. $C000 is not a fact this file shares with the linker:
+* it is the address of a DIFFERENT link unit, which lwlink resolves separately and whose
+* symbols are unreachable from here by construction. What would be a duplicate is the
+* image's SHAPE -- how many cels, starting at which -- and that is exactly why the image
+* carries WALK_LO/WALK_N as its own first two bytes and this file READS them rather than
+* assembling a second copy. A duplicated layout constant is what CHAR_TAB was.
+CEL_BASE        equ     $C000           ; where cutscene_room maps the bank
+CEL_WALK_LO     equ     CEL_BASE        ; first cel number the image covers
+CEL_WALK_N      equ     CEL_BASE+1      ; how many cels it covers
+CEL_WALK_TAB    equ     CEL_BASE+2      ; [cel][facing][phase] -> cel data
+
+* ---------------------------------------------------------------
 * PIECE D — THE CHARACTER DRAW, and the seed of the VM's character slots.
 *
 * Still exercised by HARDCODED state: nothing here reads sequence data. But the
@@ -492,6 +514,21 @@ char_one
 * whichever variant vm_resolve happened to store and erase the other one's footprint
 * short by a column: the P3.25 stride bug, one level down.
                 jsr     co_variant              ; U = the phase-correct baked cel
+* AND IF THERE IS NO CEL, DRAW NOTHING (P3.71).
+*
+* co_variant's own comment states the contract this enforces: a 0 in the table means the
+* walk never puts this cel on this phase, and the fallback exists so the code never
+* "blits from address 0". That held while CH_PTR was seeded with a link-time cel label.
+* The cels now live in the $C000 image, the seeds are 0, and BOTH arms of co_variant can
+* therefore return 0 -- at which point co_dims reads a header out of the 6809 vector area
+* and blit_cel walks whatever it finds. That is the wild-blit failure the fallback was
+* written to prevent, re-opened from the other side.
+*
+* Skipping leaves the slot showing what it had, which is the SAME degradation img_map's
+* header already names as acceptable: "visible as a stall, not as a crash". The pixel
+* check reports a stalled character as wrong bytes, so it stays loud.
+                cmpu    #0
+                beq     cp_none                 ; no cel: stall the slot, draw nothing
                 stu     ch_cel
                 jsr     co_dims
                 bsr     ch_index
@@ -650,9 +687,9 @@ cd_nofore
 co_variant
                 ldx     ch_rec
                 lda     CH_CEL,x
-                suba    #WALK_LO
+                suba    CEL_WALK_LO             ; the IMAGE's own first two bytes,
                 bcs     cv_plain                ; below the walk's range
-                cmpa    #WALK_N
+                cmpa    CEL_WALK_N              ; read at run time (P3.71)
                 bhs     cv_plain                ; above it
 * EIGHT SLOTS PER CEL NOW, NOT FOUR (P3.65, piece G): two facings x four phases. The
 * oracle mirrors at DRAW time — OPACITY bit 7 sends LAY to MLAY [HIRES.S:655] — and the
@@ -696,7 +733,7 @@ cv_lface
                 addd    cv_ix
                 lslb
                 rola                            ; D = index * 2, unsigned in 16 bits
-                ldx     #walk_tab
+                ldx     #CEL_WALK_TAB
                 ldu     d,x
                 cmpu    #0
                 bne     cv_done
@@ -981,16 +1018,25 @@ vm_due          fdb     0               ; the frame this step is due to fire on
 * where the oracle's own FCharX for that cel is 279, so it had the wrong colour parity
 * baked in and has been re-derived. pstand's source column (125) was already right; only
 * its shift was wrong (phase 0, needs 1).
+* REDUCED TO ONE ENTRY AT P3.71, and the reason is measured rather than tidy. The four
+* walk entries (25 -> p11_p1, 80/81/82 -> v54/55/56_p1) named cels that now live in the
+* $C000 image, which this link unit cannot resolve. They could not simply be re-pointed,
+* so the question was what they were FOR:
+*
+*   CH_PTR -- consulted only by co_variant's cv_plain fallback, which cannot fire for a
+*             cel the bank table covers, and the bank table covers every one of them.
+*   CH_H/CH_W -- written here and READ BY NOTHING. Measured, not assumed: building with
+*             -DSEED_BADHDR=52 forces both to $FF for the vizier's cel 52 and the walk
+*             suite stays byte-exact across all 28 captures (seed verified present by
+*             symbol, vr_done $3B9B -> vr_noseed $3BA7). blit_cel takes its own rows and
+*             width from the cel header at blit_core.s:82-84; the record's copy is an
+*             unused declaration with a live-looking name.
+*
+* So the entries had no live consumer once the cels moved, and removing them is the
+* whole of the change. pslump stays because it is a bundle-resident cel and genuinely
+* resolves here.
 img_map         fcb     10
                 fdb     pslump
-                fcb     25
-                fdb     p11_p1
-                fcb     80
-                fdb     v54_p1
-                fcb     81
-                fdb     v55_p1
-                fcb     82
-                fdb     v56_p1
                 fcb     0               ; terminator
 
 vm_seq          fdb     0,0             ; sequence pointer per character
@@ -1058,6 +1104,30 @@ vr_found
                 lda     1,x
                 sta     CH_W,u
 vr_done
+* ===============================================================
+* SEEDED FAULT — P3.71 §2, the positive control. Guarded by -DSEED_BADHDR and absent
+* from every normal build. It forges exactly the failure a $C000 re-base can cause:
+* CH_H/CH_W read from an address the cel no longer occupies, i.e. two bytes of
+* whatever-is-there instead of the header. blit_cel reads its OWN rows/width from the
+* cel (blit_core.s:82-84), so this cannot corrupt the DRAW -- it corrupts the PEEL, and
+* blit_erase writes the peel back INTO the framebuffer. If the observed damage is a
+* runaway erase, this reproduces its shape; if it is not, this rules the shape out.
+* The cel number is the discriminator P3.70 measured: capture 05 is cel 52's first draw.
+*
+* IT SITS AFTER vr_done DELIBERATELY. Placed inside the vr_found arm it never fired,
+* because cel 52's image index is NOT in img_map at all -- vr_find falls out at its
+* terminator and leaves the record's h/w alone. That is a measurement, not a mishap:
+* img_map is not the path a $C000 re-base could strand for this cel.
+                ifdef   SEED_BADHDR
+                lda     CH_CEL,u
+                cmpa    #SEED_BADHDR
+                bne     vr_noseed
+                lda     #$FF
+                sta     CH_H,u
+                sta     CH_W,u
+vr_noseed
+                endc
+* ===============================================================
                 puls    u
                 rts
 
@@ -1410,21 +1480,23 @@ viz_stand       fcb     54,SEQ_GOTO
 
 * --- the walk: 6 cels x 2 sub-byte phases, and the table that picks between
 * --- them. Both generated by harness/tools/bake_walk.py from one derivation.
-                include "content/cutscene/chars/walk_baked.s"
+* --- the SCRIPTS only. The cel pixels and the [cel][facing][phase] table went to
+* --- content/cutscene/chars/cel_image.s, linked at $C000 and read off disk (P3.71).
+                include "content/cutscene/chars/walk_scripts.s"
 
 * --- the two slots, initialised from the oracle's own start positions ----
 * startV0 CharX=197, startP0 CharX=120, both CharFace=-1, floorY=151
 * [SUBS.S:1131,1147,1040]. These remain the authority for where they stand.
 viz_slot        fcb     197,151,-1,54           ; x, y, face, cel id (chtab6.A #54)
                 fcb     48,5                    ; h, w
-                fdb     v54_p1                  ; resolved at link time now
+                fdb     0                       ; CH_PTR: the cel is in the $C000 image
                 fdb     VIZ_PEEL_BASE
                 fcb     0                       ; Fdx — the VM writes this per cel
                 fdb     VIZ_PEEL                ; slot stride: widest vizier cel
                 fcb     1                       ; parity of cel 54 (Fcheck $80, ODD)
 pri_slot        fcb     120,151,-1,25           ; x, y, face, cel id (chtab6.A #25)
                 fcb     43,5
-                fdb     p11_p1
+                fdb     0                       ; CH_PTR: the cel is in the $C000 image
                 fdb     PRI_PEEL_BASE
                 fcb     0                       ; Fdx
                 fdb     PRI_PEEL                ; slot stride: widest princess cel
