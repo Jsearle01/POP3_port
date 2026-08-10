@@ -33,10 +33,16 @@ rm -f "$OUT"
 # scheduled for one fixed frame simply never fired.
 {
     cat harness/tools/block_budget.lua
+    cat harness/tools/bank_proof.lua
     cat harness/smoke/room_test.lua
     echo '_G._mmu_n = emu.add_machine_frame_notifier(function()'
     echo '  local s = manager.machine.screens:at(1):frame_number()'
-    echo '  if s > 1600 and s % 60 == 0 then _G._mmu_report(os.getenv("P_BUDGET_OUT")) end'
+    echo '  local up = manager.machine.devices[":maincpu"].spaces["program"]:read_u8(0x2003) >= 2'
+    echo '  if up and s > 1560 then _G._bank_write() end'
+    echo '  if s > 1700 and s % 60 == 0 then'
+    echo '    _G._mmu_report(os.getenv("P_BUDGET_OUT"))'
+    echo '    _G._bank_verify(os.getenv("P_BANK_OUT"), up)'
+    echo '  end'
     echo 'end)'
 } > "$SCRATCH/room_mmu.lua"
 
@@ -58,6 +64,8 @@ export P_DUMP="build/block_budget_front.bin"
 export P_DUMP2="build/block_budget_front2.bin"
 export P_DUMP_BACK=0
 export P_BUDGET_OUT="$OUT"
+export P_BANK_OUT="build/bank_proof.log"
+rm -f build/bank_proof.log
 
 echo "[block-budget] coco3 at 128K, port launched by room_test.lua's own sequence"
 "$MAME" coco3 -rompath "$MAME_ROMS" -ramsize 128K \
@@ -70,5 +78,7 @@ if [ ! -s "$OUT" ]; then
     exit 1
 fi
 cat "$OUT"
+echo
+[ -s build/bank_proof.log ] && cat build/bank_proof.log
 grep -q "not free" "$OUT" && exit 1
 exit 0
