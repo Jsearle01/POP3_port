@@ -144,10 +144,28 @@ def convert_src(who, cel, mirror, render_col, quiet=True):
     r = subprocess.run(cmd, capture_output=True, text=True)
     if r.returncode != 0 or not src.exists():
         return None, (r.stderr or r.stdout or "")[:80]
-    # THE EVEN-WIDTH FLIP, applied from the cel's own measured width rather than assumed.
+    # ─── THE EVEN-WIDTH FLIP, and the test was VACUOUS (P3.72h) ──────────────────────
+    #
+    # Jay, on the first mirrored cel this port has ever shown: "her orange and blue
+    # colors are swapping after she turns. i think you forgot parity."
+    #
+    # The rule is sprite_convert's own [sprite_convert.py:135-167]: --mirror reverses the
+    # pixel list and PRESERVES each pixel's baked chroma, which was chosen at the
+    # PRE-mirror screen columns. Reversing maps a pixel at column c to 2*start + W-1 - c,
+    # so its column parity flips exactly when W is EVEN — and W there is
+    #
+    #     width_pixels = apple_width_bytes * 7
+    #
+    # This tested `coco3_width * 4`, which is EVEN FOR EVERY CEL THAT HAS EVER EXISTED.
+    # So the branch was not a test at all: it applied --flip-parity to every mirrored cel
+    # unconditionally, and read as a careful measurement while doing so ("applied from the
+    # cel's own measured width rather than assumed"). It was measuring the padded CoCo
+    # container instead of the sprite.
+    #
+    # Cel 11 is 3 Apple bytes = 21 px, ODD, so it must NOT be flipped — and it was.
     if mirror:
-        m = re.search(r"fcb\s+(\d+)\s*,\s*(\d+)", src.read_text(errors="replace"))
-        if m and (int(m.group(2)) * 4) % 2 == 0:
+        width_pixels = 7 * R.awid(cel)
+        if width_pixels % 2 == 0:
             r2 = subprocess.run(cmd + ["--flip-parity"], capture_output=True, text=True)
             if r2.returncode != 0:
                 return None, "flip-parity pass failed"
