@@ -36,9 +36,9 @@
 *   cel 51  normal ph2
 *   cel 52  normal ph0
 *   cel 53  normal ph3
-*   cel 54  normal ph1, normal ph3
-*   cel 55  normal ph1
-*   cel 56  normal ph1
+*   cel 54  normal ph3
+*   cel 55  normal ph3
+*   cel 56  normal ph3
 
                 section prog
 * EXPORTED because link/pop_cels.link names it as the entry. lwlink resolves
@@ -105,9 +105,9 @@ cel_walk_tab
                 fdb     0,0,v51_p2,0,0,0,0,0   ; cel 51
                 fdb     v52_p0,0,0,0,0,0,0,0   ; cel 52
                 fdb     0,0,0,v53_p3,0,0,0,0   ; cel 53
-                fdb     0,v54_p1,0,v54_p3,0,0,0,0   ; cel 54
-                fdb     0,v55_p1,0,0,0,0,0,0   ; cel 55
-                fdb     0,v56_p1,0,0,0,0,0,0   ; cel 56
+                fdb     0,0,0,v54_p3,0,0,0,0   ; cel 54
+                fdb     0,0,0,v55_p3,0,0,0,0   ; cel 55
+                fdb     0,0,0,v56_p3,0,0,0,0   ; cel 56
 
                 include "content/cutscene/chars/p2_p1.s"
                 include "content/cutscene/chars/p3_p1.s"
@@ -125,8 +125,7 @@ cel_walk_tab
                 include "content/cutscene/chars/v51_p2.s"
                 include "content/cutscene/chars/v52_p0.s"
                 include "content/cutscene/chars/v53_p3.s"
-                include "content/cutscene/chars/v54_p1.s"
                 include "content/cutscene/chars/v54_p3.s"
-                include "content/cutscene/chars/v55_p1.s"
-                include "content/cutscene/chars/v56_p1.s"
+                include "content/cutscene/chars/v55_p3.s"
+                include "content/cutscene/chars/v56_p3.s"
 

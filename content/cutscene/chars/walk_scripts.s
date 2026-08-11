@@ -8,9 +8,13 @@
 * hears it.
 viz_script
                 fdb     viz_stand
-                fcb     16
+                fcb     21
                 fdb     viz_walk
-                fcb     30
+                fcb     7
+                fdb     viz_stop
+                fcb     8
+                fdb     viz_walk
+                fcb     29
                 fdb     viz_stop
                 fcb     0               ; hold
 pri_script

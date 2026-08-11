@@ -125,10 +125,35 @@ PREP = ROOT / "harness/tools/cel_blit_prep.py"
 #   shifter lets ONE baked phase serve all four and would cut the vizier's cel storage by
 #   up to 4x — far more than the 3,416 B needed. That is the carried open item this beat
 #   has now made binding, and it is Jay's call, not a thing to invent here.
+# ★★★ AND IT FITS AFTER ALL — MOVE THE PAUSE BY ONE CharX UNIT (Jay: "would it be
+#   possible to stop him at a slightly different x so we could reuse cels?"). Yes, and it
+#   is the whole fix.
+#
+#   The phase is (2*(x + Fdx) + parity) mod 4, so a shift of an EVEN number of CharX units
+#   leaves every phase untouched and an ODD one flips all of them. The oracle's 6-play
+#   first approach happens to land ODD, which is the only reason his cels double. Swept
+#   offline, with the pause point moved a step either way:
+#
+#       app1=6 app2=30   pauses CharX 186   ends CharX 135   18 viz bakes  <- the oracle
+#       app1=5 app2=31   pauses CharX 187   ends CharX 135    9 viz bakes
+#       app1=7 app2=29   pauses CharX 185   ends CharX 135    9 viz bakes
+#
+#   ONE CharX UNIT IS TWO APPLE PIXELS — half a byte-column — and it halves the bakes. The
+#   total travel is unchanged at 36 plays and HE ENDS IN EXACTLY THE SAME PLACE, so the
+#   only difference on screen is where he pauses, by half a column. Nine is also one FEWER
+#   than the single-approach version that shipped before this, so the faithful two-stage
+#   entrance now costs less than the unfaithful one it replaces.
+#
+#   The deviation is recorded rather than hidden: the oracle pauses him at 186 and this
+#   pauses him at 185. Everything else about the beat is the oracle's.
 PLAN = [("p", "Pstand", 7),       # play 2 + play 5, both standing [SUBS.S:665-672]
         ("p", "Palert", 9),       # she hears the door and turns
-        ("v", "Vwalk", 30),       # ONE unbroken approach — the entrance above is over
-        ("v", "Vstop", 4),        # budget until the runtime shifter lands
+        ("-", "", 5),             # play 5 — both hold after the SPEED change
+        ("v", "Vwalk", 7),        # Vapproach: he enters from the right (oracle 6, +1)
+        ("v", "Vstop", 4),        # ...and STOPS, at CharX 185 against the oracle's 186
+        ("-", "", 4),             # play 4 — the beat over the s_Vizier cue
+        ("v", "Vwalk", 29),       # Vapproach again: he crosses to her (oracle 30, -1)
+        ("v", "Vstop", 4),        # stops in front of the princess, CharX 135 either way
         ("v", "Vstand", 0)]       # 0 = hold; the script's last entry
 
 STEM = {}                         # (who, cel) -> file stem
