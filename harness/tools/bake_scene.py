@@ -60,7 +60,21 @@ PREP = ROOT / "harness/tools/cel_blit_prep.py"
 #   diagnosis "the wall is that the port has no per-beat load" was ALSO right and is
 #   still true — it is simply no longer binding, because a bank the whole scene fits in
 #   does not need staging. Jay's P3.45 question is deferred again, on better terms.
-PLAN = [("p", "Palert", 9),
+# ★ THE LEAD-IN IS BACK (P3.72e, Jay watching both live: "we need to add the pre turn
+#   portion of the scene per the oracle"). PlayCut0 opens with SEVEN plays of both
+#   characters standing before she hears anything —
+#
+#       jsr startV0 / startP0        ;Vstand and Pstand at CharX 197 and 120
+#       lda #2  / jsr play
+#       lda #s_Princess / jsr PlaySongI
+#       lda #5  / jsr play
+#       lda #Palert / jsr pjumpseq   ;princess hears something...
+#
+#   — and the port jumped straight to her turn, so the scene opened on her already
+#   moving. That is a beat of stillness the original spends before anything happens, and
+#   without it the opening reads as abrupt no matter what the cadence is.
+PLAN = [("p", "Pstand", 7),       # play 2 + play 5, both standing [SUBS.S:665-672]
+        ("p", "Palert", 9),
         ("v", "Vwalk", 30),
         ("v", "Vstop", 4),
         ("v", "Vstand", 0)]       # 0 = hold; the script's last entry
