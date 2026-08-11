@@ -470,7 +470,9 @@ def emit(includes, table):
 # positions are what decide the phases. Written by hand in one place and derived in the
 # other, they would drift, and the symptom would be a cel drawn at a phase nobody baked.
 LABEL = {"Vstand": "viz_stand", "Vwalk": "viz_walk", "Vstop": "viz_stop",
-         "Pstand": "pri_stand", "Palert": "pri_alert"}
+         "Pstand": "pri_stand", "Palert": "pri_alert",
+         "Vraise": "viz_raise", "Pback": "pri_back",
+         "Vexit": "viz_exit", "Pslump": "pri_slump"}
 
 
 def scripts():
