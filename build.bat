@@ -328,11 +328,24 @@ call :size build/intro_seq.bin
 echo --- Bootable RS-DOS disk image ---
 REM .dsk is always 18 sectors/track (idiom §3); default geometry is correct.
 REM DMK, interleave 0 (SEQUENTIAL) -- NOT JVC. MAME synthesises a near-pessimal
-REM physical order for JVC and the whole-track m=1 read pays ~0.89 revolutions per
-REM SECTOR for it: measured 3.31 s/track here, 3.33 s/track on karateka. DMK keeps
-REM the authored order, and sequential is the FASTEST for a Read-Multiple loader --
+REM physical order for JVC and the whole-track m=1 read paid ~0.89 revolutions per
+REM SECTOR for it: 3.31 s/track here, 3.33 s/track on karateka. DMK keeps the
+REM authored order, and sequential is the FASTEST for a Read-Multiple loader --
 REM which inverts the usual RS-DOS spread-the-sectors convention.
 REM [karateka docs/project/interleave-realization-mame.md; POP idiom 29]
+REM
+REM *** THOSE 3.31 s ARE THE PRE-DMK JVC FIGURE AND HAVE NOT BEEN TRUE SINCE P3.6. ***
+REM They are kept above only to say what the DMK switch bought. On the CURRENT build,
+REM measured at P3.75b by decomposing the room's three reads (1 track, 1 track, 3
+REM tracks -- harness/tools/load_timing.lua):
+REM
+REM     one TRACK     72 frames   1.20 s
+REM     one SPIN-UP   36 frames   0.60 s   (dr_spinup, a delay LOOP, not a hardware wait)
+REM
+REM The stale number outlived its correction by sixty-nine dispatches and then misled a
+REM design report into costing a mid-scene read at 3.3 s instead of 1.2. A measurement
+REM quoted in a comment needs the date of the tree it was taken on, or it becomes a
+REM claim about a build nobody can identify.
 if exist build\probe.dmk del /q build\probe.dmk
 "%IMGTOOL%" create coco_dmk_rsdos build\probe.dmk --tracks=35 --sectors=18 --sectorlength=256 --interleave=0
 if errorlevel 1 goto :error
