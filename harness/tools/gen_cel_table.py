@@ -33,6 +33,11 @@ import sys
 ROOT = pathlib.Path("C:/Projects/POP3_port")
 sys.path.insert(0, str(ROOT / "harness/tools"))
 import cel_parity_rule as R                                      # noqa: E402
+import sprite_convert as SC                                      # noqa: E402
+
+# The same image table bake_scene.py converts from — the Apple sprite widths must come
+# from the artefact the cels are actually built out of, not from a second list.
+TABLE = ROOT / "oracle/source/01 POP Source/Images/IMG.CHTAB6.A"
 
 # The PlayCut0 cel set (P3.18 §3A), with the CharX each character stands at.
 CUTSCENE = [("vizier", 197, [48, 49, 50, 51, 52, 53,            # Vwalk
@@ -60,9 +65,15 @@ def main():
                 continue
             fimg, fdx, fdy, fchk, lab = alt[n]
             idx = fimg & 0x7F
+            # THE APPLE SPRITE'S WIDTH IN BYTES (P3.72g), read from the image table
+            # itself rather than tabulated. It is the WIDTH in MLayGen's
+            # `LDA XCO / SEC / SBC WIDTH` [HIRES.S:1202-1208] -- a mirrored image is laid
+            # down that far to the LEFT of the same coordinate, and the engine cannot
+            # reproduce a mirrored draw's POSITION without it.
+            awid = SC.get_cel(str(TABLE), idx)["w"]
             rows.append(dict(cel=n, who=who, idx=idx, fdx=fdx, fdy=fdy,
                              par=R.parity(fchk, face), flag=(fimg >> 7) & 1,
-                             fchk=fchk, lab=lab))
+                             fchk=fchk, lab=lab, awid=awid))
 
     lo = min(r["cel"] for r in rows)
     hi = max(r["cel"] for r in rows)
@@ -114,20 +125,37 @@ def main():
          "*   +1  Fdx   (signed)",
          "*   +2  Fdy   (signed)",
          "*   +3  Fcheck — bit7 vs bit7(CharFace) gives parity AT RUN TIME",
+         "*   +4  Apple sprite WIDTH in bytes (7 px each) — the mirror anchor",
          "*",
+         "* ★ +4 IS THE MIRROR ANCHOR (P3.72g), and it is a POSITION fact, not a size.",
+         "*",
+         "* The oracle lays a mirrored image down on the OTHER EDGE:",
+         "*",
+         "*     MLayGen:  LDA XCO / SEC / SBC WIDTH / STA XCO   [HIRES.S:1202-1208]",
+         "*",
+         "* so `aboutface,chx,N` in a sequence is a REGISTRATION correction, not a move --",
+         "* the chx cancels the anchor flip and the character stays where she is. The port",
+         "* baked the mirror but drew it at the same left edge, so the chx became visible",
+         "* motion: Jay, watching both live, 'the port has her moving forward during the",
+         "* turn. she doesn't move in the oracle.' Measured on the oracle across her turn,",
+         "* only 21 px of columns differ, where an 18 px shift would have spanned ~58.",
+         "*",
+         "* Cel 11 is 3 Apple bytes = 21 px against chx,9 = 18 px, so the net is -3 px:",
+         "* sub-byte, i.e. no movement. The engine cannot derive that from anything it",
+         "* already holds, so the width comes down here with the rest of the cel's facts.",
          "CEL_LO          equ     %d" % lo,
          "CEL_HI          equ     %d" % hi,
-         "CEL_ENTSZ       equ     4",
+         "CEL_ENTSZ       equ     5",
          "",
          "cel_table"]
     by_cel = {r["cel"]: r for r in rows}
     for n in range(lo, hi + 1):
         r = by_cel.get(n)
         if r is None:
-            L.append("                fcb     0,0,0,0         ; cel %d — unused here" % n)
+            L.append("                fcb     0,0,0,0,0       ; cel %d — unused here" % n)
         else:
-            body = "%d,%d,%d,$%02X" % (r["idx"], r["fdx"] & 0xFF, r["fdy"] & 0xFF,
-                                       r["fchk"])
+            body = "%d,%d,%d,$%02X,%d" % (r["idx"], r["fdx"] & 0xFF, r["fdy"] & 0xFF,
+                                          r["fchk"], r["awid"])
             L.append("                fcb     %s%s; cel %-3d %s"
                      % (body, " " * max(1, 10 - len(body)), n, r["lab"][:22]))
     p = pathlib.Path(a.out)

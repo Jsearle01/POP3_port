@@ -77,9 +77,42 @@ def parity(fcheck, face=FACE_LEFT):
     return 0 if ((fcheck ^ face) & 0x80) else 1
 
 
-def draw_x(charx, fdx, fcheck, face=FACE_LEFT):
-    """The oracle's own FCharX, for the record. ScrnLeft = 58 [EQ.S:479]."""
-    return 2 * (charx + fdx - 58) + parity(fcheck, face)
+def draw_x(charx, fdx, fcheck, face=FACE_LEFT, awid=None):
+    """The oracle's own FCharX, for the record. ScrnLeft = 58 [EQ.S:479].
+
+    awid = the Apple sprite's width in BYTES. Pass it whenever the draw may be MIRRORED:
+    a mirrored image is laid down one sprite-width to the LEFT of the same coordinate
+    (MLayGen: LDA XCO / SEC / SBC WIDTH [HIRES.S:1202-1208]), which is what makes
+    `aboutface,chx,N` a registration correction rather than a step. Omitting it for a
+    right-facing character reproduces the P3.72g bug offline — the checker then predicts
+    a position the engine does not draw at, and the two disagree by ~one byte column.
+    """
+    x = 2 * (charx + fdx - 58) + parity(fcheck, face)
+    if awid is not None and face != FACE_LEFT:
+        x -= 7 * awid                       # an Apple byte is 7 px
+    return x
+
+
+CHTAB = ROOT / "oracle/source/01 POP Source/Images/IMG.CHTAB6.A"
+_AWID = {}
+
+
+def awid(cel):
+    """Apple sprite width in BYTES for a cel number, read from IMG.CHTAB6.A itself.
+
+    ONE HOME for the mirror anchor (P3.72g). gen_cel_table.py emits the same number into
+    the engine's cel_table and co_setup applies it; every offline consumer that models a
+    facing must take it from here, or the checker and the engine place mirrored cels a
+    byte-column apart and the disagreement looks like a draw bug.
+    """
+    if not _AWID:
+        import sprite_convert as SC
+        for n, (fimg, _fdx, _fdy, _fchk, _lab) in altset2().items():
+            try:
+                _AWID[n] = SC.get_cel(str(CHTAB), fimg & 0x7F)["w"]
+            except Exception:
+                pass                    # empty slot; the caller gets None and skips it
+    return _AWID.get(cel)
 
 
 GROUPS = [("Vwalk", [48, 49, 50, 51, 52, 53], 197),

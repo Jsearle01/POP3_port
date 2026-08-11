@@ -83,7 +83,8 @@ def recorded_boxes(posfile):
             # FACING (P3.71): it moves the parity pixel, so it can move the byte column
             # by one at a boundary. A one-column error here is the difference between
             # excusing a character's own footprint and accusing it.
-            col = (R.draw_x(x, fdx, fchk, 0 if face != 0xFF else R.FACE_LEFT) + 20) >> 2
+            col = (R.draw_x(x, fdx, fchk, 0 if face != 0xFF else R.FACE_LEFT,
+                             R.awid(cel)) + 20) >> 2
             boxes.append((col - 1, col + W, y - H + 1, y))
     return boxes
 

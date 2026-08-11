@@ -109,7 +109,7 @@ class Char:
             elif re.fullmatch(r"-?\d+", t):
                 cel = int(t)
                 fdx, fchk = alt[cel][1], alt[cel][3]
-                spx = R.draw_x(self.x, fdx, fchk, self.face) + CENTRING
+                spx = R.draw_x(self.x, fdx, fchk, self.face, R.awid(cel)) + CENTRING
                 self.drawn.append((cel, spx & 3, self.x, self.face))
                 return
             else:

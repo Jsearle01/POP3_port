@@ -29,7 +29,7 @@
 *   cel 7   normal ph0
 *   cel 8   normal ph1
 *   cel 9   normal ph3
-*   cel 11  normal ph1, mirrored ph2
+*   cel 11  normal ph1, mirrored ph1
 *   cel 48  normal ph1
 *   cel 49  normal ph1
 *   cel 50  normal ph1
@@ -62,7 +62,7 @@ cel_walk_tab
                 fdb     0,p8_p1,0,0,0,0,0,0   ; cel 8
                 fdb     0,0,0,p9_p3,0,0,0,0   ; cel 9
                 fdb     0,0,0,0,0,0,0,0   ; cel 10
-                fdb     0,p11_p1,0,0,0,0,p11_m_p2,0   ; cel 11
+                fdb     0,p11_p1,0,0,0,p11_m_p1,0,0   ; cel 11
                 fdb     0,0,0,0,0,0,0,0   ; cel 12
                 fdb     0,0,0,0,0,0,0,0   ; cel 13
                 fdb     0,0,0,0,0,0,0,0   ; cel 14
@@ -118,7 +118,7 @@ cel_walk_tab
                 include "content/cutscene/chars/p8_p1.s"
                 include "content/cutscene/chars/p9_p3.s"
                 include "content/cutscene/chars/p11_p1.s"
-                include "content/cutscene/chars/p11_m_p2.s"
+                include "content/cutscene/chars/p11_m_p1.s"
                 include "content/cutscene/chars/v48_p1.s"
                 include "content/cutscene/chars/v49_p1.s"
                 include "content/cutscene/chars/v50_p1.s"

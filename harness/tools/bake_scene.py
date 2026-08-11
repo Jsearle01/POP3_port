@@ -166,7 +166,7 @@ def main():
         # needed(). Baking the colour parity at a column the cel is never rendered at is
         # invisible for a character that never moves and wrong for one that does.
         face = R.FACE_LEFT if facing == 0 else 0
-        rc = R.draw_x(want[(who, cel, facing)][1], fdx, fchk, face)
+        rc = R.draw_x(want[(who, cel, facing)][1], fdx, fchk, face, R.awid(cel))
         src, err = convert_src(who, cel, facing == 1, rc)
         if src is None:
             print("  %s cel %-3d facing %d: CONVERT FAILED %s" % (who, cel, facing, err))

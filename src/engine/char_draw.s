@@ -221,7 +221,15 @@ CH_Y            equ     1
 CH_FACE         equ     2
 CH_CEL          equ     3
 CH_H            equ     4
-CH_W            equ     5
+* +5 WAS CH_W AND IS NOW THE MIRROR ANCHOR (P3.72g). The record's own width was written
+* by vm_resolve and READ BY NOTHING -- measured at P3.71 by forcing it to $FF with
+* -DSEED_BADHDR and watching all 28 walk captures stay byte-exact (blit_cel takes its own
+* rows and width from the cel header, blit_core.s:82-84). Rather than leave a dead field
+* with a live-looking name -- the CHAR_TAB hazard this file already carries a scar from --
+* the slot goes to the fact that actually needs a per-cel home: the Apple sprite's width
+* in bytes, which is the WIDTH in MLayGen's `SBC WIDTH` and the only thing that lets the
+* engine place a MIRRORED draw correctly. See co_setup.
+CH_AWID         equ     5
 CH_FDX          equ     10              ; per-frame x offset, from the cel table
 CH_STRIDE       equ     11              ; 2 B — constant peel slot stride
 CH_PAR          equ     13              ; the cel's PARITY BIT — the odd screen pixel
@@ -593,9 +601,14 @@ co_erase
 * measured at cols 35 and 36-41, and the reason the peel itself came back holding the
 * room shifted by a column.
                 inca
-                inca                            ; +5 is the facing; +6 is Fdx
                 ldb     a,y
-                stb     ch_fdx
+                stb     ch_face                 ; +5 the FACING the save was taken at
+                inca
+                ldb     a,y
+                stb     ch_fdx                  ; +6 the Fdx
+                inca
+                ldb     a,y
+                stb     ch_awid                 ; +7 the sprite width — the mirror anchor
                 jsr     co_setup
                 ldx     ch_dest
                 ldy     ch_peel
@@ -654,6 +667,9 @@ co_save
 * harness and verify_room_chars read this x and apply the cel's own Fdx themselves;
 * folding it in here would make them double-count it.
                 ldb     ch_fdx
+                stb     a,y
+                inca
+                ldb     ch_awid                 ; +7, the last spare byte in the entry
                 stb     a,y
                 lda     ch_seen
                 ora     ch_bit
@@ -774,6 +790,31 @@ cv_lface
                 adda    CH_FDX,x                ; ...indexed by the sub-byte phase,
                 lsla                            ; 2*(x+Fdx) — mod 4 is all this needs
                 adda    CH_PAR,x                ; + the odd pixel
+* AND THE MIRROR ANCHOR, HERE TOO (P3.72g). co_setup subtracts one sprite-width for a
+* mirrored draw; this must subtract the same thing, because the phase is that position
+* mod 4 and the bake bakes the mirrored cel at the phase the ANCHORED column implies.
+*
+* Getting this wrong is not a wrong pixel, it is a STALL: with the anchor in co_setup but
+* not here, co_variant looked up phase 2 while the bake had written phase 1, found the
+* table's 0, fell through to a CH_PTR of 0, and the null-cel guard stopped drawing her
+* for the rest of the scene. Measured — she completed the turn in the record (face 255->1,
+* cel 11 at f1848) while ch_drawn stayed frozen at cel 9.
+*
+* The FACT has one home (CH_AWID, from cel_table); this is the second place the RULE is
+* applied, and the two must not drift. mod 4 is all that survives here, but the
+* subtraction is done in full and masked after, so it reads the same as co_setup.
+                sta     cv_ph
+                lda     CH_FACE,x
+                bmi     cv_ph_done              ; -1 = left = NORMAL, no anchor
+                lda     CH_AWID,x
+                ldb     #7                      ; an Apple byte is 7 px
+                mul                             ; B = low byte of the pixel width
+                pshs    b
+                lda     cv_ph
+                suba    ,s+
+                sta     cv_ph
+cv_ph_done
+                lda     cv_ph
                 anda    #3                      ; co_setup's expression, mod 4
                 tfr     a,b
                 clra
@@ -889,6 +930,15 @@ co_here
                 sta     ch_fdx
                 lda     CH_PAR,x
                 sta     ch_par
+* FACING AND SPRITE WIDTH ARE co_setup INPUTS NOW (P3.72g), so they come through the same
+* scratch as x/y/Fdx/parity rather than being read from the record inside co_setup. The
+* reason is co_erase: it reconstructs the column a PAST save used, and every term of that
+* expression has to be overridable or the erase computes today's anchor for yesterday's
+* footprint. That is the P3.72b defect exactly, one field along.
+                lda     CH_FACE,x
+                sta     ch_face
+                lda     CH_AWID,x
+                sta     ch_awid
                 rts
 
 * ---------------------------------------------------------------
@@ -936,6 +986,41 @@ co_setup
                 addb    ch_par                  ; + the odd pixel
                 adca    #0
                 addd    #20-116                 ; + centring, - 2*ScrnLeft
+* ---------------------------------------------------------------
+* THE MIRROR ANCHOR (P3.72g) — a mirrored image is laid down on the OTHER EDGE.
+*
+*     MLayGen:  LDA XCO / SEC / SBC WIDTH / STA XCO      [HIRES.S:1202-1208]
+*
+* so the oracle's mirrored draw starts one sprite-width LEFT of the same coordinate. That
+* is why `aboutface` is always followed by a `chx`: the chx cancels the anchor flip and
+* the character does not move. Palert ends `aboutface,chx,9` [SEQTABLE.S:1565] and Vexit
+* ends `aboutface,chx,16` [SEQTABLE.S:1550] — both corrections, neither a step.
+*
+* The port baked the mirror but drew it at the same LEFT edge, so the chx had nothing to
+* cancel and became visible motion. Jay, watching port and oracle side by side: "the port
+* has her moving forward during the turn. she doesn't move in the oracle."
+*
+* MEASURED BOTH WAYS. On the oracle across her turn only 21 px of columns differ, where a
+* real 18 px shift would have spanned ~58 (oracle_palert_shift.lua). Cel 11 is 3 Apple
+* bytes = 21 px against chx,9 = 18 px, so the net is -3 px: sub-byte, no movement. The
+* port moved her four byte-columns, 36 -> 40.
+*
+* IN PIXELS, BEFORE THE /4, because 7 px per Apple byte is not a multiple of the 4 px
+* CoCo byte — doing it in columns would round the anchor and reintroduce the drift it is
+* here to remove.
+                std     cs_px
+                lda     ch_face                 ; from co_here or from co_erase's record
+                bmi     cs_noflip               ; -1 = left = NORMAL [FRAMEADV.S:1970]
+                lda     ch_awid
+                ldb     #7                      ; an Apple byte is 7 px
+                mul                             ; D = the sprite's width in pixels
+                pshs    a,b
+                ldd     cs_px
+                subd    ,s++
+                std     cs_px
+cs_noflip
+                ldd     cs_px
+* ---------------------------------------------------------------
                 lsra
                 rorb
                 lsra
@@ -1167,6 +1252,10 @@ vr_even
                 clra                            ; hibits differ -> EVEN x
 vr_parst
                 sta     CH_PAR,u
+* THE MIRROR ANCHOR, read while X still points at this cel's table entry — `ldx #img_map`
+* below clobbers it, so the order here is load-bearing.
+                lda     4,x                     ; Apple sprite width, bytes
+                sta     CH_AWID,u
 
                 ldx     #img_map
 vr_find
@@ -1180,35 +1269,14 @@ vr_found
                 ldd     1,x                     ; the baked cel's address
                 std     CH_PTR,u
                 tfr     d,x
-                lda     ,x                      ; the cel's own header: rows, width
+                lda     ,x                      ; the cel's own header: rows
                 sta     CH_H,u
-                lda     1,x
-                sta     CH_W,u
+* THE SECOND HEADER BYTE IS NO LONGER STORED. It went to CH_W, which nothing read; +5 is
+* the mirror anchor now and is written above from the cel table. The -DSEED_BADHDR probe
+* that proved the pair dead is retired with it — its finding is in the CH_AWID note and
+* in P3.71's report, and a guarded diagnostic pointing at a repurposed field is worse
+* than no diagnostic.
 vr_done
-* ===============================================================
-* SEEDED FAULT — P3.71 §2, the positive control. Guarded by -DSEED_BADHDR and absent
-* from every normal build. It forges exactly the failure a $C000 re-base can cause:
-* CH_H/CH_W read from an address the cel no longer occupies, i.e. two bytes of
-* whatever-is-there instead of the header. blit_cel reads its OWN rows/width from the
-* cel (blit_core.s:82-84), so this cannot corrupt the DRAW -- it corrupts the PEEL, and
-* blit_erase writes the peel back INTO the framebuffer. If the observed damage is a
-* runaway erase, this reproduces its shape; if it is not, this rules the shape out.
-* The cel number is the discriminator P3.70 measured: capture 05 is cel 52's first draw.
-*
-* IT SITS AFTER vr_done DELIBERATELY. Placed inside the vr_found arm it never fired,
-* because cel 52's image index is NOT in img_map at all -- vr_find falls out at its
-* terminator and leaves the record's h/w alone. That is a measurement, not a mishap:
-* img_map is not the path a $C000 re-base could strand for this cel.
-                ifdef   SEED_BADHDR
-                lda     CH_CEL,u
-                cmpa    #SEED_BADHDR
-                bne     vr_noseed
-                lda     #$FF
-                sta     CH_H,u
-                sta     CH_W,u
-vr_noseed
-                endc
-* ===============================================================
                 puls    u
                 rts
 
@@ -1625,6 +1693,10 @@ ch_lastcel      fcb     0
 ch_par          fcb     0               ; the parity of the cel being placed
 ch_col          fcb     0               ; the byte column co_setup placed the cel at
 cv_ix           rmb     2               ; co_variant's 16-bit table index (P3.65)
+cs_px           rmb     2               ; co_setup's pixel x, across the mirror-anchor mul
+cv_ph           rmb     1               ; co_variant's pixel x, across the same mul
+ch_face         rmb     1               ; co_setup's facing — the record's, or the save's
+ch_awid         rmb     1               ; co_setup's sprite width, same provenance
 ch_fore         fcb     0               ; did anyone draw on the pillar this frame?
 ch_tmp          fcb     0
 ch_cel          fdb     0               ; the variant resolved for THIS draw — not

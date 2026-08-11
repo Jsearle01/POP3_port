@@ -113,7 +113,7 @@ def placements(posfile=None):
             # SETUPCHAR's own expression, from the ORACLE's tables — not from the port.
             # CharX is in two-pixel units and the parity bit is the odd pixel (P3.58).
             _img, fdx, _fdy, fcheck, _lab = R.altset2()[cel]
-            spx = R.draw_x(x, fdx, fcheck, 0 if right else R.FACE_LEFT) + CENTRING
+            spx = R.draw_x(x, fdx, fcheck, 0 if right else R.FACE_LEFT, R.awid(cel)) + CENTRING
             rows.append(("cel%d" % cel, src, spx & 3, y - h + 1, spx >> 2))
         out.append((tag, rows))
     return out
