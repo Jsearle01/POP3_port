@@ -189,6 +189,38 @@ PREP = ROOT / "harness/tools/cel_blit_prep.py"
 # with the sampling rate -- but that changes the VM's cadence and is not this task.)
 SONG_FPS = 7
 
+# ★★★ THE REMAINING BEATS DO NOT FIT, AND shift_row.s WILL NOT SAVE THEM (P3.72m recon).
+#
+#   Costed beat by beat against the 15,872 B usable bank, at the 633 B/bake this image
+#   actually averages (12,922 B over 19 bakes, less the 880 B table). Vraise+Pback was
+#   additionally BUILT and linked to check the model: 23,002 B measured against 23,060
+#   estimated, so the numbers below are trustworthy.
+#
+#       current                    19 bakes   12,922 B     2,950 B free
+#       + Vraise 1                 20         ~13,555      fits
+#       + Pback 13                 35         ~23,060      OVER by  7,188
+#       + hold 5                   40         ~26,229      OVER by 10,357
+#       + Vexit 17                 52         ~33,833      OVER by 17,961
+#       + hold 12                  63         ~40,804      OVER by 24,932
+#       + Pslump 28                64         ~41,437      OVER by 25,565
+#
+#   The complete scene is 2.6x the bank. These are GENUINELY NEW CELS — viz 67-74, 85 for
+#   the raise, 57-66 for the exit; pri 12-18 for the step back — not phase duplicates.
+#
+#   ★ AND THAT RETIRES THE ANSWER I GAVE TWICE. P3.72i said shift_row.s was the structural
+#     fix, worth "up to 4x" because one baked phase could serve all four. That was true
+#     WHILE cels were duplicated across phases — and P3.72j's one-CharX-unit alignment
+#     removed the duplication. The image is now 9 viz bakes for 9 distinct cels and 10 pri
+#     for 9 (cel 11 twice, for the mirror): ZERO phase duplication left. A runtime shifter
+#     would save essentially nothing here. The recommendation was correct when it was made
+#     and is obsolete now; acting on it would have cost a dispatch.
+#
+#   WHAT IS LEFT IS THE LOAD, which is Jay's P3.45 question and has been carried since.
+#   P3.63 measured the scene's PEAK residency at 5,631 B against a 15,872 B bank — so any
+#   single beat's working set fits several times over, and only the SCENE'S TOTAL does not.
+#   The bank made the whole-scene-at-once approach reach much further than the bundle did;
+#   it does not reach to the end.
+
 PLAN = [("p", "Pstand", 7),       # play 2 + play 5, both standing [SUBS.S:665-672]
         ("song", "s_Princess", 761),   # ...with the cue between them; she waits
         ("p", "Palert", 9),       # she hears the door and turns
