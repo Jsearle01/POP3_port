@@ -229,6 +229,31 @@ room_start
                 jsr     load_tracks
                 lbne    room_failed             ; LONG: the cel read below moved the target
 
+* THE CEL IMAGE, AND IT BELONGS HERE WITH THE OTHER TWO — MOVED UP AT P3.72f.
+*
+* It was AFTER HAL_gfx_mirror, and that was wrong in exactly the way the paragraph below
+* documents. The mirror writes the finished room into the FRONT buffer, which is the
+* DISPLAYED one -- so the picture appears at the mirror, not at the swap -- and three
+* whole tracks at ~3.3 s each then ran with the completed room sitting on screen and
+* nothing moving. Jay, watching it live: "there is a long wait between the static
+* background drawing and the torch flames and princess appearing." That is ten seconds
+* of disk after the reveal, and it is the same bug P3.17 removed and this file already
+* warns about: work done AFTER the reveal that the viewer has to wait through.
+*
+* MY REASON FOR PUTTING IT LATER WAS SIMPLY WRONG. The old comment claimed "reading the
+* cels first would put them exactly where the mirror is about to write". It would not.
+* The mirror maps the FRONT BUFFER's blocks at $FFA6/$FFA7 and writes there; the bank's
+* physical blocks $0E/$0F are not mapped while it runs, so they are untouched. Same CPU
+* addresses, different physical memory -- which is the entire point of the MMU, and
+* exactly the confusion between the CPU's view and the machine's that gfx.s calls out at
+* its own head.
+                jsr     cel_bank_map
+                ldx     #CEL_BASE
+                lda     #DISK_CEL_TRK
+                ldb     #DISK_CEL_SEC
+                jsr     load_tracks
+                lbne    room_failed
+
                 ldx     HAL_gfx_draw_base       ; X -> the picture
                 ldu     #ROOM_BLOB              ; U -> the blob, in main RAM
                 jsr     lz_unpack
@@ -246,22 +271,11 @@ room_start
 
                 jsr     bundle_expand           ; the blob is spent — expand over it
 
-* THE CEL IMAGE, AND IT MUST BE READ AFTER THE MIRROR, NOT BEFORE.
-*
-* HAL_gfx_mirror borrows $FFA6/$FFA7 for the FRONT buffer and copies 15,360 B into
-* $C000..$FBFF — straight through the window this bank occupies. Reading the cels first
-* would put them exactly where the mirror is about to write. Here the copy is finished,
-* nothing else wants $C000, and the read lands in the bank and stays there.
-*
-* This is the THIRD disk read of the scene (room blob, flame bundle, cels) and it is
-* still before the first swap, so it costs the viewer nothing: the screen is black until
-* the swap below. room_test's disk_reads_ok counts these.
+* THE BANK MUST BE RE-MAPPED HERE. The mirror above rewrote $FFA6/$FFA7 to reach the
+* front buffer and restored them to the BACK buffer's blocks, not to the bank — the same
+* four-register ownership P3.68 established and P3.71 was bitten by. The cels are already
+* in physical RAM; this only brings the window back onto them.
                 jsr     cel_bank_map
-                ldx     #CEL_BASE
-                lda     #DISK_CEL_TRK
-                ldb     #DISK_CEL_SEC
-                jsr     load_tracks
-                lbne    room_failed
 
                 jsr     room_present            ; the room appears, ready to animate
 
