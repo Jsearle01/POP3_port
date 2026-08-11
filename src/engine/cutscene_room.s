@@ -379,13 +379,39 @@ room_hold
 *
 * vm_nextframe STILL OWNS THE STEP. chars_due asks; cad_idx advances where it always did.
 * Two things deciding one cadence is exactly the defect this change removes from flicker.
+* ★★ THE LOOP RUNS AT THE FLAME RATE NOW, NOT THE CHARACTER RATE (P3.72k).
+*
+* The gate above was chars_due, so the flames advanced once per CHARACTER STEP. Measured
+* on both machines off the same signal, with the room up and nothing else moving:
+*
+*     oracle   2.3 frames between torch changes = 26.2 Hz
+*     port     6.0 frames                       = 10.0 Hz
+*
+* -- and it got worse when the step rate was re-anchored to the oracle's 6 frames at
+* P3.72d, from 15.7 Hz to 10.0. The flames were never the oracle's; they were whatever
+* the character cadence happened to be. In the oracle pburn runs from the play loop and
+* does not answer to the animation cadence at all [SUBS.S:876 play / MOVEDATA.S torch].
+*
+* THE DECOUPLING NEEDS NO CHANGE TO char_draw, because chars_frame is ALREADY the two
+* phases the oracle keeps distinct: vm_nextframe DECIDES and vm_frameadv DRAWS, and
+* vm_nextframe's gate is `vm_now - vm_due` against the real frame count. That comparison
+* is idempotent under being asked more often -- calling it every 2-3 frames instead of
+* every 6 steps the characters on exactly the same frames and simply draws them more
+* often. So the room stops asking chars_due and paces itself on the torch instead; the
+* VM keeps owning its own cadence, which is the property the note above is protecting.
+*
+* WHY THE WHOLE LOOP AND NOT JUST flicker: the flames are drawn into the BACK buffer and
+* only a swap makes them visible, so a 26 Hz flicker requires a 26 Hz swap. The character
+* redraw comes along with it. That is affordable because the peel is the expensive half
+* and ch_anymove already skips it when nothing moved -- between steps the characters are
+* draw-only, which P3.21 measured as fitting in one frame.
+FLM_LEN         equ     3
 room_loop
                 jsr     HAL_time_frame_count    ; D = 16-bit frame count (race-safe)
-                tfr     d,u
-                jsr     [CHARS_TAB+2]           ; chars_due — A = 1 if a step is due
-                tsta
-                bne     rl_draw
-* IDLE: nothing changes this frame, so the displayed buffer is already correct -- do not
+                std     rl_now
+                subd    flm_due
+                bpl     rl_draw                 ; the torch is due
+* IDLE: the torch has not moved on, so the displayed buffer is still correct -- do not
 * redraw it and do not flip. The VBL wait is NOT optional: HAL_gfx_swap is what paces this
 * loop, and skipping the draw without waiting would spin the CPU at full speed, burning
 * the budget this change exists to reclaim while putting nothing new on screen.
@@ -393,6 +419,24 @@ room_loop
                 bra     room_loop
 
 rl_draw
+* SCHEDULE THE NEXT TORCH STEP, from the same table the oracle's histogram gave. Measured
+* there: gaps of 1 x11, 2 x102, 3 x61 over 400 frames -- mean 2.3. `2,2,3` is 2.33, which
+* is the closest a whole-frame cadence gets without inventing precision the measurement
+* does not have.
+                lda     flm_idx
+                inca
+                cmpa    #FLM_LEN
+                blo     rl_fwrap
+                clra
+rl_fwrap
+                sta     flm_idx
+                ldx     #flm_cad
+                lda     a,x
+                tfr     a,b
+                clra                            ; D = the frame count, zero-extended
+                addd    rl_now
+                std     flm_due
+
                 jsr     flicker                 ; into the back buffer
 * PIECE D lives in the disk-resident bundle, not in ROOM.BIN. Three dispatches have
 * now hit the LOADM ceiling by growing this program (P3.20 twice, P3.22 once), and
@@ -901,6 +945,22 @@ lt_done
                 rts
 
 lt_err          fcb     0
+
+* --- the torch's own cadence (P3.72k) ------------------------------------
+* Measured on the oracle with the room up and nothing else moving, f3000-3400:
+* gaps of 1 x11, 2 x102, 3 x61 between torch-box changes, mean 2.3 frames = 26.2 Hz.
+* 2,2,3 is 2.33. This is the flames' clock and it is deliberately NOT cad_tab: tying the
+* two together is what made the torches answer to the character step rate.
+* AND THE PORT IS DRAW-BOUND BELOW THIS, MEASURED: asking 2,2,2 (mean 2.00) achieves
+* 2.7 frames and asking 2,2,3 (mean 2.33) achieves 2.8, so the work per iteration is the
+* floor at ~2.7 and the table barely moves it. 2,2,3 is kept anyway, because it is the
+* ORACLE'S measured shape rather than a value chosen to compensate for today's overrun —
+* and a minimum tuned to cancel an overrun becomes wrong the moment the overrun changes,
+* which is precisely how cad_tab came to sit at 3.83 against a rate nobody had measured.
+flm_cad         fcb     2,2,3
+flm_idx         fcb     0
+flm_due         fdb     0
+rl_now          fdb     0               ; the frame count this iteration read
 
 * ---------------------------------------------------------------
 * Torch data and state
