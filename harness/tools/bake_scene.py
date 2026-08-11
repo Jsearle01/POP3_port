@@ -73,10 +73,62 @@ PREP = ROOT / "harness/tools/cel_blit_prep.py"
 #   — and the port jumped straight to her turn, so the scene opened on her already
 #   moving. That is a beat of stillness the original spends before anything happens, and
 #   without it the opening reads as abrupt no matter what the cadence is.
+# ★ HE ENTERS IN TWO STAGES, NOT ONE (P3.72i, Jay watching the oracle: "when the vizier
+#   walks on screen from the right he stops (with a pause, probably music) and then
+#   continues to stand in front of the princess"). PlayCut0 after the SPEED change:
+#
+#       lda #7 / sta SPEED
+#       lda #5  / jsr play                   ;both hold
+#       lda #Vapproach / jsr vjumpseq
+#       lda #6  / jsr play
+#       lda #Vstop / jsr vjumpseq
+#       lda #4  / jsr play                   ;vizier enters  <- HE STOPS HERE
+#       lda #s_Vizier / ldx #12 / jsr PlaySongI   ;...and the cue plays
+#       lda #4  / jsr play
+#       lda #Vapproach / jsr vjumpseq
+#       lda #30 / jsr play
+#       lda #Vstop / jsr vjumpseq
+#       lda #4  / jsr play                   ;stops in front of princess
+#
+#   The port had only the second approach, so he walked in one unbroken 30-play stride.
+#   `Vapproach` IS `Vwalk` -- SEQTABLE.S:128 is `:96 dw Vwalk` and SEQDATA.S:94 is
+#   `Vapproach = 96` -- so the sequence was always right; the SHAPE of the entrance was
+#   not.
+#
+# "-" MEANS PLAY WITHOUT JUMPING, which the oracle does twice here and the PLAN could not
+#   express. trace_scene jumps only on "v"/"p" and scripts() appends only on "v"/"p", so
+#   both already do the right thing with it; only the vocabulary was missing.
+# ★★ AND IT DOES NOT FIT — THE BANK WALL, MEASURED (P3.72i).
+#
+#   The faithful entrance above is exactly this, and it is what the port should play:
+#
+#       ("p", "Pstand", 7), ("p", "Palert", 9),
+#       ("-", "", 5), ("v", "Vwalk", 6), ("v", "Vstop", 4),     <- he enters and STOPS
+#       ("-", "", 4),                                           <- the s_Vizier beat
+#       ("v", "Vwalk", 30), ("v", "Vstop", 4), ("v", "Vstand", 0)
+#
+#   It bakes and it links, and the cel image comes out at 19,288 B against 15,872 B of
+#   usable bank ($C000..$FDFF; $FE00-$FEFF is constant RAM and $FF00+ is I/O). OVER BY
+#   3,416 B. The disk is not the constraint — five tracks would hold it — the WINDOW is.
+#
+#   WHY IT COSTS SO MUCH, and it is not the two extra plays. The stop shifts the vizier's
+#   x by an odd number of CharX units, so when he resumes every one of his walk cels
+#   lands on the OPPOSITE sub-byte phase. Each then needs TWO bakes instead of one:
+#
+#       before   48→{1} 49→{1} 50→{1} 51→{0} 52→{0} 53→{1} 54→{1} 55→{1} 56→{1}
+#       after    48→{1,3} 49→{1,3} 50→{1,3} 51→{0,2} 52→{0,2} 53→{1,3} ...
+#
+#   Nine extra vizier cels at ~350 B each is ~3,150 B, which is the overflow almost
+#   exactly. The beat is cheap; the PHASE EXPLOSION it triggers is not.
+#
+#   ★ THE STRUCTURAL ANSWER IS ALREADY IN THE TREE AND UNWIRED: shift_row.s. A runtime
+#   shifter lets ONE baked phase serve all four and would cut the vizier's cel storage by
+#   up to 4x — far more than the 3,416 B needed. That is the carried open item this beat
+#   has now made binding, and it is Jay's call, not a thing to invent here.
 PLAN = [("p", "Pstand", 7),       # play 2 + play 5, both standing [SUBS.S:665-672]
-        ("p", "Palert", 9),
-        ("v", "Vwalk", 30),
-        ("v", "Vstop", 4),
+        ("p", "Palert", 9),       # she hears the door and turns
+        ("v", "Vwalk", 30),       # ONE unbroken approach — the entrance above is over
+        ("v", "Vstop", 4),        # budget until the runtime shifter lands
         ("v", "Vstand", 0)]       # 0 = hold; the script's last entry
 
 STEM = {}                         # (who, cel) -> file stem
