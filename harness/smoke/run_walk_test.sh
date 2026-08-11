@@ -60,6 +60,15 @@ export P_LAST_STRIDE=$(( (0x$CHDRAWN - 0x$CHLAST) / 4 ))
 export P_SHOTS="${P_SHOTS:-28}"
 export P_GAP="${P_GAP:-10}"
 
+# THE CEL IMAGE'S BOUNDS, read from the image itself — its first two bytes ARE WALK_LO
+# and WALK_N, which is the same self-describing header char_draw.s reads at run time.
+# Taking them from the artefact rather than from a constant here means the bank guard
+# cannot go stale when a beat is added to bake_scene.PLAN.
+CELRAW=build/assets/cel_image.raw
+export P_WALK_LO=$(od -An -tu1 -N1 -j0 "$CELRAW" | tr -d ' ')
+export P_WALK_N=$(od -An -tu1 -N1 -j1 "$CELRAW" | tr -d ' ')
+echo "[run_walk_test] cel image covers cels $P_WALK_LO..$((P_WALK_LO + P_WALK_N - 1))"
+
 RAMOPT=""
 [ -n "${MAME_RAM:-}" ] && RAMOPT="-ramsize $MAME_RAM"
 

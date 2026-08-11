@@ -46,18 +46,22 @@ PREP = ROOT / "harness/tools/cel_blit_prep.py"
 # stands at the door. The later beats (Vraise/Pback/Vexit/Pslump) are NOT here yet; adding
 # them is adding rows to this list.
 #
-# ★ Palert IS NOT HERE, AND IT IS NOT A SCOPE CHOICE — IT DOES NOT FIT (P3.65). Adding
-#   ("p", "Palert", 9) in front bakes her eight turn cels and takes the bundle to
-#   17,929 B against a 14,848 B window, OVER BY 3,081, and lz_pack refuses it. Measured:
+# ★ Palert IS BACK (P3.71), AND THE THING THAT BLOCKED IT IS GONE.
+#
+#   P3.65 measured it as not fitting and the arithmetic was right at the time: her eight
+#   turn cels took the bundle to 17,929 B against a 14,848 B window, over by 3,081, and
+#   lz_pack refused it —
 #
 #       vizier cels 6,906 + princess cels 5,841 + table 880 + torch 1,777 + code 2,525
 #
-#   P3.63 measured the scene's PEAK residency at 5,631 B of cels and showed it fits —
-#   but the peak is only reachable if cels arrive DURING the scene, and this bundle is
-#   loaded ONCE. So the wall is not the window and not the representation; it is that
-#   the port has no per-beat load. That is Jay's P3.45 question, deferred and now
-#   binding. Restore the line above the day the loader can stage.
-PLAN = [("v", "Vwalk", 30),
+#   — but every one of those cel bytes is now in the $C000 image rather than the bundle.
+#   The bundle holds the code, the torch and the scripts; the cels answer to a 16,384 B
+#   bank instead of the 14,848 B between FLAME_BASE and the disk parameter block. The
+#   diagnosis "the wall is that the port has no per-beat load" was ALSO right and is
+#   still true — it is simply no longer binding, because a bank the whole scene fits in
+#   does not need staging. Jay's P3.45 question is deferred again, on better terms.
+PLAN = [("p", "Palert", 9),
+        ("v", "Vwalk", 30),
         ("v", "Vstop", 4),
         ("v", "Vstand", 0)]       # 0 = hold; the script's last entry
 

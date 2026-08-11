@@ -21,14 +21,22 @@
 * Which phases and facings each cel needs is DERIVED, not written: beat_recost
 * walks the port's plan the way ANIMCHAR does. Nothing here may disagree with it.
 *
-*   cel 11  normal ph1
+*   cel 2   normal ph1
+*   cel 3   normal ph1
+*   cel 4   normal ph1
+*   cel 5   normal ph2
+*   cel 6   normal ph1
+*   cel 7   normal ph0
+*   cel 8   normal ph1
+*   cel 9   normal ph3
+*   cel 11  mirrored ph2
 *   cel 48  normal ph1
 *   cel 49  normal ph1
 *   cel 50  normal ph1
 *   cel 51  normal ph2
 *   cel 52  normal ph0
 *   cel 53  normal ph3
-*   cel 54  normal ph1
+*   cel 54  normal ph1, normal ph3
 *   cel 55  normal ph1
 *   cel 56  normal ph1
 
@@ -41,11 +49,20 @@
                 export  cel_image
 cel_image
 * --- the self-describing header, and it must stay FIRST -----------
-                fcb     11              ; WALK_LO, read from $C000
-                fcb     46              ; WALK_N,  read from $C001
+                fcb     2              ; WALK_LO, read from $C000
+                fcb     55              ; WALK_N,  read from $C001
 * --- walk_tab at $C002: eight slots per cel, two facings x four phases ---
 cel_walk_tab
-                fdb     0,p11_p1,0,0,0,0,0,0   ; cel 11
+                fdb     0,p2_p1,0,0,0,0,0,0   ; cel 2
+                fdb     0,p3_p1,0,0,0,0,0,0   ; cel 3
+                fdb     0,p4_p1,0,0,0,0,0,0   ; cel 4
+                fdb     0,0,p5_p2,0,0,0,0,0   ; cel 5
+                fdb     0,p6_p1,0,0,0,0,0,0   ; cel 6
+                fdb     p7_p0,0,0,0,0,0,0,0   ; cel 7
+                fdb     0,p8_p1,0,0,0,0,0,0   ; cel 8
+                fdb     0,0,0,p9_p3,0,0,0,0   ; cel 9
+                fdb     0,0,0,0,0,0,0,0   ; cel 10
+                fdb     0,0,0,0,0,0,p11_m_p2,0   ; cel 11
                 fdb     0,0,0,0,0,0,0,0   ; cel 12
                 fdb     0,0,0,0,0,0,0,0   ; cel 13
                 fdb     0,0,0,0,0,0,0,0   ; cel 14
@@ -88,11 +105,19 @@ cel_walk_tab
                 fdb     0,0,v51_p2,0,0,0,0,0   ; cel 51
                 fdb     v52_p0,0,0,0,0,0,0,0   ; cel 52
                 fdb     0,0,0,v53_p3,0,0,0,0   ; cel 53
-                fdb     0,v54_p1,0,0,0,0,0,0   ; cel 54
+                fdb     0,v54_p1,0,v54_p3,0,0,0,0   ; cel 54
                 fdb     0,v55_p1,0,0,0,0,0,0   ; cel 55
                 fdb     0,v56_p1,0,0,0,0,0,0   ; cel 56
 
-                include "content/cutscene/chars/p11_p1.s"
+                include "content/cutscene/chars/p2_p1.s"
+                include "content/cutscene/chars/p3_p1.s"
+                include "content/cutscene/chars/p4_p1.s"
+                include "content/cutscene/chars/p5_p2.s"
+                include "content/cutscene/chars/p6_p1.s"
+                include "content/cutscene/chars/p7_p0.s"
+                include "content/cutscene/chars/p8_p1.s"
+                include "content/cutscene/chars/p9_p3.s"
+                include "content/cutscene/chars/p11_m_p2.s"
                 include "content/cutscene/chars/v48_p1.s"
                 include "content/cutscene/chars/v49_p1.s"
                 include "content/cutscene/chars/v50_p1.s"
@@ -100,6 +125,7 @@ cel_walk_tab
                 include "content/cutscene/chars/v52_p0.s"
                 include "content/cutscene/chars/v53_p3.s"
                 include "content/cutscene/chars/v54_p1.s"
+                include "content/cutscene/chars/v54_p3.s"
                 include "content/cutscene/chars/v55_p1.s"
                 include "content/cutscene/chars/v56_p1.s"
 

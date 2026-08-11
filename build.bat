@@ -386,11 +386,12 @@ python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/pr
 if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/flames.lz --track 30 --tracks 2 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
-REM The cel image, onto the span packing opened up. Two whole tracks is 9,216 B against
-REM an image of ~7.6 KB; the room reads whole tracks, so the count is the ceiling, not
-REM the size. Update CEL_TRACKS in cutscene_room.s if this changes -- decb_to_raw and
-REM the room's own sector count are the two places that have to agree.
-python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/cel_image.raw --track %CEL_TRACK% --tracks 2 --reserve --imgtool "%IMGTOOL%"
+REM The cel image, onto the span packing opened up (tracks 11-15 and 20-24 were free).
+REM THREE whole tracks = 13,824 B, against an image of 13,049 B with Palert in the scene.
+REM Two tracks held the pre-Palert 7,633 B and would silently truncate this one, so the
+REM count is a real constraint and not a round number: it must be >= the image and the
+REM room's CEL_TRACKS must match, or load_tracks reads the wrong number of sectors.
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/cel_image.raw --track %CEL_TRACK% --tracks 3 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 
 "%IMGTOOL%" dir coco_dmk_rsdos build\probe.dmk

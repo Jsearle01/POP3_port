@@ -608,6 +608,16 @@ co_save
                 inca
                 ldb     ch_par                  ; and the PARITY it was placed at
                 stb     a,y
+                inca
+* AND THE FACING (P3.71, into the first of the three spare bytes). Palert ends
+* `aboutface`, so from the scene's opening onward the princess's standing cel is the
+* MIRRORED bake, and a checker that reconstructs her from the unmirrored source predicts
+* the wrong pixels. Facing is recorded HERE, at draw time, for the same reason x, y and
+* parity are: this is what reached these pixels, where the slot record holds what the VM
+* has decided for the frame still being built.
+                ldx     ch_rec
+                ldb     CH_FACE,x
+                stb     a,y
                 lda     ch_seen
                 ora     ch_bit
                 sta     ch_seen
@@ -1398,9 +1408,19 @@ pri_stand       fcb     11,SEQ_GOTO
 * derived at run time from Fcheck ^ CH_FACE, a facing dimension on walk_tab, and a
 * mirroring bake. Her turn is one PLAN line in bake_scene.py the day the loader can stage.
 *
-* The sequence data is deliberately NOT left here. An unused declaration is an unverified
-* one with a live-looking name, and this project has already been bitten by exactly that
-* (CHAR_TAB, dead and wrong by 8 bytes since P3.54).
+* ★ THAT DAY IS P3.71, AND IT CAME WITHOUT THE LOADER. The cels left the bundle for a
+* 16,384 B GIME bank at $C000 (link/pop_cels.link), so the 3,081-byte overrun above is
+* not a smaller number — it is a measurement of a window this data no longer answers to.
+* The per-beat load is still absent and still Jay's P3.45 question; it is simply not what
+* was blocking her turn. The sequence data below is LIVE now, and it is the reason the
+* mirrored cel 11 exists: aboutface leaves her facing the door, so every subsequent draw
+* of her standing cel takes walk_tab's mirrored half.
+pri_alert       fcb     2,3,4,5,6,7,8,9         ; the eight turn cels
+                fcb     SEQ_ABOUTFACE           ; no operand — she now faces the door
+                fcb     SEQ_CHX,9               ; and the turn's x correction
+                fcb     11
+                fcb     SEQ_GOTO
+                fdb     pri_stand
 
 pri_demo
                 fcb     11

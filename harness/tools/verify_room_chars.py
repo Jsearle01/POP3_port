@@ -62,9 +62,24 @@ def _src(who, cel):
 
 
 SRC = {c: _src("v", c) for c in range(48, 57)}          # Vwalk / Vstop / Vstand
+SRC.update({c: _src("p", c) for c in range(2, 10)})     # Palert, her eight turn cels
 SRC.update({11: _src("p", 11),                          # Pstand
             1:  ROOT / "content/cutscene/chars/pslump_src.s",     # Pslump
             18: ROOT / "content/cutscene/chars/pslump_src.s"})
+
+
+def mirrored(src):
+    """The `_m` bake beside a source, when the machine says the cel was drawn facing right.
+
+    A FACING DIMENSION, because Palert ends `aboutface` [SEQTABLE.S:1565] and from the
+    scene's opening onward the princess's standing cel is the MIRRORED bake. This checker
+    predated piece G and reconstructed every character from the unmirrored source, which
+    was correct only while nobody turned -- and the whole point of the beat that was just
+    restored is that she does. Falls back to the plain source when no mirrored bake
+    exists, which is the honest behaviour for a character that never turns.
+    """
+    m = src.with_name(src.name.replace("_src.s", "_m_src.s"))
+    return m if m.exists() else src
 
 POSFILE = ROOT / "build/room_chars_pos.txt"
 
@@ -82,20 +97,23 @@ def placements(posfile=None):
     out = []
     for line in pf.read_text().splitlines():
         f = line.split()
-        if len(f) != 7:
+        if len(f) != 9:                  # tag + x,y,cel and facing, per character
             continue
         tag = f[0]
-        vx, vy, vc, px, py, pc = map(int, f[1:])
+        vx, vy, vc, px, py, pc, vf, pfc = map(int, f[1:])
         rows = []
-        for cel, x, y in ((vc, vx, vy), (pc, px, py)):
+        for cel, x, y, face in ((vc, vx, vy, vf), (pc, px, py, pfc)):
             if cel not in SRC:
                 raise SystemExit("  cel %d is on screen but has no baked source" % cel)
-            src = SRC[cel]
+            # FACING FROM THE MACHINE, recorded at draw time (P3.71). -1/$FF is left and
+            # NORMAL, anything else is right and MIRRORED [FRAMEADV.S:1970].
+            right = (face != 0xFF)
+            src = mirrored(SRC[cel]) if right else SRC[cel]
             h = cel_rows(src)
             # SETUPCHAR's own expression, from the ORACLE's tables — not from the port.
             # CharX is in two-pixel units and the parity bit is the odd pixel (P3.58).
             _img, fdx, _fdy, fcheck, _lab = R.altset2()[cel]
-            spx = R.draw_x(x, fdx, fcheck) + CENTRING
+            spx = R.draw_x(x, fdx, fcheck, 0 if right else R.FACE_LEFT) + CENTRING
             rows.append(("cel%d" % cel, src, spx & 3, y - h + 1, spx >> 2))
         out.append((tag, rows))
     return out

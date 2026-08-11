@@ -98,7 +98,7 @@ CEL_BASE        equ     $C000
 CEL_MMU         equ     $FFA6           ; the register covering $C000-$DFFF
 CEL_BLOCK       equ     $0E             ; and $0F at $FFA7 — free at 128 KB and 512 KB
 DISK_CEL_TRK    equ     11              ; the span packing freed; build.bat CEL_TRACK
-CEL_TRACKS      equ     2
+CEL_TRACKS      equ     3               ; 13,824 B >= the 13,049 B image (build.bat agrees)
 DISK_CEL_SEC    equ     CEL_TRACKS*SECS_PER_TRACK
 
 * WHERE THE PACKED BLOB LIVES, and it is main RAM rather than the draw window.

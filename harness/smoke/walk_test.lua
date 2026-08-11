@@ -35,6 +35,13 @@ local PRI     = tonumber(os.getenv("P_PRI") or "0")
 local DRAWN   = tonumber(os.getenv("P_DRAWN") or "0")
 local LAST    = tonumber(os.getenv("P_LAST") or "0")
 local LAST_STRIDE = tonumber(os.getenv("P_LAST_STRIDE") or "8")
+-- THE CEL IMAGE'S OWN BOUNDS, handed in by the runner which reads them out of
+-- build/assets/cel_image.raw. NOT written down here: they change whenever a beat is
+-- added to bake_scene.PLAN (Palert took them from 11/46 to 2/55), and a guard carrying
+-- its own copy of a generated value is the P3.65 shape -- it passes for the wrong reason
+-- or, as this one did on its first run, fails for the wrong reason.
+local WALK_LO = tonumber(os.getenv("P_WALK_LO") or "0")
+local WALK_N  = tonumber(os.getenv("P_WALK_N") or "0")
 
 local FB_BASE, FB_SIZE = 0x8000, 15360
 local ROOM_MAGIC = 0x4B00
@@ -93,13 +100,16 @@ local function log_positions(tag)
         -- record for both characters and reported the princess standing where he was.
         -- Third home of one constant; the runner now derives it from the symbols.
         local o = LAST + (ch * 2 + shown) * LAST_STRIDE
-        return rd8(o), rd8(o + 1)
+        -- +5 is the FACING, recorded at draw time beside x/y/w/h/parity (P3.71). Palert
+        -- ends `aboutface`, so the princess is drawn from the MIRRORED bake thereafter
+        -- and a checker without this reconstructs her from the wrong source.
+        return rd8(o), rd8(o + 1), rd8(o + 5)
     end
-    local vx, vy = lastxy(0)
-    local px, py = lastxy(1)
-    pf:write(string.format("%s %d %d %d %d %d %d\n", tag,
+    local vx, vy, vf = lastxy(0)
+    local px, py, pf_ = lastxy(1)
+    pf:write(string.format("%s %d %d %d %d %d %d %d %d\n", tag,
                            vx, vy, rd8(DRAWN + 0 * 2 + shown),
-                           px, py, rd8(DRAWN + 1 * 2 + shown)))
+                           px, py, rd8(DRAWN + 1 * 2 + shown), vf, pf_))
     pf:flush()
 end
 
@@ -212,10 +222,12 @@ local function tick()
         log_positions(tag)
         local ok = dump_front(string.format(SHOTFMT, tag))
         local post_lo, post_n = rd8(0xC000), rd8(0xC001)
-        if pre_lo ~= 11 or pre_n ~= 46 or post_lo ~= 11 or post_n ~= 46 then
+        if pre_lo ~= WALK_LO or pre_n ~= WALK_N
+           or post_lo ~= WALK_LO or post_n ~= WALK_N then
             bank_bad = bank_bad + 1
             log(string.format("#   BANK UNMAPPED at capture %s: before %d/%d after %d/%d"
-                              .. " (want 11/46)", tag, pre_lo, pre_n, post_lo, post_n))
+                              .. " (want %d/%d)", tag, pre_lo, pre_n, post_lo, post_n,
+                              WALK_LO, WALK_N))
         end
         log(string.format("# capture %s at frame %d (+%d): %s",
                           tag, fn, fn - first_fn, ok and "ok" or "WRITE FAILED"))

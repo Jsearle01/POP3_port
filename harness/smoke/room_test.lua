@@ -83,13 +83,14 @@ local function log_positions(tag)
         -- record for both characters and reported the princess standing where he was.
         -- Third home of one constant; the runner now derives it from the symbols.
         local o = LAST + (ch * 2 + shown) * LAST_STRIDE
-        return rd8(o), rd8(o + 1)
+        -- +5 is the FACING (P3.71) — see the same note in walk_test.lua.
+        return rd8(o), rd8(o + 1), rd8(o + 5)
     end
-    local vx, vy = lastxy(0)
-    local px, py = lastxy(1)
-    f2:write(string.format("%s %d %d %d %d %d %d\n", tag,
+    local vx, vy, vf = lastxy(0)
+    local px, py, pfc = lastxy(1)
+    f2:write(string.format("%s %d %d %d %d %d %d %d %d\n", tag,
                            vx, vy, rd8(DRAWN + 0 * 2 + shown),
-                           px, py, rd8(DRAWN + 1 * 2 + shown)))
+                           px, py, rd8(DRAWN + 1 * 2 + shown), vf, pfc))
     f2:close()
 end
 

@@ -7,10 +7,12 @@
 * is exactly as long as the princess's opening — he waits at the door while she
 * hears it.
 viz_script
+                fdb     viz_stand
+                fcb     9
                 fdb     viz_walk
                 fcb     30
                 fdb     viz_stop
                 fcb     0               ; hold
 pri_script
-                fdb     pri_stand
+                fdb     pri_alert
                 fcb     0               ; hold

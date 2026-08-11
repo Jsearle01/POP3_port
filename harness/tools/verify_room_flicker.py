@@ -71,16 +71,19 @@ def recorded_boxes(posfile):
     boxes = list(BOXES[:6])          # the torches and the stars, unchanged
     for line in pathlib.Path(posfile).read_text().splitlines():
         f = line.split()
-        if len(f) != 7:
+        if len(f) != 9:                  # tag + x,y,cel and facing, per character
             continue
-        vx, vy, vc, px, py, pc = map(int, f[1:])
-        for x, y, cel in ((vx, vy, vc), (px, py, pc)):
+        vx, vy, vc, px, py, pc, vf, pfc = map(int, f[1:])
+        for x, y, cel, face in ((vx, vy, vc, vf), (px, py, pc, pfc)):
             # SETUPCHAR's expression, not `x + 20` (P3.58): CharX is in two-pixel units
             # and the parity bit is the odd pixel. The half-scale form put the vizier's
             # footprint 20 byte-columns left of where he is now drawn, so his real
             # position read as damage to the room.
             _i, fdx, _fy, fchk, _l = R.altset2()[cel]
-            col = (R.draw_x(x, fdx, fchk) + 20) >> 2
+            # FACING (P3.71): it moves the parity pixel, so it can move the byte column
+            # by one at a boundary. A one-column error here is the difference between
+            # excusing a character's own footprint and accusing it.
+            col = (R.draw_x(x, fdx, fchk, 0 if face != 0xFF else R.FACE_LEFT) + 20) >> 2
             boxes.append((col - 1, col + W, y - H + 1, y))
     return boxes
 
