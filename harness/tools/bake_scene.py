@@ -146,15 +146,76 @@ PREP = ROOT / "harness/tools/cel_blit_prep.py"
 #
 #   The deviation is recorded rather than hidden: the oracle pauses him at 186 and this
 #   pauses him at 185. Everything else about the beat is the oracle's.
+# ★★ THE TWO SONG STUBS (P3.72l, Jay: "lets add the two sound stubs, one for the princess
+#    and one for the vizier, just like they are in the other intro screens").
+#
+#    `PlaySongI` BLOCKS while the music plays [SUBS.S:822-842] and contains no wait
+#    instruction at all — the pause IS the song, exactly as intro_seq.s's play_song
+#    records. Stubbing these two to silence did not remove sound, it removed two BEATS:
+#    the scene opened almost the moment the room appeared, and the vizier's stop was a
+#    twitch instead of a hold.
+#
+#    ★ AND THE INTRO'S STUB CANNOT SIMPLY BE CALLED HERE, for the reason its own comment
+#      predicted: "IT WAITS RATHER THAN ANIMATING ... the things the oracle's song loop
+#      drives -- pburn, pstars, pflow -- are the PRINCESS ROOM's torches, stars and
+#      hourglass ... If a beat ever gains a live element, it is driven from here." This is
+#      that beat. The torches must keep flickering through both songs, so the interval has
+#      to be spent in the room's own loop, not in a VBL spin.
+#
+#      It already is: a no-jump hold freezes both characters' sequences while room_loop
+#      goes on flickering and swapping, which is precisely what the oracle's song loop
+#      does. So the song's body is a hold — and the DURATION lives here, once, with the
+#      holds DERIVED from it. Nothing is hand-written beside a call for anyone to
+#      remember to delete when sound lands (P3.52's property, and P3.41's lesson).
+#
+#    DURATIONS ARE TRACE-MEASURED, NOT THE X OPERAND. P3.52 established that the oracle's
+#    X is only PlaySongI's SOUND-OFF fallback (`txa / beq ]rts / jmp play`); with sound ON
+#    the beat lasts as long as the song. Measured on the oracle, this scene:
+#
+#      s_Princess  room arrives f2688 -> her turn starts f3487 = 799 frames, of which
+#                  play 2 + play 5 at the measured 5.38 f/play is ~38  ->  761 frames
+#      s_Vizier    his last cel change f3676 -> first on resuming f4064 = 388 frames, of
+#                  which 5 held plays at 6 f is 30                    ->  358 frames
+#
+#    (The oracle's own X values here are 8 and 12, which are neither of these.)
+# THE MEASURED PLAY PERIOD, NOT cad_tab's 6. vm_nextframe re-bases its due as
+# `now + count`, and since P3.72k the loop samples it at the FLAME rate (~2.8 frames)
+# rather than at the step, so `now` is systematically a little late and a play costs
+# ~7 frames rather than 6. Measured on the running port: the opening hold ran 937 frames
+# over 134 plays = 6.99. Converting the songs at 6 made the opening 17% too long, so the
+# divisor is the rate the machine actually keeps, read off the machine.
+#
+# (The re-base is worth fixing at source one day -- `due = due + count` would not drift
+# with the sampling rate -- but that changes the VM's cadence and is not this task.)
+SONG_FPS = 7
+
 PLAN = [("p", "Pstand", 7),       # play 2 + play 5, both standing [SUBS.S:665-672]
+        ("song", "s_Princess", 761),   # ...with the cue between them; she waits
         ("p", "Palert", 9),       # she hears the door and turns
         ("-", "", 5),             # play 5 — both hold after the SPEED change
         ("v", "Vwalk", 7),        # Vapproach: he enters from the right (oracle 6, +1)
         ("v", "Vstop", 4),        # ...and STOPS, at CharX 185 against the oracle's 186
-        ("-", "", 4),             # play 4 — the beat over the s_Vizier cue
+        ("song", "s_Vizier", 358),     # the cue over his stop — the beat Jay saw
+        ("-", "", 4),             # play 4
         ("v", "Vwalk", 29),       # Vapproach again: he crosses to her (oracle 30, -1)
         ("v", "Vstop", 4),        # stops in front of the princess, CharX 135 either way
         ("v", "Vstand", 0)]       # 0 = hold; the script's last entry
+
+
+def expand(plan):
+    """PLAN -> the (who, seq, plays) form the tracer and the scripts consume.
+
+    A song becomes a no-jump hold of its own measured length. This is the ONE place the
+    conversion happens, so the frame count above stays the single home for the duration
+    and the play count is never written by hand.
+    """
+    out = []
+    for w, seq, n in plan:
+        if w == "song":
+            out.append(("-", "", max(1, round(n / SONG_FPS))))
+        else:
+            out.append((w, seq, n))
+    return out
 
 STEM = {}                         # (who, cel) -> file stem
 
@@ -169,7 +230,7 @@ def trace_scene():
     viz = B.Char(197, R.FACE_LEFT, "Vstand", labels)
     pri = B.Char(120, R.FACE_LEFT, "Pstand", labels)
     plays = []
-    for w, seq, n in PLAN:
+    for w, seq, n in expand(PLAN):
         if w == "v":
             viz.jump(seq, labels)
         if w == "p":
@@ -382,7 +443,7 @@ LABEL = {"Vstand": "viz_stand", "Vwalk": "viz_walk", "Vstop": "viz_stop",
 
 def scripts():
     out = {"v": [["Vstand", 0]], "p": [["Pstand", 0]]}
-    for w, seq, n in PLAN:
+    for w, seq, n in expand(PLAN):
         for who in ("v", "p"):
             if w == who:
                 out[who].append([seq, 0])

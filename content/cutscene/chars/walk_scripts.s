@@ -8,17 +8,17 @@
 * hears it.
 viz_script
                 fdb     viz_stand
-                fcb     21
+                fcb     130
                 fdb     viz_walk
                 fcb     7
                 fdb     viz_stop
-                fcb     8
+                fcb     59
                 fdb     viz_walk
                 fcb     29
                 fdb     viz_stop
                 fcb     0               ; hold
 pri_script
                 fdb     pri_stand
-                fcb     7
+                fcb     116
                 fdb     pri_alert
                 fcb     0               ; hold

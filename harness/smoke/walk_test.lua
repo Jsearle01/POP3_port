@@ -118,6 +118,7 @@ local shot_n, next_shot, first_fn = 0, nil, nil
 local occ, prev_cel, last_change, gaps, steps = {}, nil, nil, {}, 0
 local xs = {}
 local bank_bad = 0        -- captures at which the $C000 cel bank was NOT mapped
+local room_fn, first_cel = nil, nil   -- the room's arrival, and the cels it arrived with
 
 local function finish(reason)
     -- THE BANK GUARD FIRST, because everything below it is meaningless if the window
@@ -185,10 +186,30 @@ local function tick()
     end
     local magic = rd8(ENGINE + 6) * 256 + rd8(ENGINE + 7)
     if state == "running" then
+        -- CAPTURE FROM THE FIRST MOVEMENT, NOT FROM THE ROOM (P3.72l).
+        --
+        -- This used to arm on the room coming up, which was the same instant the scene
+        -- started moving -- until the s_Princess song stub restored the oracle's 761-frame
+        -- opening hold. With that in, 28 captures at a 10-frame gap cover 280 frames and
+        -- ALL OF THEM LAND INSIDE THE SONG: every capture identical, both characters
+        -- standing, and the suite passes byte-exact while observing nothing at all.
+        --
+        -- That is the sharpest form of "a green check is not evidence" this project has
+        -- hit: not a check that misses a rare failure, but one that can no longer fail on
+        -- anything it was written to test. Arming on the first CEL CHANGE puts the window
+        -- back over the action, wherever the scene's opening holds move it to.
         if magic == ROOM_MAGIC and rd8(ENGINE + 8) > 0 then
-            log(string.format("# room up at frame %d, loads=%d status $%02X",
-                              fn, rd8(ENGINE + 4), rd8(ENGINE + 5)))
-            first_fn, next_shot, state = fn, fn, "walking"
+            if room_fn == nil then
+                room_fn = fn
+                first_cel = rd8(VIZ + CH_CEL) * 256 + rd8(PRI + CH_CEL)
+                log(string.format("# room up at frame %d, loads=%d status $%02X",
+                                  fn, rd8(ENGINE + 4), rd8(ENGINE + 5)))
+            end
+            if rd8(VIZ + CH_CEL) * 256 + rd8(PRI + CH_CEL) ~= first_cel then
+                log(string.format("# first movement at frame %d (+%d held frames)",
+                                  fn, fn - room_fn))
+                first_fn, next_shot, state = fn, fn, "walking"
+            end
         elseif fn > started + 1800 then
             log(string.format("# NEVER REACHED THE ROOM: magic $%04X status %d loads %d "
                               .. "dskerr $%02X", magic, rd8(ENGINE + 3),
