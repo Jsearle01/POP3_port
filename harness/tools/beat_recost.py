@@ -217,12 +217,35 @@ def peak(all_spans, sizes, n_steps):
     return best
 
 
-# The PORT's plan, not PlayCut0's absolute timeline: the port drops the entrance pair and
-# runs the final approach from startV0's own x, so its positions — and therefore its phases
-# — differ. Beats after Vstop follow SUBS.S:713-750 in order.
-PORT_PLAN = [("v", "Vwalk", 30), ("v", "Vstop", 4), ("v", "Vraise", 1),
-             ("p", "Pback", 13), (None, None, 5), ("v", "Vexit", 17),
-             (None, None, 12), ("p", "Pslump", 28)]
+# The PORT's plan, not PlayCut0's absolute timeline. BROUGHT CURRENT AT P3.73: the port no
+# longer drops the entrance pair (P3.72i/j) and now carries the lead-in and both song cues
+# (P3.72e/l), so its positions — and therefore its phases — are the ones bake_scene.PLAN
+# produces. Beats after the second Vstop follow SUBS.S:713-750 in order.
+#
+# THE SONG HOLDS ARE INCLUDED because they are steps the port really plays, and because
+# they are where a loader would have its time. They add no cels, so they cannot move the
+# PEAK — but they do stretch every span that brackets them, which is why a span below is
+# read in steps and not in seconds.
+#
+# The remaining beats' own cues (s_Buildup, s_Magic, s_StTimer) are NOT here: their
+# durations have not been trace-measured, and a hold changes no residency. Their absence
+# shortens the step axis and changes nothing else.
+PORT_PLAN = [("p", "Pstand", 7),          # the lead-in [SUBS.S:665-672]
+             (None, None, 109),           # s_Princess, 761 frames / 7
+             ("p", "Palert", 9),          # she turns
+             (None, None, 5),
+             ("v", "Vwalk", 7),           # he enters
+             ("v", "Vstop", 4),           # ...and stops
+             (None, None, 51),            # s_Vizier, 358 frames / 7
+             (None, None, 4),
+             ("v", "Vwalk", 29),          # he crosses
+             ("v", "Vstop", 4),           # stops in front of her  <- WHERE THE PORT ENDS
+             ("v", "Vraise", 1),          # ---- the remaining beats, from here down ----
+             ("p", "Pback", 13),
+             (None, None, 5),
+             ("v", "Vexit", 17),
+             (None, None, 12),
+             ("p", "Pslump", 28)]
 
 
 def port_trace():
@@ -283,7 +306,14 @@ def working_set(scratch):
                  "   <-- Vexit -> Vwalk2" if 48 <= cel <= 53 and who == "viz" else ""))
     print("    (%d cels in all)\n" % len(sp_cel))
 
-    WIN, FREE = 14848, 3632
+    # P3.73: the targets are the BANK's, not the bundle's. The cels left the flame bundle
+    # at P3.71, so 14,848/3,632 describe a window this data no longer answers to.
+    #   WIN  = $C000..$FDFF, what two mapped blocks reach AT ONCE
+    #          ($FE00-$FEFF is constant RAM under MC3, $FF00+ is always I/O)
+    #   BANK = the 32 KB P3.66 measured free at physical blocks $0C-$0F — twice the window,
+    #          reachable only by remapping $FFA6/$FFA7, which room_present already does
+    #          after every swap.
+    WIN, FREE = 0xFE00 - 0xC000, 32768
     for label, sp, sz in (("segment streams (today)", sp_var, sz_var),
                           ("raw bitmaps + shifter  ", sp_cel, sz_cel)):
         total = sum(sz.values())
@@ -295,8 +325,8 @@ def working_set(scratch):
         print("    peak is %.0f%% of the sum" % (100.0 * pk / total if total else 0))
         print("    vs window %d B: %s" % (WIN, "FITS, %d B spare" % (WIN - pk) if pk <= WIN
                                           else "OVER by %d B" % (pk - WIN)))
-        print("    vs free   %d B: %s\n" % (FREE, "fits" if pk <= FREE
-                                            else "over by %d B" % (pk - FREE)))
+        print("    vs 32K bank %d B: %s\n" % (FREE, "FITS" if pk <= FREE
+                                              else "over by %d B" % (pk - FREE)))
     return 0
 
 
