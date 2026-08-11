@@ -142,11 +142,21 @@ local function finish(reason)
         tot = tot + k * gaps[k]; cnt = cnt + gaps[k]
     end
     if cnt > 0 then
+        -- THE MODE, BESIDE THE MEAN (P3.72d). "A gap IS a step" stops being true at a
+        -- beat boundary: while Palert runs, the vizier HOLDS cel 54, and that shows up
+        -- as one 52-frame gap which drags the mean from 6.00 to 7.39 and reads as an
+        -- overrun that is not happening. The modal gap is the actual step rate.
+        local mode, moden = nil, 0
+        for _, k in ipairs(keys) do
+            if gaps[k] > moden then mode, moden = k, gaps[k] end
+        end
+        log(string.format("# modal gap %d frames x%d = THE STEP RATE; holds between "
+                          .. "beats inflate the mean", mode, moden))
         log(string.format("# mean %.2f frames per step over %d steps "
                           .. "(the walk changes cel EVERY step, so a gap IS a step)",
                           tot / cnt, cnt))
-        log(string.format("# floor is 2.60 (13/5 = 3,3,2,3,2); overrun %+.2f frames",
-                          tot / cnt - 2.60))
+        log(string.format("# oracle floor 6.00 (measured, P3.72d); overrun %+.2f frames",
+                          tot / cnt - 6.00))
     end
     log(string.format("# x ran %s", table.concat(xs, " ")))
     log("# VERDICT: " .. reason)

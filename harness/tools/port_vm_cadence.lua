@@ -68,8 +68,8 @@ local function tick()
             log("#   measurement. P3.31: the fragment it left behind was a Lua SYNTAX")
             log("#   ERROR, so this whole file has not parsed since. A measuring tool")
             log("#   that cannot load reports nothing, and nothing looks like silence.)")
-            log(string.format("# floor 2.60 (13/5 = 3,3,2,3,2); overrun %+.2f frames",
-                              mean - 2.60))
+            log(string.format("# oracle floor 6.00 (measured, P3.72d); overrun %+.2f frames",
+                              mean - 6.00))
         else
             log("# NO CEL CHANGES seen — the VM did not step")
         end

@@ -1048,7 +1048,41 @@ SEQ_SETFALL     equ     $F8             ; setfall   = -8, operand consumed unuse
 * original. Checked against ADDCHARX [CTRLSUBS.S:353] and ANIMCHAR [COLL.S:994] for the
 * facing-negate and the opcode/frame pairing. We reproduce that exactly; what we ALSO
 * did was clip a rotating pose on top of it.
-cad_tab         fcb     4,4,4,4,4,3     ; 23 frames over 6 steps = 3.833, one per gait pose
+* ===============================================================
+* P3.72d — RE-ANCHORED ON A MEASURED ORACLE RATE, because the old anchor was an
+* instrument artefact.
+*
+* Everything above calibrated this table against "the oracle's measured 3.9". That
+* figure came from oracle_flame_rate.lua, whose premise is "the flames advance once per
+* play iteration". THE PREMISE IS FALSE, measured on the oracle at P3.72d: over
+* f2688-f5560 the flame box changes on a 2-3 frame cycle continuously, straight through
+* stretches where the play period is plainly 6-7. It was measuring flame FLICKER, not
+* the play rate, so 3.9 was never the oracle's step rate and 3.833 was tuned to it.
+*
+* WHAT THE ORACLE ACTUALLY DOES [harness/tools/oracle_palert_rate.lua, apple2e +
+* cffa202 + hard1, watching a pixel box over the character]:
+*
+*     Palert, SPEED 1   f3487-f3530, gaps 5 5 5 6 6 5 5 6   mean 5.38 f/cel
+*     Vapproach, SPEED 7                     a steady 6      6.0  f/step
+*
+* Jay rejected the port live -- "her ovement is way to fast" -- and he was right by 39%.
+*
+* FLAT SIX, and the flatness is a finding rather than a simplification. P3.57 gave this
+* table a SPREAD (4,4,4,4,4,3) and made its length divide Vwalk's six-pose gait, because
+* a length that does not divide the gait rotates the short hold and reads as a limp. The
+* oracle has no spread at all -- the vizier's approach is a steady 6 -- so the spread was
+* only ever compensating for a wrong target. With every entry equal, the hold cannot
+* rotate and P3.57's whole failure mode is structurally impossible, not merely avoided.
+*
+* THE REMAINING 11% IS KNOWN AND NOT GUESSED AT. Her turn measures 5.38 and the walk 6.0;
+* one table cannot be both, and the difference is exactly the oracle's SPEED 1 vs SPEED 7
+* [SUBS.S:658,683]. Six matches the longer, more visible beat exactly and leaves her turn
+* 11% slow, against the 39% fast it was. Closing that last gap is a per-beat rate -- the
+* SPEED mechanism -- and it is deliberately NOT smuggled in here.
+*
+* This is a MINIMUM, not a target (see the pacing policy above): the port's draw costs
+* ~2-3 frames, so six is the binding constraint and the step rate should sit on it.
+cad_tab         fcb     6,6,6,6,6,6     ; the oracle's measured step rate, flat
 CAD_LEN         equ     6
 cad_idx         fcb     0
 vm_now          fdb     0               ; the HAL's frame count, handed in per call
