@@ -416,6 +416,16 @@ ch_scan
                 sta     ch_idx
                 ldx     #pri_slot
                 bsr     ch_scan_one
+* ABLATION — P3.72 §1, guarded by -DALWAYS_PEEL and absent from every normal build.
+* Forces the peel unconditionally. The peel-skip is decided ONCE PER FRAME while a
+* footprint belongs to ONE BUFFER, so the question is whether a buffer can carry a
+* stale footprint across a frame on which nothing moved. If the residue clears with
+* this on, the gate is the writer; if it does not, the gate is exonerated and the
+* fault is inside the erase itself.
+                ifdef   ALWAYS_PEEL
+                lda     #1
+                sta     ch_anymove
+                endc
                 rts
 
 ch_scan_one

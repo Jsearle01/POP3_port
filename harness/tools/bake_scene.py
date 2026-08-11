@@ -91,13 +91,27 @@ def trace_scene():
 
 
 def needed():
-    """{(who, cel, facing): sorted phases} — facing 0 = left/normal, 1 = right/mirrored."""
+    """{(who, cel, facing): (phases, x)} — facing 0 = left/normal, 1 = right/mirrored.
+
+    THE X COMES BACK TOO, AND IT IS NOT COSMETIC (P3.72). --start-col decides the cel's
+    COLOUR PARITY: sprite_convert picks each pixel's chroma from the screen column it
+    will be rendered at. This baked every cel at the character's STARTING CharX, which is
+    silently correct for anyone who has not moved -- and every cel in the scene was such a
+    cel until Palert, whose `aboutface,chx,9` [SEQTABLE.S:1565] shifts the princess nine
+    units before her standing cel is next drawn.
+
+    Measured: her eight turn cels all bake at the column they are drawn at, and the
+    MIRRORED cel 11 alone bakes at start-col 124 while the machine draws it at 142. So
+    the x is taken from where the trace actually puts the cel, not from where the
+    character began. The phase was already derived this way; only the column was not.
+    """
     viz, pri = trace_scene()
     out = {}
     for who, ch in (("viz", viz), ("pri", pri)):
-        for cel, ph, _x, face in ch.drawn:
-            out.setdefault((who, cel, 0 if face == R.FACE_LEFT else 1), set()).add(ph)
-    return {k: tuple(sorted(v)) for k, v in out.items()}
+        for cel, ph, x, face in ch.drawn:
+            out.setdefault((who, cel, 0 if face == R.FACE_LEFT else 1),
+                           [set(), x])[0].add(ph)
+    return {k: (tuple(sorted(v[0])), v[1]) for k, v in out.items()}
 
 
 def convert_src(who, cel, mirror, render_col, quiet=True):
@@ -134,16 +148,18 @@ def main():
     includes, table = [], {}
     for (who, cel, facing) in sorted(want):
         fimg, fdx, fdy, fchk, lab = alt[cel]
-        base = 197 if who == "viz" else 120
+        # THE X THE TRACE PUTS THIS CEL AT, not the character's starting CharX — see
+        # needed(). Baking the colour parity at a column the cel is never rendered at is
+        # invisible for a character that never moves and wrong for one that does.
         face = R.FACE_LEFT if facing == 0 else 0
-        rc = R.draw_x(base, fdx, fchk, face)
+        rc = R.draw_x(want[(who, cel, facing)][1], fdx, fchk, face)
         src, err = convert_src(who, cel, facing == 1, rc)
         if src is None:
             print("  %s cel %-3d facing %d: CONVERT FAILED %s" % (who, cel, facing, err))
             fail += 1
             continue
         stem = stem_for(who, cel) + ("_m" if facing else "")
-        for ph in want[(who, cel, facing)]:
+        for ph in want[(who, cel, facing)][0]:
             label = "%s_p%d" % (stem, ph)
             dst = OUT / ("%s.s" % label)
             b = subprocess.run([sys.executable, str(PREP), str(src), "--phase", str(ph),
