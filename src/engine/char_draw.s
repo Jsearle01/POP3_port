@@ -577,7 +577,25 @@ co_erase
                 inca
                 ldb     a,y
                 stb     ch_par                  ; the parity the SAVE was taken at
-                clr     ch_fdx                  ; the old position already included it
+* AND THE Fdx THE SAVE WAS TAKEN AT (P3.72). This was `clr ch_fdx`, on the stated
+* grounds that "the old position already included it" — and co_here is three lines of
+* proof that it does not: it writes CH_X into ch_tx and CH_FDX into ch_fdx SEPARATELY,
+* so the x that reaches ch_last is the RAW CharX and the erase was reconstructing a
+* column the save never used.
+*
+* IT WAS INVISIBLE FOR TWENTY DISPATCHES because every cel this scene drew had Fdx 0 —
+* char_draw's own cadence note records that Vwalk's six frames are all Fdx 0
+* [FRAMEDEF.S:378-383]. Palert is the first sequence in the port with a non-zero one:
+* her turn cels carry Fdx -1, 2, 2, 1 (cels 5, 6, 7, 9).
+*
+* AND THE MAGNITUDE IS THE SIGNATURE. CharX is in TWO-PIXEL units and the mode is 4 px
+* per byte, so Fdx 2 is exactly ONE BYTE COLUMN — which is the one-column residue
+* measured at cols 35 and 36-41, and the reason the peel itself came back holding the
+* room shifted by a column.
+                inca
+                inca                            ; +5 is the facing; +6 is Fdx
+                ldb     a,y
+                stb     ch_fdx
                 jsr     co_setup
                 ldx     ch_dest
                 ldy     ch_peel
@@ -627,6 +645,15 @@ co_save
 * has decided for the frame still being built.
                 ldx     ch_rec
                 ldb     CH_FACE,x
+                stb     a,y
+                inca
+* AND Fdx, into the second spare byte (P3.72). The erase reconstructs the saved column
+* from this record, and the column the SAVE used was co_setup's f(ch_tx + ch_fdx) — so
+* every term of that expression has to be here or the erase restores somewhere the save
+* never wrote. x and Fdx are stored separately, rather than pre-summed, because the
+* harness and verify_room_chars read this x and apply the cel's own Fdx themselves;
+* folding it in here would make them double-count it.
+                ldb     ch_fdx
                 stb     a,y
                 lda     ch_seen
                 ora     ch_bit
