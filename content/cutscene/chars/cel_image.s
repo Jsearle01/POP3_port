@@ -48,10 +48,23 @@
 * can check against build.bat's --base.
                 export  cel_image
 cel_image
-* --- the self-describing header, and it must stay FIRST -----------
-                fcb     2              ; WALK_LO, read from $C000
-                fcb     55              ; WALK_N,  read from $C001
-* --- walk_tab at $C002: eight slots per cel, two facings x four phases ---
+* --- THE SIGNATURE, and it must stay FIRST (P3.77) -----------------
+*
+* $C000/$C001 is the one address the engine trusts without being able to check
+* it: char_draw reads the bounds and the cel table from there, and if the wrong
+* GIME block is mapped underneath, every pointer stays valid-LOOKING and the VM
+* draws whatever bytes are present. No crash -- garbage that reads as a
+* rendering bug. That is exactly how the capture-05 corruption presented and it
+* took three dispatches to attribute.
+*
+* So the image says who it is. char_draw checks these two bytes once per frame
+* and refuses to draw from a window that is not the cel bank. The duplication is
+* two bytes and it is the entire point of a magic number.
+                fcb     $C3,$5A         ; CEL_MAGIC, read from $C000/$C001
+* --- the self-describing bounds --------------------------------
+                fcb     2              ; WALK_LO, read from $C002
+                fcb     55              ; WALK_N,  read from $C003
+* --- walk_tab at $C004: eight slots per cel, two facings x four phases ---
 cel_walk_tab
                 fdb     0,p2_p1,0,0,0,0,0,0   ; cel 2
                 fdb     0,p3_p1,0,0,0,0,0,0   ; cel 3

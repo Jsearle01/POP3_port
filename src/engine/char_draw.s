@@ -35,6 +35,7 @@
                 ifdef   OBJTARGET
                 section prog
                 export  chars_frame
+                export  ch_bankerr
                 export  chars_due
 * THE BLITTER BY SYMBOL, NOT BY OFFSET (P3.62). This file is LINKED INTO THE BUNDLE
 * alongside blit_core.o [build.bat: lwlink ... flame_cels.o blit_core.o char_draw.o],
@@ -162,9 +163,11 @@ PRI_PEEL_BASE   equ     $6C00+VIZ_PEEL*2
 * carries WALK_LO/WALK_N as its own first two bytes and this file READS them rather than
 * assembling a second copy. A duplicated layout constant is what CHAR_TAB was.
 CEL_BASE        equ     $C000           ; where cutscene_room maps the bank
-CEL_WALK_LO     equ     CEL_BASE        ; first cel number the image covers
-CEL_WALK_N      equ     CEL_BASE+1      ; how many cels it covers
-CEL_WALK_TAB    equ     CEL_BASE+2      ; [cel][facing][phase] -> cel data
+CEL_MAGIC       equ     CEL_BASE        ; $C3,$5A — the image says who it is (P3.77)
+CEL_WALK_LO     equ     CEL_BASE+2      ; first cel number the image covers
+CEL_WALK_N      equ     CEL_BASE+3      ; how many cels it covers
+CEL_WALK_TAB    equ     CEL_BASE+4      ; [cel][facing][phase] -> cel data
+CEL_MAGIC_VAL   equ     $C35A
 
 * ---------------------------------------------------------------
 * PIECE D — THE CHARACTER DRAW, and the seed of the VM's character slots.
@@ -331,6 +334,28 @@ chars_frame
                 ldu     #pri_script             ; SHE HAS A SCRIPT NOW TOO (P3.65)
                 stu     vm_scr+2
 cf_running
+* ★ THE BANK GUARD (P3.77) — check the window IS the cel bank before drawing from it.
+*
+* Every cel pointer in walk_tab is ABSOLUTE. If the wrong GIME block sits under $C000 the
+* pointers stay valid-looking and blit_cel draws whatever bytes are there: no crash, no
+* bad address, just garbage that reads as a rendering bug. Capture-05 was exactly that,
+* and it cost three dispatches to attribute because nothing in the machine complained.
+*
+* ONCE PER FRAME, NOT PER CEL. The mapping only changes at beat boundaries, so a frame is
+* the finest granularity at which the answer can differ, and ~14 cy against a 58,026 cy
+* budget is not a cost worth optimising. Per cel would be ~10 cy x however many are drawn
+* and would say nothing extra.
+*
+* IT REFUSES RATHER THAN DRAWING. A frame that skips both characters is instantly visible
+* and harms nothing; a frame that draws from an unmapped window corrupts the peel's saved
+* background and the damage accumulates. ch_bankerr latches for the harness.
+                ldd     CEL_MAGIC
+                cmpd    #CEL_MAGIC_VAL
+                beq     cf_bank_ok
+                lda     #1
+                sta     ch_bankerr              ; latched: the harness reads this
+                rts                             ; draw NOTHING this frame
+cf_bank_ok
                 jsr     vm_nextframe            ; decide
                 jsr     vm_frameadv             ; draw
                 rts
@@ -1668,6 +1693,9 @@ ch_bit          fcb     0
 ch_seen         fcb     0               ; bit per (character,slot): background saved?
 ch_move         fcb     0
 ch_cp           fcb     0               ; which pass is running (CP_ERASE/SAVE/DRAW)
+* --- P3.77: latched non-zero if chars_frame ever found the cel bank unmapped.
+* --- Exported for the harness; the engine only ever sets it.
+ch_bankerr      fcb     0
 ch_anymove      fcb     0               ; did ANYTHING move this frame — see ch_scan
 ch_lastoff      fcb     0
 * Renderer-side, NOT character state: what each buffer last drew for each character —

@@ -42,6 +42,10 @@ local LAST_STRIDE = tonumber(os.getenv("P_LAST_STRIDE") or "8")
 -- or, as this one did on its first run, fails for the wrong reason.
 local WALK_LO = tonumber(os.getenv("P_WALK_LO") or "0")
 local WALK_N  = tonumber(os.getenv("P_WALK_N") or "0")
+-- ch_bankerr: the ENGINE's own bank guard (P3.77). char_draw checks the image's
+-- signature once per frame and refuses to draw from a window that is not the cel bank.
+-- This reads what the engine concluded, beside what the harness concludes externally.
+local BANKERR = tonumber(os.getenv("P_BANKERR") or "0")
 
 local FB_BASE, FB_SIZE = 0x8000, 15360
 local ROOM_MAGIC = 0x4B00
@@ -125,6 +129,11 @@ local function finish(reason)
     -- was not showing the cels. This is the assertion P3.69 needed and did not have.
     log(string.format("# bank_mapped_at_every_capture %s (%d of %d captures unmapped)",
                       bank_bad == 0 and "PASS" or "FAIL", bank_bad, shot_n))
+    if BANKERR ~= 0 then
+        local e = rd8(BANKERR)
+        log(string.format("# engine_bank_guard %s (ch_bankerr = %d)",
+                          e == 0 and "PASS" or "FIRED — the engine refused to draw", e))
+    end
     log("# --- PHASE OCCUPANCY, measured on the running machine ---")
     local cels = {}
     for c in pairs(occ) do cels[#cels + 1] = c end
@@ -249,10 +258,10 @@ local function tick()
         -- and again on the far side of dump_front -- which is where the old four-register
         -- restore did its damage. $C000/$C001 are the image's own WALK_LO/WALK_N; $FF
         -- means the window is showing the framebuffer's unwritten reserved tail instead.
-        local pre_lo, pre_n = rd8(0xC000), rd8(0xC001)
+        local pre_lo, pre_n = rd8(0xC002), rd8(0xC003)
         log_positions(tag)
         local ok = dump_front(string.format(SHOTFMT, tag))
-        local post_lo, post_n = rd8(0xC000), rd8(0xC001)
+        local post_lo, post_n = rd8(0xC002), rd8(0xC003)
         if pre_lo ~= WALK_LO or pre_n ~= WALK_N
            or post_lo ~= WALK_LO or post_n ~= WALK_N then
             bank_bad = bank_bad + 1

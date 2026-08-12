@@ -48,6 +48,7 @@ export P_VIZ="0x$(sym "$FMAP" viz_slot)"
 export P_PRI="0x$(sym "$FMAP" pri_slot)"
 export P_DRAWN="0x$(sym "$FMAP" ch_drawn)"
 export P_LAST="0x$(sym "$FMAP" ch_last)"
+export P_BANKERR="0x$(sym "$FMAP" ch_bankerr)"
 # THE ch_last STRIDE, DERIVED — never a literal in the Lua (P3.58). ch_last holds four
 # (character, slot) entries, so (ch_drawn - ch_last)/4 is its per-entry size. When that
 # entry grew from 4 to 8 bytes to carry the cel's parity, the Lua's own hard-coded `* 4`
@@ -65,8 +66,10 @@ export P_GAP="${P_GAP:-10}"
 # Taking them from the artefact rather than from a constant here means the bank guard
 # cannot go stale when a beat is added to bake_scene.PLAN.
 CELRAW=build/assets/cel_image.raw
-export P_WALK_LO=$(od -An -tu1 -N1 -j0 "$CELRAW" | tr -d ' ')
-export P_WALK_N=$(od -An -tu1 -N1 -j1 "$CELRAW" | tr -d ' ')
+# OFFSETS 2 AND 3, NOT 0 AND 1 (P3.77): the image now opens with a two-byte signature
+# ($C3,$5A) that char_draw checks before drawing from the bank, so the bounds moved along.
+export P_WALK_LO=$(od -An -tu1 -N1 -j2 "$CELRAW" | tr -d ' ')
+export P_WALK_N=$(od -An -tu1 -N1 -j3 "$CELRAW" | tr -d ' ')
 echo "[run_walk_test] cel image covers cels $P_WALK_LO..$((P_WALK_LO + P_WALK_N - 1))"
 
 RAMOPT=""
@@ -112,6 +115,30 @@ for r in a b; do
            --shots "build/walk_${r}_shot_%s.bin" > "build/walk_check_$r.txt"
     [ $? -ne 0 ] && rc=1
     sed 's/^/  /' "build/walk_check_$r.txt"
+done
+
+# ★ TWO WAYS THIS SUITE CAN PASS WHILE OBSERVING NOTHING, both now closed (P3.77).
+#
+# It arms on the first cel change and compares whatever it captured. If the scene never
+# moves it captures NOTHING, compares nothing, both runs agree, and it reports PASS. That
+# happened twice: once when the s_Princess hold pushed the whole window into a song
+# (P3.72l), and again here when a seeded bank mismatch made the engine refuse to draw —
+# "0 of 0 captures unmapped ... PASS". A suite that cannot fail on an empty scene is not
+# testing the scene.
+for r in a b; do
+    # grep -c PRINTS 0 and EXITS 1 when it matches nothing, so `|| echo 0` appended a
+    # second line and the numeric test below broke silently — the assertion never fired
+    # on the very run that proved it was needed. `|| true` keeps grep's own 0.
+    n=$(grep -c "^# capture " "build/walk_test_$r.log" 2>/dev/null || true)
+    [ -z "$n" ] && n=0
+    if [ "$n" -eq 0 ]; then
+        echo "  FAIL run $r: ZERO captures — the scene never moved, so nothing was tested"
+        rc=1
+    fi
+    if grep -q "engine_bank_guard FIRED" "build/walk_test_$r.log" 2>/dev/null; then
+        echo "  FAIL run $r: the engine's own bank guard fired — it refused to draw"
+        rc=1
+    fi
 done
 
 echo "[run_walk_test] --- run a vs run b ---"
