@@ -263,11 +263,29 @@ cel_res_block   equ     CEL_VARBASE+4   ; the PINNED page's block, published for
 * exactly VIZ_TOP/VIZ_COL and PRI_TOP/PRI_COL. The record reproduces the placement
 * it replaces.
 * ---------------------------------------------------------------
-CH_X            equ     0
-CH_Y            equ     1
-CH_FACE         equ     2
-CH_CEL          equ     3
-CH_H            equ     4
+* ★★ CH_X IS 16-BIT AS OF P3.78, AND THE REASON IS MEASURED RATHER THAN DEFENSIVE.
+*
+* `Vexit` ends `goto Vwalk2` [SEQTABLE.S:1553], so the vizier walks OUT and keeps walking
+* for the forty plays the scene has left. As a byte, CharX ran 233, 242, 254 and then
+* WRAPPED TO 0 — he teleported to the left edge, and one step later the slot record itself
+* read `cel=29 x=191 face=79 awid=244` because the draw had gone through the framebuffer's
+* end and back over its own state. Every character before this one stood still or crossed
+* the middle of the room; this is the first that leaves the screen, and it is where a byte
+* stopped being enough.
+*
+* The oracle keeps CharX in one byte and gets away with it because PlayCut0 hands off to
+* Prolog2 before the count could run out. The port has no handoff yet, so it holds the
+* real number instead of borrowing the oracle's headroom.
+*
+* THE RECORD GREW BY ONE BYTE AND EVERY OFFSET AFTER X MOVED. That is why they are `equ`s
+* and not literals — but ch_last, the peel's draw-time record, carries x too, and the
+* harness reads both. All three are updated together; a stale offset here is the CHAR_TAB
+* hazard this file already carries a scar from.
+CH_X            equ     0               ; 2 B — signed 16-bit, oracle CharX units
+CH_Y            equ     2
+CH_FACE         equ     3
+CH_CEL          equ     4
+CH_H            equ     5
 * +5 WAS CH_W AND IS NOW THE MIRROR ANCHOR (P3.72g). The record's own width was written
 * by vm_resolve and READ BY NOTHING -- measured at P3.71 by forcing it to $FF with
 * -DSEED_BADHDR and watching all 28 walk captures stay byte-exact (blit_cel takes its own
@@ -276,10 +294,10 @@ CH_H            equ     4
 * the slot goes to the fact that actually needs a per-cel home: the Apple sprite's width
 * in bytes, which is the WIDTH in MLayGen's `SBC WIDTH` and the only thing that lets the
 * engine place a MIRRORED draw correctly. See co_setup.
-CH_AWID         equ     5
-CH_FDX          equ     10              ; per-frame x offset, from the cel table
-CH_STRIDE       equ     11              ; 2 B — constant peel slot stride
-CH_PAR          equ     13              ; the cel's PARITY BIT — the odd screen pixel
+CH_AWID         equ     6
+CH_FDX          equ     11              ; per-frame x offset, from the cel table
+CH_STRIDE       equ     12              ; 2 B — constant peel slot stride
+CH_PAR          equ     14              ; the cel's PARITY BIT — the odd screen pixel
 
 * THE VIRTUAL SCREEN IS THE APPLE'S 280 px, CENTRED — cols 5..74 (P3.59).
 * Apple byte 0 -> CoCo col 5, Apple byte 39 -> col 74. Both margins are $00 for all 192
@@ -306,9 +324,9 @@ FORE_L          equ     60
 FORE_R          equ     62
 FORE_T          equ     104
 FORE_B          equ     151
-CH_PTR          equ     6
-CH_PEEL         equ     8
-CH_SIZE         equ     14
+CH_PTR          equ     7               ; 2 B
+CH_PEEL         equ     9               ; 2 B
+CH_SIZE         equ     15
 
 * Motion step. MUST be a multiple of 4 px: the phase is baked into the cel data
 * (P3.19/P3.20), so moving by anything else would need the phase variant for the
@@ -541,7 +559,13 @@ ch_scan_one
                 rts
 
 * ch_index — ch_lastoff and ch_bit for this (character, slot).
-* ch_last[] index = (character*2 + slot) * 8  — x, y, w, h, parity (3 spare).
+* ch_last[] index = (character*2 + slot) * 9  — x(2), y, w, h, par, face, fdx, awid.
+*
+* ★ NINE, NOT EIGHT, SINCE P3.78. x became 16-bit when the vizier's exit walked him past
+* 255, and the entry had no spare byte left to grow into: all eight were in use (the
+* "3 spare" this line used to claim were spent on face, fdx and awid at P3.71/P3.72).
+* Nine is not a power of two, so the index is a multiply rather than three shifts — 11 cy
+* against 6, twice per character per pass, on a path that already costs a blit.
 *
 * THE PARITY HAS TO BE REMEMBERED WITH THE POSITION (P3.58). The erase recomputes
 * the old destination from the stored x, and the drawn column is now
@@ -553,10 +577,9 @@ ch_index
                 lda     ch_idx
                 lsla
                 adda    ch_slot
-                lsla
-                lsla
-                lsla                            ; 8 B per (character, slot)
-                sta     ch_lastoff
+                ldb     #9                      ; 9 B per (character, slot) — see above
+                mul
+                stb     ch_lastoff
 * FOUR seen bits, not two: one per (character, slot). Keying on the slot alone would
 * make character 0 and character 1 share a bit, so the second character would
 * inherit the first's "background already saved" and skip a save it needed.
@@ -576,14 +599,19 @@ ch_moved
                 adda    ch_slot
                 ldb     a,y
                 stb     ch_lastcel
+* ★ 16-BIT X (P3.78). ch_last's entry is now x(2), y, w, h, par, face — seven of its eight
+* bytes. Comparing only x's low half would call a character that had moved exactly 256
+* units STATIC, skip its erase and its save, and draw the new cel over the old one's
+* pixels. The entry is reached through a POINTER rather than an accumulator offset,
+* because `ldd a,y` overwrites the very index it is offset by.
                 ldy     #ch_last
                 lda     ch_lastoff
+                leay    a,y                     ; Y -> this (character, slot)'s entry
                 ldx     ch_rec
-                ldb     a,y                     ; last x for this (char, slot)
-                cmpb    CH_X,x
+                ldd     ,y                      ; last x, 16-bit
+                cmpd    CH_X,x
                 bne     co_moved
-                inca
-                ldb     a,y                     ; last y
+                ldb     2,y                     ; last y
                 cmpb    CH_Y,x
                 bne     co_moved
 * THE CEL COUNTS AS A CHANGE TOO, not just the position. The test compared x and y
@@ -664,21 +692,19 @@ char_one
 cp_none
                 rts
 co_erase
+* ENTRY LAYOUT (P3.78): x is the first TWO bytes, then y, w, h, par, face.
                 ldy     #ch_last
                 lda     ch_lastoff
-                ldb     a,y
-                stb     ch_tx                   ; old x
-                inca
-                ldb     a,y
+                leay    a,y                     ; Y -> this (character, slot)'s entry
+                ldd     ,y
+                std     ch_tx                   ; old x, 16-bit
+                ldb     2,y
                 stb     ch_ty                   ; old y
-                inca
-                ldb     a,y
+                ldb     3,y
                 stb     ch_w                    ; the width it was SAVED with
-                inca
-                ldb     a,y
+                ldb     4,y
                 stb     ch_h                    ; and the height
-                inca
-                ldb     a,y
+                ldb     5,y
                 stb     ch_par                  ; the parity the SAVE was taken at
 * AND THE Fdx THE SAVE WAS TAKEN AT (P3.72). This was `clr ch_fdx`, on the stated
 * grounds that "the old position already included it" — and co_here is three lines of
@@ -695,15 +721,12 @@ co_erase
 * per byte, so Fdx 2 is exactly ONE BYTE COLUMN — which is the one-column residue
 * measured at cols 35 and 36-41, and the reason the peel itself came back holding the
 * room shifted by a column.
-                inca
-                ldb     a,y
-                stb     ch_face                 ; +5 the FACING the save was taken at
-                inca
-                ldb     a,y
-                stb     ch_fdx                  ; +6 the Fdx
-                inca
-                ldb     a,y
-                stb     ch_awid                 ; +7 the sprite width — the mirror anchor
+                ldb     6,y
+                stb     ch_face                 ; +6 the FACING the save was taken at
+                ldb     7,y
+                stb     ch_fdx                  ; +7 the Fdx
+                ldb     8,y
+                stb     ch_awid                 ; +8 the sprite width — the mirror anchor
                 jsr     co_setup
                 ldx     ch_dest
                 ldy     ch_peel
@@ -730,21 +753,17 @@ co_save
                 jsr     blit_save
                 ldy     #ch_last
                 lda     ch_lastoff
-                ldb     ch_tx
-                stb     a,y
-                inca
+                leay    a,y                     ; Y -> this (character, slot)'s entry
+                ldd     ch_tx                   ; x is 16-bit and takes +0..+1 (P3.78)
+                std     ,y
                 ldb     ch_ty
-                stb     a,y
-                inca
+                stb     2,y
                 ldb     ch_w                    ; remember the extent, not just where
-                stb     a,y
-                inca
+                stb     3,y
                 ldb     ch_h
-                stb     a,y
-                inca
+                stb     4,y
                 ldb     ch_par                  ; and the PARITY it was placed at
-                stb     a,y
-                inca
+                stb     5,y
 * AND THE FACING (P3.71, into the first of the three spare bytes). Palert ends
 * `aboutface`, so from the scene's opening onward the princess's standing cel is the
 * MIRRORED bake, and a checker that reconstructs her from the unmirrored source predicts
@@ -753,8 +772,7 @@ co_save
 * has decided for the frame still being built.
                 ldx     ch_rec
                 ldb     CH_FACE,x
-                stb     a,y
-                inca
+                stb     6,y
 * AND Fdx, into the second spare byte (P3.72). The erase reconstructs the saved column
 * from this record, and the column the SAVE used was co_setup's f(ch_tx + ch_fdx) — so
 * every term of that expression has to be here or the erase restores somewhere the save
@@ -762,10 +780,9 @@ co_save
 * harness and verify_room_chars read this x and apply the cel's own Fdx themselves;
 * folding it in here would make them double-count it.
                 ldb     ch_fdx
-                stb     a,y
-                inca
-                ldb     ch_awid                 ; +7, the last spare byte in the entry
-                stb     a,y
+                stb     7,y
+                ldb     ch_awid                 ; +8, the last byte of a 9-byte entry
+                stb     8,y
                 lda     ch_seen
                 ora     ch_bit
                 sta     ch_seen
@@ -782,12 +799,16 @@ co_draw
 * DID THIS CHARACTER LAND ON THE PILLAR? Recorded, not acted on: the foreground must go
 * down after EVERY character, not after each one, or the second character would draw
 * over a pillar the first had already put back.
-                lda     ch_col
-                cmpa    #FORE_R+1
-                bhs     cd_nofore
-                adda    ch_w
-                cmpa    #FORE_L+1
-                blo     cd_nofore
+* 16-BIT AND SIGNED (P3.78), because ch_col is. As bytes these were unsigned compares, so
+* a character off the LEFT edge (col negative) would read as a huge positive column and
+* miss the pillar, and one off the RIGHT would wrap into range and claim it.
+                ldd     ch_col
+                cmpd    #FORE_R+1
+                bge     cd_nofore
+                addb    ch_w
+                adca    #0
+                cmpd    #FORE_L+1
+                blt     cd_nofore
                 lda     #1
                 sta     ch_fore
 cd_nofore
@@ -881,7 +902,12 @@ co_variant
                 addd    #4                      ; facing right -> the mirrored half
                 std     cv_ix
 cv_lface
-                lda     CH_X,x
+* THE LOW BYTE IS ENOUGH AND THAT IS NOT AN APPROXIMATION. The whole expression is taken
+* mod 4 four instructions below, and 2*(x+Fdx)+par mod 4 depends only on x's bottom two
+* bits — so the high half of a 16-bit x cannot change the answer. Reading one byte keeps
+* this identical to co_setup's derivation of the same quantity, which is the property
+* P3.72g's stall was caused by breaking.
+                lda     CH_X+1,x                ; x's LOW byte — see above
                 adda    CH_FDX,x                ; ...indexed by the sub-byte phase,
                 lsla                            ; 2*(x+Fdx) — mod 4 is all this needs
                 adda    CH_PAR,x                ; + the odd pixel
@@ -940,40 +966,89 @@ cv_done
 * at 22 cy/byte. This costs nothing on a character that is fully on screen, which is all
 * of them for all but the first few steps.
 *
-* The wrap is handled for free: a spill of nine bytes from col 75 runs 75..79 then 0..3
-* of the row below, which is exactly where the blit put it — both walk the same linear
-* memory.
+* ★★ 16-BIT AND SIGNED SINCE P3.78, AND THE BYTE VERSION FAILED LOUDLY. ch_col became a
+* word when the vizier's exit took his column past 79; this routine kept reading it with
+* `lda`, which on a big-endian 6809 is the HIGH byte — zero for every on-screen column.
+* So every character tested as "off the left edge", and every frame blanked five bytes
+* down the left of every cel. The peel then SAVED that black as background and restored
+* it, so it accumulated: Jay, within a minute of the build, "the cels are just black
+* rectangles now."
+*
+* The lesson is not the endianness. It is that I widened a field and left one of its four
+* readers on the old width, intending to retire that reader in a later step — a
+* half-migrated field is a bug with a plan attached, and the plan is not in the binary.
+*
+* THE SPILL IS ALSO BOUNDED TO THE ROW NOW. The old comment below claimed the wrap was
+* "handled for free" because the blank followed the blit through the same linear memory.
+* That was true only while the blit itself stayed inside the buffer. It does not: a
+* character leaving the screen writes past column 79 into the next row — the vizier-sized
+* rectangle Jay saw re-entering from the left — so a blank that faithfully follows it just
+* spreads the damage. Neither may leave the row.
 co_clip
-                lda     ch_col
-                cmpa    #VIS_L
-                bhs     cc_right
-                ldb     #VIS_L
-                subb    ch_col                  ; B = bytes off the LEFT edge
-                ldx     ch_dest                 ; which start at ch_dest itself
-                bra     cc_blank
-cc_right
-                adda    ch_w
-                cmpa    #VIS_R+1
-                bls     cc_done                 ; entirely inside the window
-                suba    #VIS_R+1
-                tfr     a,b                     ; B = bytes past the RIGHT edge
-                lda     #VIS_R+1
-                suba    ch_col                  ; A = distance from ch_col to col 75
+* The blit wrote columns [col, col+w). The VISIBLE window is [VIS_L, VIS_R+1). Whatever it
+* put outside that has to go black — and, since a character leaving the screen writes past
+* the row's end, every range is additionally clamped to [0, 80) so a blank can never walk
+* into the row below.
+*
+* Two spills, computed the same way and blanked by the same helper:
+*     left  = [ max(col,0)      , min(col+w, VIS_L)   )
+*     right = [ max(col,VIS_R+1), min(col+w, 80)      )
+                ldd     ch_col
+                bge     cc_l1
+                clra
+                clrb                            ; max(col, 0)
+cc_l1
+                std     cc_start
+                ldd     ch_col
+                addb    ch_w
+                adca    #0                      ; col + w
+                cmpd    #VIS_L
+                ble     cc_l2
+                ldd     #VIS_L                  ; min(col+w, VIS_L)
+cc_l2
+                bsr     cc_span                 ; blank it if non-empty
+
+                ldd     ch_col
+                cmpd    #VIS_R+1
+                bge     cc_r1
+                ldd     #VIS_R+1                ; max(col, VIS_R+1)
+cc_r1
+                std     cc_start
+                ldd     ch_col
+                addb    ch_w
+                adca    #0
+                cmpd    #FB_STRIDE_4C
+                ble     cc_r2
+                ldd     #FB_STRIDE_4C           ; min(col+w, 80) — never leave the row
+cc_r2
+                bsr     cc_span
+                rts
+
+* cc_span — blank columns [cc_start, D) on every row of the cel. D <= cc_start is a
+* no-op, which is the ordinary case for a character fully on screen.
+cc_span
+                subd    cc_start
+                ble     cc_none                 ; empty span
+                cmpd    #FB_STRIDE_4C
+                bhi     cc_none                 ; nonsense width; draw nothing rather than
+                stb     cc_n                    ;   a screenful of black
+                ldd     cc_start
+                subd    ch_col                  ; offset from the cel's own left edge
                 ldx     ch_dest
-                leax    a,x
-cc_blank
+                leax    d,x
                 lda     ch_h
 cc_row
-                pshs    a,b,x
+                ldb     cc_n
+                pshs    a,x
 cc_byte
                 clr     ,x+
                 decb
                 bne     cc_byte
-                puls    a,b,x
+                puls    a,x
                 leax    FB_STRIDE_4C,x
                 deca
                 bne     cc_row
-cc_done
+cc_none
                 rts
 
 * ---------------------------------------------------------------
@@ -1017,8 +1092,8 @@ co_dims
 * co_here — ch_tx/ch_ty := this record's current x,y
 co_here
                 ldx     ch_rec
-                lda     CH_X,x
-                sta     ch_tx
+                ldd     CH_X,x                  ; 16-bit since P3.78
+                std     ch_tx
                 lda     CH_Y,x
                 sta     ch_ty
                 lda     CH_FDX,x
@@ -1072,10 +1147,13 @@ co_setup
                 ldb     #FB_STRIDE_4C
                 mul                             ; D = top * 80
                 std     ch_tmp16
-                lda     ch_tx
-                adda    ch_fdx                  ; the frame's own offset (signed)
-                tfr     a,b
-                clra
+* ★ 16-BIT THROUGHOUT SINCE P3.78, because x is. The old form loaded x into A, added Fdx
+* as a byte and widened afterwards — which truncated silently the moment the vizier's exit
+* took him past 255. Fdx is still a SIGNED BYTE, so it is `sex`-widened before the add
+* rather than added into the low half.
+                ldb     ch_fdx
+                sex                             ; D = Fdx, sign-extended
+                addd    ch_tx                   ; D = x + Fdx, 16-bit
                 lslb
                 rola                            ; D = 2*(x + Fdx)
                 addb    ch_par                  ; + the odd pixel
@@ -1120,7 +1198,11 @@ cs_noflip
                 rorb
                 lsra
                 rorb                            ; col = px / 4
-                stb     ch_col                  ; kept for co_clip
+* ★ 16-BIT AND SIGNED SINCE P3.78. A character leaving the screen has a real column past
+* 79, and a byte here is exactly what let col 85 read as a plausible in-range value and
+* wrap the blit into the next row — the vizier-sized rectangle Jay saw re-entering from
+* the left edge. The clip below needs the true number.
+                std     ch_col
                 addd    ch_tmp16
                 addd    ch_base
                 std     ch_dest
@@ -1429,8 +1511,14 @@ vs_chx
                 bpl     vs_chx_add              ; facing right: add as-is
                 nega                            ; facing left: the delta is mirrored
 vs_chx_add
-                adda    CH_X,x
-                sta     CH_X,x
+* SIGN-EXTEND THE DELTA BEFORE ADDING, because x is 16-bit now and the operand is not.
+* `sex` is exactly this instruction's job: B holds the signed delta, D becomes it widened.
+* Getting this wrong is not a wrong pixel — a negative step would add 250-odd instead of
+* subtracting 6, and the character would cross the room in one frame.
+                tfr     a,b
+                sex                             ; D = the delta, sign-extended
+                addd    CH_X,x
+                std     CH_X,x
                 bra     vs_loop
 
 vs_chy
@@ -2107,14 +2195,16 @@ cel_rd_err      fcb     0               ; non-zero if a staged read ever failed
 * --- the two slots, initialised from the oracle's own start positions ----
 * startV0 CharX=197, startP0 CharX=120, both CharFace=-1, floorY=151
 * [SUBS.S:1131,1147,1040]. These remain the authority for where they stand.
-viz_slot        fcb     197,151,-1,54           ; x, y, face, cel id (chtab6.A #54)
-                fcb     48,5                    ; h, w
+viz_slot        fdb     197                     ; x — 16-bit since P3.78 (he exits)
+                fcb     151,-1,54               ; y, face, cel id (chtab6.A #54)
+                fcb     48,5                    ; h, awid
                 fdb     0                       ; CH_PTR: the cel is in the $C000 image
                 fdb     VIZ_PEEL_BASE
                 fcb     0                       ; Fdx — the VM writes this per cel
                 fdb     VIZ_PEEL                ; slot stride: widest vizier cel
                 fcb     1                       ; parity of cel 54 (Fcheck $80, ODD)
-pri_slot        fcb     120,151,-1,25           ; x, y, face, cel id (chtab6.A #25)
+pri_slot        fdb     120                     ; x — 16-bit
+                fcb     151,-1,25               ; y, face, cel id (chtab6.A #25)
                 fcb     43,5
                 fdb     0                       ; CH_PTR: the cel is in the $C000 image
                 fdb     PRI_PEEL_BASE
@@ -2143,19 +2233,22 @@ ch_lastoff      fcb     0
 * column that was never saved — visible as $AA, the uninitialised-peel signature, and
 * as captures that disagreed because the error accumulated. Found the moment the VM
 * first switched a cel, which is what D's checks could not reach on a fixed cel.
-ch_last         rmb     32              ; 2 chars x 2 slots x (x,y,w,h,par + 3 spare)
+ch_last         rmb     36              ; 2 chars x 2 slots x 9: x(2),y,w,h,par,face,fdx,awid
 ch_drawn        rmb     4               ; the cel each buffer was last DRAWN with
 ch_bits         fcb     1,2,4,8         ; seen bit for (character, slot)
 ch_tick         fcb     0
 ch_dir          fcb     CH_STEP
-ch_tx           fcb     0
+ch_tx           fdb     0               ; 16-bit since P3.78 (CH_X is)
 ch_ty           fcb     0
 ch_h            fcb     0
 ch_w            fcb     0
 ch_fdx          fcb     0
 ch_lastcel      fcb     0
 ch_par          fcb     0               ; the parity of the cel being placed
-ch_col          fcb     0               ; the byte column co_setup placed the cel at
+cc_start        fdb     0               ; co_clip's span, first column
+cc_n            fcb     0               ; ...and its length in bytes
+ch_col          fdb     0               ; the byte column co_setup placed the cel at,
+*                                       ;   16-bit SIGNED — it goes off-screen (P3.78)
 cv_ix           rmb     2               ; co_variant's 16-bit table index (P3.65)
 cs_px           rmb     2               ; co_setup's pixel x, across the mirror-anchor mul
 cv_ph           rmb     1               ; co_variant's pixel x, across the same mul

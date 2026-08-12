@@ -63,7 +63,10 @@ local RUNTO   = tonumber(os.getenv("P_RUNTO") or "0")     -- frames to keep runn
 
 local FB_BASE, FB_SIZE = 0x8000, 15360
 local ROOM_MAGIC = 0x4B00
-local CH_X, CH_CEL = 0, 3            -- slot record offsets [char_draw.s]
+-- Slot record offsets [char_draw.s]. CH_X became 16-BIT at P3.78 (the vizier's exit
+-- walked him past 255 and a byte wrapped him to the left edge), so every field after it
+-- shifted by one and x must be read as a word.
+local CH_X, CH_CEL = 0, 4
 
 local cpu = manager.machine.devices[":maincpu"]
 local mem = cpu.spaces["program"]
@@ -117,11 +120,12 @@ local function log_positions(tag)
         -- ch_last's entry grew to 8 bytes to carry the parity, so it read the vizier's
         -- record for both characters and reported the princess standing where he was.
         -- Third home of one constant; the runner now derives it from the symbols.
+        -- entry layout since P3.78: x(2), y, w, h, par, face, fdx, awid = 9 bytes
         local o = LAST + (ch * 2 + shown) * LAST_STRIDE
         -- +5 is the FACING, recorded at draw time beside x/y/w/h/parity (P3.71). Palert
         -- ends `aboutface`, so the princess is drawn from the MIRRORED bake thereafter
         -- and a checker without this reconstructs her from the wrong source.
-        return rd8(o), rd8(o + 1), rd8(o + 5)
+        return rd8(o) * 256 + rd8(o + 1), rd8(o + 2), rd8(o + 6)
     end
     local vx, vy, vf = lastxy(0)
     local px, py, pf_ = lastxy(1)
@@ -335,7 +339,7 @@ local function tick()
     -- SAMPLE EVERY FRAME. The VM steps every ~3 frames, so per-frame sampling sees every
     -- (cel, x) pair the walk visits; a sample per capture would see one in ten.
     local cel = rd8(VIZ + CH_CEL)
-    local x = rd8(VIZ + CH_X)
+    local x = rd8(VIZ + CH_X) * 256 + rd8(VIZ + CH_X + 1)
     if cel >= 48 and cel <= 53 then
         occ[cel] = occ[cel] or {}
         occ[cel][(x + 20) % 4] = true

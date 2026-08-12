@@ -44,7 +44,8 @@ local PRI   = tonumber(os.getenv("P_PRI")     or "0x68F4")
 local FIRST = tonumber(os.getenv("P_FIRST")   or "1900")
 local LAST  = tonumber(os.getenv("P_LAST")    or "3400")
 
-local CH_X, CH_Y, CH_H, CH_W = 0, 1, 4, 5
+-- CH_X is 16-bit since P3.78; every field after it shifted by one.
+local CH_X, CH_Y, CH_H, CH_W = 0, 2, 5, 6
 
 local scr = manager.machine.screens:at(1)
 local mem = manager.machine.devices[":maincpu"].spaces["program"]
