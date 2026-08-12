@@ -52,6 +52,7 @@
                 export  room_entry
                 import  disk_read_init
                 import  disk_read_range
+        import  disk_read_motor_off
                 import  lz_unpack
                 else
                 org     $0200
@@ -253,6 +254,11 @@ room_start
                 ldb     #DISK_CEL_SEC
                 jsr     load_tracks
                 lbne    room_failed
+
+* THE LAST READ IS DONE — release the drive now, once, instead of after each of the
+* three (P3.76). The motor stayed turning across all three, so dr_spinup's conditional
+* skipped two of them.
+                jsr     disk_read_motor_off
 
                 ldx     HAL_gfx_draw_base       ; X -> the picture
                 ldu     #ROOM_BLOB              ; U -> the blob, in main RAM
@@ -934,7 +940,17 @@ load_tracks
                 bcc     lt_ok
                 com     lt_err
 lt_ok
-                clr     DSKREG          ; motor off, no drive selected
+* THE DRIVE IS NOT RELEASED HERE ANY MORE (P3.76), AND THAT IS THE WHOLE SAVING.
+*
+* This released it after EVERY read, so the next call found a stopped motor and paid a
+* fresh 0.60 s spin-up — three startup reads, 1.80 s of a 9.27 s startup, for a drive
+* that had been turning the entire time. Making dr_spinup conditional in the HAL was
+* necessary and NOT sufficient: with the release still here the flag was cleared between
+* every read and the conditional never fired. Measured — the first build with the HAL
+* change alone came back at 9.27 s, unchanged to the frame.
+*
+* The caller owns the drive's lifetime because only the caller knows when it has
+* finished reading. room_release_drive is called once, after the last read.
                 sta     SAM_FAST
                 puls    cc
                 tst     lt_err

@@ -75,9 +75,20 @@ local function tick()
             local spin = l2 - track
             log("#")
             log("# --- decomposed ---")
-            log(string.format("#   one TRACK   %6.1f frames  %.2f s", track, track / 60.0))
-            log(string.format("#   one SPIN-UP %6.1f frames  %.2f s", spin, spin / 60.0))
-            log(string.format("#   3 spin-ups cost %.2f s of the %.2f s startup",
+            log(string.format("#   one TRACK          %6.1f frames  %.2f s",
+                              track, track / 60.0))
+            -- THE SECOND TERM IS NOT ALWAYS THE SPIN-UP (P3.76). The arithmetic assumes
+            -- every load pays the same fixed cost, which was true while dr_spinup ran
+            -- unconditionally. Now that the room holds the drive across all three reads,
+            -- loads 2 and 3 skip it — so what is left in this term is the per-call
+            -- overhead that is STILL unconditional: the FDC Restore to track 0 and the
+            -- seek back out. Measured: 0.60 s before the change, 0.20 s after, and the
+            -- 0.40 s difference is dr_spinup's delay loop (393,216 cy at 0.894 MHz =
+            -- 0.44 s, which is where it should be).
+            log(string.format("#   per-call OVERHEAD  %6.1f frames  %.2f s  "
+                              .. "(spin-up if cold, else Restore+seek)",
+                              spin, spin / 60.0))
+            log(string.format("#   3 x that overhead costs %.2f s of the %.2f s startup",
                               3 * spin / 60.0, (fn - exec_fn) / 60.0))
             log("#   (build.bat's 3.31 s/track is the PRE-DMK JVC figure, P3.6)")
         end

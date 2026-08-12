@@ -68,6 +68,7 @@
                 export  intro_seq_entry
                 import  disk_read_init
                 import  disk_read_range
+        import  disk_read_motor_off
                 import  lz_unpack
                 else
                 org     $0200
@@ -318,7 +319,7 @@ load_tracks
                 bcc     lt_ok
                 com     lt_err
 lt_ok
-                clr     DSKREG          ; RELEASE THE DRIVE: motor off, no drive
+                jsr     disk_read_motor_off  ; RELEASE THE DRIVE through the HAL (P3.76)
 *                                       ; selected, HALT disarmed. The primitive
 *                                       ; leaves it spinning because karateka's only
 *                                       ; client jumps straight into the game and

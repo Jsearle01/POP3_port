@@ -83,6 +83,11 @@ dr_r_count  equ DR_VARBASE+6 ; range: sector count remaining (multiple of SECS_T
 
 * --- NMI landing in the constant Vector Page ($FE00-$FEED, safe siting) ---
 dr_nmi_done equ $FE00        ; completion flag (1 byte, below secondary vectors)
+* --- DEVICE STATE (P3.76). The driver's first byte of "what is already true of the
+* --- hardware", sited in the constant page beside dr_nmi_done for the same reason:
+* --- MC3=1 pins $FE00-$FEFF, so it survives every MMU remap the caller performs.
+* --- $FE01-$FE1F is free (handler at $FE20, vector at $FEFD).
+dr_motor_on equ $FE01        ; 1 = the motor is already turning, no spin-up owed
 DR_NMI_HDLR equ $FE20        ; our NMI handler (installed by disk_read_init)
 DR_NMI_VEC  equ $FEFD        ; NMI secondary vector ($FFFC[ROM]->$FEFD->handler)
 
@@ -107,6 +112,7 @@ DR_NMI_VEC  equ $FEFD        ; NMI secondary vector ($FFFC[ROM]->$FEFD->handler)
         export  disk_read_init
         export  disk_read
         export  disk_read_range
+        export  disk_read_motor_off
         endc
 
 * ---------------------------------------------------------------
@@ -128,6 +134,7 @@ disk_read_init:
         ldd     #DR_NMI_HDLR
         std     DR_NMI_VEC+1
         clr     dr_nmi_done
+        clr     dr_motor_on          ; the drive is stopped at init (P3.76)
         rts
 
 * ---------------------------------------------------------------
@@ -291,13 +298,44 @@ dr_st1:
         rts
 
 * --- dr_spinup: coarse motor spin-up delay (~real HW needs it; MAME tolerant) ---
+*
+* CONDITIONAL SINCE P3.76, and the reason is that the delay was never about elapsed
+* time -- it is about a STOPPED motor reaching speed. Run unconditionally it charged
+* every read for a spin-up the drive had already done: POP measured a second read,
+* issued moments after the first with the drive still turning, paying the full
+* 36 frames (0.60 s) for nothing. Three startup reads cost 1.80 s of a 9.27 s startup.
+*
+* THE COLD PATH IS UNCHANGED -- flag clear, full delay, same FDC sequence after it.
+* Only the warm path is new, and on the warm path the delay was buying nothing.
+*
+* THE INVARIANT THIS INTRODUCES: nobody clears DSKREG behind the HAL's back. Callers
+* release the drive through disk_read_motor_off, which clears both. Checked before it
+* was written -- karateka has NO direct DSKREG writer, and POP's two
+* (cutscene_room.s, intro_seq.s) are updated with this change. A violation would skip
+* the spin-up on a stopped motor, which is a REAL-HARDWARE-ONLY fault: this delay's
+* own header records that MAME is tolerant of its absence, so no emulated test can
+* catch it. That is why the flag is the driver's and not the caller's.
 dr_spinup:
+        lda     dr_motor_on
+        bne     dr_su_done           ; already turning -- the delay is not owed
         pshs    x
         ldx     #$C000
 dr_su1:
         leax    -1,x
         bne     dr_su1
         puls    x
+        lda     #1
+        sta     dr_motor_on
+dr_su_done:
+        rts
+
+* --- disk_read_motor_off: release the drive, and forget that it was turning -------
+* The counterpart the flag needs. A caller that pokes DSKREG itself leaves the flag
+* claiming a motor that has stopped, so releasing the drive is now the HAL's to do.
+* A is clobbered; that matches the other entries here.
+disk_read_motor_off:
+        clr     DSKREG               ; motor off, no drive selected
+        clr     dr_motor_on
         rts
 
         ifdef   OBJTARGET
