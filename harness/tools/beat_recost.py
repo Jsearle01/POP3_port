@@ -47,12 +47,40 @@ CENTRING = 20
 
 
 def sequences():
-    """(labels, tokens) for every block, as ONE stream so a goto can cross blocks."""
+    """(labels, tokens) for every block, as ONE stream so a goto can cross blocks.
+
+    ★★ `:loop` IS A LOCAL LABEL AND MUST BE SCOPED TO ITS BLOCK (P3.78). Mechner's
+    assembler scopes a `:`-prefixed label to the enclosing routine, and SEQTABLE.S reuses
+    `:loop` in almost every sequence. Read into one flat dict, the LAST definition wins
+    and every earlier `goto :loop` silently retargets to it.
+
+    What that cost: `Pback` ends `:loop db 17 / goto :loop` — she backs away and holds on
+    cel 17 [SEQTABLE.S:1574, read, not inferred]. Parsed globally, its goto resolved to
+    `Pslump`'s `:loop`, so the trace had her holding on cel 18 from the moment she
+    finished backing away. The port's own hand-written sequence was right; the TRACE was
+    wrong, and the trace is what the packer uses to decide which cels a beat needs.
+
+    The consequence was not a wrong picture. The packer provisioned cel 18 for every beat
+    after Pback and never provisioned 17, so the beat after Pback drew a cel that was in
+    an unmapped page: a valid-looking pointer into the wrong block, which the blitter
+    walked as a segment stream and never came out of. The room hung with interrupts
+    masked, the frame counter stopped, and it presented as the scene stalling — five
+    beats from the end, in the one dispatch that first made Pback run.
+
+    Two lessons, and the second is the general one: a tracer that has never exercised a
+    code path has not been tested on it, and the reused local label made every sequence
+    with a `:loop` a latent instance of the same fault. Scoping is the fix, and it is
+    applied to the TOKEN, so a `goto :loop` operand and its definition qualify alike.
+    """
     lines = SEQTABLE.read_text(errors="replace").splitlines()
     toks, labels = [], {}
     for name in BLOCKS:
         i = next(k for k, l in enumerate(lines) if l.strip() == name)
         labels[name] = len(toks)
+
+        def scope(t, _n=name):
+            return (_n + t) if t.startswith(":") else t
+
         for l in lines[i + 1:]:
             s = l.split(";")[0].rstrip()
             if not s.strip():
@@ -61,8 +89,11 @@ def sequences():
             if not m:
                 break
             if m.group(1):
-                labels[m.group(1)] = len(toks)
-            toks += [x.strip() for x in m.group(3).split(",")]
+                lab = scope(m.group(1))
+                if lab in labels:
+                    raise SystemExit("  duplicate label %r — scoping did not work" % lab)
+                labels[lab] = len(toks)
+            toks += [scope(x.strip()) for x in m.group(3).split(",")]
     return labels, toks
 
 

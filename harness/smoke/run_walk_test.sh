@@ -65,12 +65,49 @@ export P_GAP="${P_GAP:-10}"
 # and WALK_N, which is the same self-describing header char_draw.s reads at run time.
 # Taking them from the artefact rather than from a constant here means the bank guard
 # cannot go stale when a beat is added to bake_scene.PLAN.
-CELRAW=build/assets/cel_image.raw
-# OFFSETS 2 AND 3, NOT 0 AND 1 (P3.77): the image now opens with a two-byte signature
+#
+# ★ IT IS cel_res.raw NOW, NOT cel_image.raw (P3.78). The image is SPLIT: the pinned page
+# carries the magic and the bounds, and five rotating pages take turns at $E000. This
+# still reads the bytes the engine reads, out of the half that is always mapped.
+CELRAW=build/assets/cel_res.raw
+[ -f "$CELRAW" ] || { echo "[run_walk_test] missing $CELRAW — run build.bat first"; exit 1; }
+# OFFSETS 2 AND 3, NOT 0 AND 1 (P3.77): the image opens with a two-byte signature
 # ($C3,$5A) that char_draw checks before drawing from the bank, so the bounds moved along.
 export P_WALK_LO=$(od -An -tu1 -N1 -j2 "$CELRAW" | tr -d ' ')
 export P_WALK_N=$(od -An -tu1 -N1 -j3 "$CELRAW" | tr -d ' ')
-echo "[run_walk_test] cel image covers cels $P_WALK_LO..$((P_WALK_LO + P_WALK_N - 1))"
+echo "[run_walk_test] pinned page covers cels $P_WALK_LO..$((P_WALK_LO + P_WALK_N - 1))"
+
+# --- the split image's rotating half, and how far the scene has to run ---------------
+# ★ EVERY ONE OF THESE COMES OUT OF THE PACK OR THE MAPS, never written here. The number
+# of beats, the number of staged reads and the scene's length in steps are decisions the
+# packer makes from bake_scene.PLAN; a copy of any of them in this file would be a check
+# that passes for the wrong reason the first time a beat is added.
+PACK=content/cutscene/chars/cel_pack.json
+[ -f "$PACK" ] || { echo "[run_walk_test] missing $PACK — run bake_scene.py"; exit 1; }
+# CEL_VARBASE is build.bat's, so it is read out of build.bat. cel_pg_sig is +1 into it,
+# which is char_draw.s's layout — the one thing here that is a transcription, and it is
+# two lines from the equ it transcribes in both files.
+CELVAR=$(sed -n 's/^set CEL_VARBASE=\(0x[0-9A-Fa-f]*\).*/\1/p' build.bat | head -1)
+[ -n "$CELVAR" ] || { echo "[run_walk_test] CEL_VARBASE not found in build.bat"; exit 1; }
+export P_PGSIG=$(printf '0x%X' $(( CELVAR + 1 )))
+export P_BEAT="0x$(sym "$FMAP" vm_beat)"
+export P_RDERR="0x$(sym "$MAP" cel_rd_err)"
+export P_LOADS="0x$(sym "$MAP" probe_loads)"
+export P_NBEATS=$(python -c "import json;print(len(json.load(open('$PACK'))['schedule']))")
+export P_NREADS=$(python -c "import json;print(len(json.load(open('$PACK'))['reads']))")
+# THE SCENE'S LENGTH, DERIVED: sum of the beats' plays x the MEASURED step rate (7 frames,
+# P3.72k — the rate the machine keeps, not cad_tab's 6), plus headroom for the two staged
+# reads, which freeze the loop for a couple of seconds each and are the whole point of
+# running this far. Rounded up generously: running long costs wall-clock, stopping early
+# costs the check.
+export P_RUNTO=$(python -c "
+import json
+m = json.load(open('$PACK'))
+steps = sum(s['plays'] for s in m['schedule'])
+print(steps * 7 + len(m['reads']) * 400 + 600)")
+echo "[run_walk_test] ${P_NBEATS} beats, ${P_NREADS} staged reads, scene runs ~${P_RUNTO} frames"
+# -seconds_to_run has to cover boot + LOADM + the startup reads + all of that.
+SECS=$(( (P_RUNTO + 3600) / 60 + 30 ))
 
 RAMOPT=""
 [ -n "${MAME_RAM:-}" ] && RAMOPT="-ramsize $MAME_RAM"
@@ -96,7 +133,7 @@ run_once() {   # $1 = run tag
         -flop1 "$DSK" \
         -window -nomaximize \
         -nothrottle -sound none \
-        -seconds_to_run 60 \
+        -seconds_to_run $SECS \
         -autoboot_script harness/smoke/walk_test.lua \
         >/dev/null 2>&1
 }
@@ -139,6 +176,22 @@ for r in a b; do
         echo "  FAIL run $r: the engine's own bank guard fired — it refused to draw"
         rc=1
     fi
+    # ★ THE THREE P3.78 ASSERTIONS, AND THEY ARE CHECKED HERE RATHER THAN TRUSTED TO THE
+    # LOG. A line reading "FAIL" in a file nothing greps is not an assertion — it is a
+    # comment. That is the third instance of this shape in the arc (P3.71's guard keyed to
+    # the expected-good value, P3.72h's vacuously-true parity test, P3.77's zero-capture
+    # check broken by grep -c's exit status), so every one of them is matched explicitly
+    # AND its PASS line is required to be present, which is what catches the check that
+    # never ran at all.
+    for a in page_sig_matched_every_frame beats_visited staged_reads; do
+        if grep -q "^# $a FAIL" "build/walk_test_$r.log" 2>/dev/null; then
+            echo "  FAIL run $r: $(grep -m1 "^# $a " "build/walk_test_$r.log" | sed 's/^# //')"
+            rc=1
+        elif ! grep -q "^# $a PASS" "build/walk_test_$r.log" 2>/dev/null; then
+            echo "  FAIL run $r: $a never reported — the check did not run"
+            rc=1
+        fi
+    done
 done
 
 echo "[run_walk_test] --- run a vs run b ---"

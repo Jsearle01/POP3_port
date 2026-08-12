@@ -26,6 +26,7 @@ PHASES AND FACINGS COME FROM THE TRACE, NOT FROM THIS FILE. beat_recost walks th
 plan the way ANIMCHAR does, stepping both characters per `play N`, so what a cel needs is
 derived from where the machine actually puts it.
 """
+import json
 import pathlib
 import re
 import subprocess
@@ -35,6 +36,7 @@ ROOT = pathlib.Path("C:/Projects/POP3_port")
 sys.path.insert(0, str(ROOT / "harness/tools"))
 import cel_parity_rule as R                                    # noqa: E402
 import beat_recost as B                                        # noqa: E402
+import cel_pack as K                                           # noqa: E402
 
 TABLE = ROOT / "oracle/source/01 POP Source/Images/IMG.CHTAB6.A"
 OUT = ROOT / "content/cutscene/chars"
@@ -200,6 +202,13 @@ PREP = ROOT / "harness/tools/cel_blit_prep.py"
 # with the sampling rate -- but that changes the VM's cadence and is not this task.)
 SONG_FPS = 7
 
+# How far past the script's last entry to simulate. The scene does not stop when the
+# script does — every sequence ends in a `goto`, so both characters loop forever on
+# whatever they were last given. Two full walk cycles (6 cels) is more than enough to
+# close the set; the point is only to know WHICH cels the terminal loop draws, so the
+# schedule's last beat names the page that holds them instead of claiming it needs none.
+TERMINAL_STEPS = 60
+
 # ★★★ THE REMAINING BEATS DO NOT FIT, AND shift_row.s WILL NOT SAVE THEM (P3.72m recon).
 #
 #   Costed beat by beat against the 15,872 B usable bank, at the 633 B/bake this image
@@ -242,7 +251,31 @@ PLAN = [("p", "Pstand", 7),       # play 2 + play 5, both standing [SUBS.S:665-6
         ("-", "", 4),             # play 4
         ("v", "Vwalk", 29),       # Vapproach again: he crosses to her (oracle 30, -1)
         ("v", "Vstop", 4),        # stops in front of the princess, CharX 135 either way
+        # ── THE REMAINING BEATS, IN PlayCut0's OWN ORDER [SUBS.S:709-750] (P3.78) ────
+        ("song", "s_Buildup", 394),    # traced at P3.77; the cue over his second stop
+        ("v", "Vraise", 1),       # `lda #Vraise / jsr vjumpseq / lda #1 / jsr play`
+        # ★ Vraise MUST NOT LAND WITHOUT Pback. The oracle gives the raise ONE play and
+        #   lets Pback's thirteen carry the gesture — the vizier's Vraise sequence keeps
+        #   running through them. Landing Vraise alone would flick to a pose the scene
+        #   then cannot continue from, which is why these two are one edit and not two.
+        ("p", "Pback", 13),       # she backs away; his arms finish rising underneath
+        ("-", "", 5),             # play 5 (the oracle raises SPEED to 12 here — see §7)
+        ("v", "Vexit", 17),       # he turns and walks out; Vexit ends `goto Vwalk2`
+        ("-", "", 12),            # play 12
+        ("p", "Pslump", 28),      # she slumps against the wall
         ("v", "Vstand", 0)]       # 0 = hold; the script's last entry
+
+# s_Magic and s_StTimer are NOT in the PLAN, and their absence is deliberate: PlayCut0
+# plays both [SUBS.S:733,754] but neither has been traced off the oracle the way P3.77
+# traced s_Buildup. A hold is a DURATION, and writing one nobody measured would be a
+# fabricated number wearing a measured one's clothes. They add no cels, so their absence
+# costs the pack nothing and the scene only runs shorter than the original.
+#
+# THE ORACLE'S SPEED CHANGES ARE ALSO NOT MODELLED. PlayCut0 sets SPEED 12 before the
+# hourglass beat and again at the end [SUBS.S:729,752]; the port's cadence table is flat
+# at the measured 7 frames/play (P3.72k). Applying SPEED would change every subsequent
+# beat's real time and none of the port's holds were measured against it. Flagged, not
+# faked.
 
 
 def expand(plan):
@@ -267,22 +300,46 @@ def stem_for(who, cel):
     return STEM.setdefault((who, cel), "%s%d" % ("v" if who == "viz" else "p", cel))
 
 
-def trace_scene():
+def trace_scene(with_beats=False):
+    """Walk the PLAN the way ANIMCHAR does, and record WHICH BEAT drew what.
+
+    The per-beat split is new at P3.78 and it is the packer's whole input: the mapping
+    may only change at a beat boundary, so "what does this beat draw" is exactly the set
+    that has to be reachable while it runs. It is derived here, from the same walk that
+    derives the phases, because a schedule kept anywhere else could disagree with the
+    content it schedules — and P3.75 §3F named that as the worst version of the bug,
+    since the symptom is silent garbage rather than a missing cel.
+    """
     labels, toks = B.sequences()
     alt = R.altset2()
     viz = B.Char(197, R.FACE_LEFT, "Vstand", labels)
     pri = B.Char(120, R.FACE_LEFT, "Pstand", labels)
-    plays = []
-    for w, seq, n in expand(PLAN):
+    beats = []
+    plan = expand(PLAN)
+    for bi, (w, seq, n) in enumerate(plan):
         if w == "v":
             viz.jump(seq, labels)
         if w == "p":
             pri.jump(seq, labels)
-        for _ in range(n):
+        mv, mp = len(viz.drawn), len(pri.drawn)
+        # ★ THE LAST BEAT HAS 0 PLAYS AND STILL DRAWS FOREVER, which is a hole the
+        # per-beat schedule would otherwise have at exactly its most dangerous point.
+        # `play 0` means the SCRIPT holds, not that the sequences stop: Vexit ends
+        # `goto Vwalk2` [SEQTABLE.S:1553] so the vizier keeps walking out after the
+        # script's last entry, drawing cels that must still be mapped. A beat traced as
+        # drawing nothing would be marked "needs no page" and the guard would go quiet
+        # for the rest of the scene. So the terminal beat is SIMULATED: the sequences
+        # loop, so a couple of loops' worth is the whole of its cel set.
+        steps = n if n else TERMINAL_STEPS
+        for _ in range(steps):
             viz.step(toks, labels, alt)
             pri.step(toks, labels, alt)
-        plays.append((w, seq, n))
-    return viz, pri
+        drew = set()
+        for who, ch, mk in (("viz", viz, mv), ("pri", pri, mp)):
+            for cel, ph, x, face in ch.drawn[mk:]:
+                drew.add((who, cel, 0 if face == R.FACE_LEFT else 1, ph))
+        beats.append((bi, PLAN[bi][1] or "(hold)", n, drew))
+    return (viz, pri, beats) if with_beats else (viz, pri)
 
 
 def needed():
@@ -356,9 +413,10 @@ def convert_src(who, cel, mirror, render_col, quiet=True):
 def main():
     alt = R.altset2()
     want = needed()
+    _viz, _pri, beats = trace_scene(with_beats=True)
     print("=== baking the scene: %d (cel, facing) combinations ===" % len(want))
     ok = fail = 0
-    includes, table = [], {}
+    label_of, size_of = {}, {}
     for (who, cel, facing) in sorted(want):
         fimg, fdx, fdy, fchk, lab = alt[cel]
         # THE X THE TRACE PUTS THIS CEL AT, not the character's starting CharX — see
@@ -379,114 +437,308 @@ def main():
                                 "--label", label, "--out", str(dst)],
                                capture_output=True, text=True)
             good = "replay OK" in (b.stdout or "")
+            m = re.search(r"(\d+) segment bytes", b.stdout or "")
             print("  %-4s cel %-3d %-8s col %-4d phase %d  %s"
                   % (who, cel, "MIRRORED" if facing else "normal", rc, ph,
                      "OK" if good else "REPLAY FAILED"))
-            if good:
+            if good and m:
                 ok += 1
-                includes.append(label)
-                table[(cel, facing, ph)] = label
+                label_of[(who, cel, facing, ph)] = label
+                size_of[(who, cel, facing, ph)] = int(m.group(1)) + 2   # + rows/width
             else:
                 fail += 1
                 print("      %s" % (b.stdout or b.stderr or "").strip()[:110])
     print("\n  %d baked, %d failed" % (ok, fail))
     if fail:
         return 1
-    emit(includes, table)
+
+    # ── THE PACK ────────────────────────────────────────────────────────────────────
+    # The sizes handed to the packer are the SEGMENT-STREAM bytes cel_blit_prep reports
+    # for the very files just written, so the pack is costed against the artifact rather
+    # than against a model of it. build.bat re-checks every page against the LINK MAP
+    # afterwards, which is the only measurement that can catch this one being wrong.
+    lo = min(c for _w, c, _f, _p in label_of)
+    hi = max(c for _w, c, _f, _p in label_of)
+    table_bytes = (hi - lo + 1) * 8 * 2
+    reads_at = [bi for bi, _nm, n, vs in beats if PLAN[bi][0] == "song" and n >= 40]
+    try:
+        p = K.pack(beats, size_of, table_bytes, reads_at)
+    except K.PackError as e:
+        print("\n*** THE SCENE DOES NOT PACK ***\n  %s" % e)
+        return 1
+    print()
+    print(K.report(p, size_of))
+    emit(p, label_of, size_of, lo, hi)
     return 0
 
 
-def emit(includes, table):
-    """TWO outputs now (P3.71), because the cels no longer live where the code does.
+def emit(p, label_of, size_of, lo, hi):
+    """Write the split image: one RESIDENT source at $C000 and one per rotating page.
 
-    cel_image.s   -> its own link unit at $C000, read off disk into a GIME bank. Holds
-                     WALK_LO/WALK_N as its first two bytes, then walk_tab, then the cel
-                     data. THE IMAGE DESCRIBES ITSELF: char_draw is in a different link
-                     unit and cannot resolve a symbol across that boundary, so it reads
-                     the bounds out of the image rather than keeping a second copy of
-                     them. A duplicated layout constant is exactly what CHAR_TAB was.
-    walk_scripts.s -> stays inside the bundle, included by char_draw.s. The scripts are
-                     code-adjacent and tiny; only the cel PIXELS had to move.
+    ★ WHY THE WALK TABLE IS NOT WRITTEN HERE ANY MORE (P3.78). It holds ABSOLUTE
+    pointers, and after the split most of them point into a DIFFERENT LINK UNIT — every
+    rotating page links at $E000 as its own object, so `fdb v67_p0` from the resident
+    unit is a symbol lwlink cannot resolve and would not be asked to. The addresses are
+    therefore taken from the pages' own LINK MAPS, by cel_table.py, after they are
+    linked: the linker is the authority on where it put something, and reading the map
+    is measuring the artifact instead of predicting it. build.bat runs the two passes.
+
+    Four kinds of file come out of here:
+
+      cel_res.s        the pinned $FFA6 page — magic, bounds, the table's include, and
+                       the cels every page's beats may need
+      cel_pgN.s        one per rotating page, each linked at $E000, each carrying ITS
+                       OWN signature as its first two bytes
+      cel_pages.s      the disk manifest cutscene_room.s reads: which page is on which
+                       track, in which block, and which arrive mid-scene
+      cel_plan.s       the per-beat schedule, included by walk_scripts.s
+      cel_pack.json    label -> page, for cel_table.py's second pass
     """
-    lo = min(c for c, _f, _p in table)
-    hi = max(c for c, _f, _p in table)
-    L = ["* cel_image.s " + chr(0x2014) + " the scene's bake, and the lookup over it.",
+    pages = p["pages"]
+    res = sorted(p["resident"])
+
+    # ── which two disk tracks each unit lands on ────────────────────────────────────
+    # Whole tracks, because disk_read_range reads nothing else (its own header). The
+    # free spans are what packing the intro assets opened up; track 17 is the DECB
+    # directory and no span may cross it (idiom §4).
+    spans = [[11, 6], [20, 5], [32, 3]]           # (first track, tracks available)
+    def take(n):
+        for s in spans:
+            if s[1] >= n:
+                t = s[0]
+                s[0] += n
+                s[1] -= n
+                return t
+        raise SystemExit("*** out of raw disk tracks: %d more wanted ***" % n)
+
+    # EVERY UNIT IS TWO TRACKS, UNIFORMLY, and padded to the window it is read into. Not
+    # "however many tracks its bytes need" — see cel_pack's read-geometry note: a
+    # whole-track read into a window smaller than the read overruns into the I/O page,
+    # and the skew that prevents it is defined against the window's size, not the
+    # content's. A page with room to spare simply reads a track of padding.
+    units = [("res", None)] + [("pg%d" % g["index"], g) for g in pages]
+    place = {name: (take(K.UNIT_TRACKS), K.UNIT_TRACKS) for name, _g in units}
+
+    # ── the resident page ───────────────────────────────────────────────────────────
+    L = ["* cel_res.s " + chr(0x2014) + " the PINNED page of the split cel image.",
          "* GENERATED by harness/tools/bake_scene.py " + chr(0x2014) + " do not hand-edit.",
          "*",
-         "* LINKED AT $C000 AND READ OFF DISK INTO A GIME BANK (P3.69/P3.71). It is NOT",
-         "* part of the flame bundle any more: the bundle had reached 11,921 B against a",
-         "* 14,848 B window with five beats still to add, and the cels are the half of it",
-         "* that never executes, so they are the half that can live behind a window",
-         "* register. cutscene_room.s maps blocks at $FFA6/$FFA7 and re-applies that map",
-         "* after every swap (HAL_gfx_swap writes all four window registers, so the",
-         "* mapping cannot survive one " + chr(0x2014) + " P3.68).",
+         "* Linked at $C000 (link/pop_cels_res.link) and mapped through $FFA6 for the",
+         "* whole scene. It holds the three things that cannot be allowed to go away:",
          "*",
-         "* THE FIRST TWO BYTES ARE THE BOUNDS, and they are load-bearing: char_draw.s",
-         "* reads WALK_LO/WALK_N from $C000/$C001 at run time because it links into a",
-         "* different object and cannot see these symbols.",
+         "*   the MAGIC          $C000/$C001, so the engine can tell this page from any",
+         "*                      other block that might be mapped under it",
+         "*   the BOUNDS         $C002/$C003, read at run time because char_draw links",
+         "*                      into a different object and cannot see these symbols",
+         "*   the WALK TABLE     $C004, consulted on every cel placed " + chr(0x2014) + " which is",
+         "*                      exactly why this page is pinned and the other is not",
          "*",
-         "* EIGHT SLOTS PER CEL: two facings x four phases (P3.65, piece G). The facing",
-         "* half is chosen by co_variant from CH_FACE; -1 is left and NORMAL, 0 is right",
-         "* and MIRRORED [FRAMEADV.S:1970]. Cels drawn at one facing leave the other half",
-         "* zero, which co_variant treats as 'fall back to the record's own pointer'.",
+         "* ...and the cels that a rotating page could not serve: the standing cels the",
+         "* song holds draw (pinning those is what lets a disk read hide in a hold), plus",
+         "* whatever the packer had to pin to bring an over-large beat under one block.",
          "*",
-         "* Which phases and facings each cel needs is DERIVED, not written: beat_recost",
-         "* walks the port's plan the way ANIMCHAR does. Nothing here may disagree with it.",
-         "*"]
-    for cel in range(lo, hi + 1):
-        got = [(f, p) for (c, f, p) in table if c == cel]
-        if got:
-            L.append("*   cel %-3d %s" % (cel, ", ".join(
-                "%s ph%d" % ("mirrored" if f else "normal", p) for f, p in sorted(got))))
-    L += ["",
-          "                section prog",
-          "* EXPORTED because link/pop_cels.link names it as the entry. lwlink resolves",
-          "* `entry` against exported symbols only; a plain label gives",
-          "* \"External symbol cel_image not found\" at link time. The image is never",
-          "* executed -- the entry exists so the .bin carries a load address decb_to_raw",
-          "* can check against build.bat's --base.",
-          "                export  cel_image",
-          "cel_image",
-          "* --- THE SIGNATURE, and it must stay FIRST (P3.77) -----------------",
-          "*",
-          "* $C000/$C001 is the one address the engine trusts without being able to check",
-          "* it: char_draw reads the bounds and the cel table from there, and if the wrong",
-          "* GIME block is mapped underneath, every pointer stays valid-LOOKING and the VM",
-          "* draws whatever bytes are present. No crash -- garbage that reads as a",
-          "* rendering bug. That is exactly how the capture-05 corruption presented and it",
-          "* took three dispatches to attribute.",
-          "*",
-          "* So the image says who it is. char_draw checks these two bytes once per frame",
-          "* and refuses to draw from a window that is not the cel bank. The duplication is",
-          "* two bytes and it is the entire point of a magic number.",
-          "                fcb     $C3,$5A         ; CEL_MAGIC, read from $C000/$C001",
-          "* --- the self-describing bounds --------------------------------",
-          "                fcb     %d              ; WALK_LO, read from $C002" % lo,
-          "                fcb     %d              ; WALK_N,  read from $C003" % (hi - lo + 1),
-          "* --- walk_tab at $C004: eight slots per cel, two facings x four phases ---",
-          "cel_walk_tab"]
-    for cel in range(lo, hi + 1):
-        row = []
-        for f in (0, 1):
-            for p in range(4):
-                row.append(table.get((cel, f, p), "0"))
-        L.append("                fdb     " + ",".join(row) + "   ; cel %d" % cel)
-    L.append("")
-    for lab in includes:
-        L.append('                include "content/cutscene/chars/%s.s"' % lab)
-    L.append("")
-    pathlib.Path(OUT / "cel_image.s").write_text("\n".join(L) + "\n", encoding="utf-8")
+         "* THE TABLE IS AN INCLUDE FROM build/, NOT TEXT IN THIS FILE. Its entries are",
+         "* absolute addresses into the rotating pages, which are separate link units; they",
+         "* come from those pages' link maps in a second pass. See emit()'s header.",
+         "",
+         "                section prog",
+         "                export  cel_image",
+         "cel_image",
+         "                fcb     $%02X,$%02X         ; CEL_MAGIC, read from $C000/$C001"
+         % (K.CEL_MAGIC >> 8, K.CEL_MAGIC & 0xFF),
+         "                fcb     %d              ; WALK_LO, read from $C002" % lo,
+         "                fcb     %d              ; WALK_N,  read from $C003" % (hi - lo + 1),
+         '                include "build/obj/cel_walk_tab.s"',
+         ""]
+    L.append("* --- the pinned cels (%s B) ---" % format(p["resident_bytes"], ","))
+    for k in res:
+        L.append('                include "content/cutscene/chars/%s.s"' % label_of[k])
+    (OUT / "cel_res.s").write_text("\n".join(L) + "\n", encoding="utf-8")
 
-    # THE SCRIPTS STAY IN THE BUNDLE. They are two dozen bytes of sequence cursor that
-    # char_draw dereferences directly; moving them behind a window register would buy
-    # nothing and would put a second thing behind the map.
-    S = ["* walk_scripts.s " + chr(0x2014) + " the scene's scripts. The CELS are in cel_image.s.",
+    # ── the rotating pages ──────────────────────────────────────────────────────────
+    for g in pages:
+        vs = sorted(g["variants"])
+        P = ["* cel_pg%d.s " % g["index"] + chr(0x2014) + " one rotating page of the split image.",
+             "* GENERATED by harness/tools/bake_scene.py " + chr(0x2014) + " do not hand-edit.",
+             "*",
+             "* Linked at $E000 (link/pop_cels_pg.link) " + chr(0x2014) + " the SAME address as every",
+             "* other page, because only one of them is mapped at a time. That is what makes",
+             "* them separate link units rather than sections of one image.",
+             "*",
+             "* ★ THE FIRST TWO BYTES ARE THIS PAGE'S OWN SIGNATURE, AND THAT IS THE POINT.",
+             "* P3.77 put one magic at $C000 and its own uncertainty flag said what splitting",
+             "* would do to it: a single magic proves the PINNED page is mapped and says",
+             "* nothing about the rotating one " + chr(0x2014) + " which is the half that changes, and so the",
+             "* half that can be wrong. Every page therefore says WHICH page it is, and the",
+             "* beat schedule carries the value this beat's pointers need. A shared magic, or",
+             "* a plausibility test, would pass on any of the five.",
+             "*",
+             "*   beats %d..%d   block $%02X   %s B of %s"
+             % (g["beats"][0], g["beats"][-1], g["block"],
+                format(g["bytes"], ","), format(K.ROT_CAP, ",")),
+             "",
+             "                section prog",
+             "                export  cel_page%d" % g["index"],
+             "cel_page%d" % g["index"],
+             "                fdb     $%04X           ; the signature for THIS page"
+             % g["sig"],
+             ""]
+        for k in vs:
+            P.append('                include "content/cutscene/chars/%s.s"' % label_of[k])
+        (OUT / ("cel_pg%d.s" % g["index"])).write_text("\n".join(P) + "\n",
+                                                       encoding="utf-8")
+
+    # ── the manifest the second pass and the room both read ─────────────────────────
+    man = {"walk_lo": lo, "walk_n": hi - lo + 1, "magic": K.CEL_MAGIC,
+           "res_base": K.RES_BASE, "rot_base": K.ROT_BASE,
+           "resident": [[list(k), label_of[k]] for k in res],
+           "pages": [{"index": g["index"], "block": g["block"], "sig": g["sig"],
+                      "bytes": g["bytes"], "track": place["pg%d" % g["index"]][0],
+                      "tracks": place["pg%d" % g["index"]][1], "cap": K.ROT_CAP,
+                      "base": K.ROT_BASE,
+                      "cels": [[list(k), label_of[k]] for k in sorted(g["variants"])]}
+                     for g in pages],
+           "res_track": place["res"][0], "res_tracks": place["res"][1],
+           "res_cap": K.RES_CAP, "track_bytes": K.TRACK,
+           "res_bytes": 4 + p["table_bytes"] + p["resident_bytes"],
+           "reads": p["reads"], "schedule": p["schedule"]}
+    (OUT / "cel_pack.json").write_text(json.dumps(man, indent=1), encoding="utf-8")
+
+    emit_pages_s(p, place)
+    emit_plan_s(p)
+    S = ["* walk_scripts.s " + chr(0x2014) + " the scene's scripts. The CELS are in the split image.",
          "* GENERATED by harness/tools/bake_scene.py " + chr(0x2014) + " do not hand-edit."]
     S += scripts()
-    pathlib.Path(OUT / "walk_scripts.s").write_text("\n".join(S) + "\n", encoding="utf-8")
-    print("  cel_image.s: cels %d..%d, %d slots, %d cel includes"
-          % (lo, hi, (hi - lo + 1) * 8, len(includes)))
-    print("  walk_scripts.s: the two scene scripts")
+    S += ['', '* --- the per-beat block schedule, from the same PLAN -----------------',
+          '                include "content/cutscene/chars/cel_plan.s"']
+    (OUT / "walk_scripts.s").write_text("\n".join(S) + "\n", encoding="utf-8")
+
+    print("\n  cel_res.s      %s B  track %d (+%d)"
+          % (format(4 + p["table_bytes"] + p["resident_bytes"], ","),
+             place["res"][0], place["res"][1]))
+    for g in pages:
+        print("  cel_pg%d.s      %s B  track %d (+%d)  block $%02X  sig $%04X"
+              % (g["index"], format(g["bytes"] + 2, ","),
+                 place["pg%d" % g["index"]][0], place["pg%d" % g["index"]][1],
+                 g["block"], g["sig"]))
+    print("  cel_plan.s / cel_pages.s / walk_scripts.s / cel_pack.json")
+
+
+def emit_plan_s(p):
+    """The per-beat schedule — FOUR BYTES A BEAT, and it lives beside the scripts.
+
+    ONE HOME PER FACT (P3.31, and this project has been bitten by it three times). The
+    plays, the block and the signature all come from the same PLAN walk that decides
+    which cel is drawn on which step; a schedule written anywhere else could drift from
+    the content it serves, and P3.75 §3F named that as the worst version of the bug
+    because the symptom is not a missing cel but the wrong bytes drawn confidently.
+
+        fcb  plays      animation steps this beat lasts; 0 = the last beat, holds
+        fcb  block      what $FFA7 must show while it runs
+        fdb  sig        the signature that block must answer with, or 0 for
+                        "this beat draws only pinned cels and needs no page"
+        fcb  read       page+1 to read into that block during this beat, else 0
+    """
+    L = ["* cel_plan.s " + chr(0x2014) + " the per-beat block schedule.",
+         "* GENERATED by harness/tools/bake_scene.py " + chr(0x2014) + " do not hand-edit.",
+         "*",
+         "* Ticked once per animation step by vm_beat_tick, in lockstep with the two",
+         "* character scripts because all three are derived from the same PLAN walk.",
+         "*",
+         "* SIG 0 MEANS 'NO ROTATING PAGE NEEDED', and it is a real state rather than a",
+         "* hole in the check: the song holds draw only pinned standing cels, so their",
+         "* block is free " + chr(0x2014) + " which is exactly why a track read can land in it. A guard",
+         "* that demanded a page signature through a hold would refuse to draw for the",
+         "* whole six seconds. cel_pack ASSERTS that a beat marked this way really does",
+         "* draw only resident cels, so the marking cannot drift from the content.",
+         "",
+         "* ★★ NO COLUMN PADDING INSIDE AN OPERAND, EVER. `fcb %-3d,$%02X` renders beat 0",
+         "* as `fcb 7  ,$0D` and lwasm TERMINATES THE OPERAND AT THE WHITESPACE: one byte",
+         "* emitted, not two, with no error and no warning. Rows then have two different",
+         "* lengths depending on whether the play count happened to be three digits, the",
+         "* five-byte stride walks into the middle of its neighbours, and what comes out is",
+         "* a schedule that maps block $00 and asks for page 109. Alignment goes in the",
+         "* COMMENT, which is what a comment is for.",
+         "cel_plan"]
+    for s in p["schedule"]:
+        L.append("                fcb     %d,$%02X" % (s["plays"], s["block"]))
+        L.append("                fdb     $%04X" % s["sig"])
+        L.append("                fcb     %d               ; beat %-2d %-12s plays %-4d%s%s"
+                 % (0 if s["read"] is None else s["read"] + 1, s["beat"], s["name"],
+                    s["plays"], "  pinned-only" if s["resident_only"] else "",
+                    "  READ page %d" % s["read"] if s["read"] is not None else ""))
+    L.append("                fcb     0,0")
+    L.append("                fdb     0")
+    L.append("                fcb     0               ; terminator")
+    L.append("cel_plan_end")
+    L.append("* cel_plan_end exists so the stride can be CHECKED rather than trusted:")
+    L.append("* bundle_offsets_check.py compares (cel_plan_end - cel_plan) against")
+    L.append("* 5 x (beats + 1) out of the link map, and fails the build on any other")
+    L.append("* answer. The bug above assembled cleanly and ran; nothing but a byte count")
+    L.append("* could have caught it.")
+    (OUT / "cel_plan.s").write_text("\n".join(L) + "\n", encoding="utf-8")
+
+
+def emit_pages_s(p, place):
+    """The disk manifest cutscene_room.s includes: where every page is and where it goes."""
+    L = ["* cel_pages.s " + chr(0x2014) + " where each page of the split cel image lives on disk.",
+         "* GENERATED by harness/tools/bake_scene.py " + chr(0x2014) + " do not hand-edit.",
+         "*",
+         "* Read by cutscene_room.s: the startup loader walks the STARTUP rows, and a",
+         "* mid-scene read indexes this table by the page number the beat schedule names.",
+         "* build.bat places the very same tracks from cel_pack.json, so the disk and this",
+         "* table cannot disagree without the build being re-run.",
+         "*",
+         "* ★ TWO ROWS' WORTH OF FACT PER PAGE, IN TWO BYTES: its first track, and the",
+         "* GIME block it belongs in. Everything else is a constant, because every unit is",
+         "* the same shape — two whole tracks, read in two calls, the second SKEWED so it",
+         "* ends exactly at the top of the window. cel_pack's read-geometry note has the",
+         "* whole argument; the short of it is that a plain two-track read into $E000",
+         "* overruns 1,536 bytes into the constant page and the I/O registers, and takes",
+         "* the GIME with it.",
+         "*",
+         "*   fcb first_track, block",
+         "",
+         "CEL_N_PAGES     equ     %d" % len(p["pages"]),
+         "CEL_SECS        equ     18              ; one track, and a read is always one",
+         "CEL_RES_BLOCK   equ     $%02X" % K.RES_BLOCK,
+         "CEL_RES_TRK     equ     %d" % place["res"][0],
+         "CEL_RES_LO      equ     $%04X           ; track A lands here" % K.RES_BASE,
+         "CEL_RES_HI      equ     $%04X           ; track B, ending at $%04X"
+         % (K.SKEW_RES, K.RES_BASE + K.RES_CAP),
+         "CEL_PAGE_LO     equ     $%04X" % K.ROT_BASE,
+         "CEL_PAGE_HI     equ     $%04X           ; ending at $%04X — the last byte the"
+         % (K.SKEW_ROT, K.ROT_BASE + K.ROT_CAP),
+         "*                                       ;   window owns before MC3 and I/O",
+         "",
+         "cel_page_tab"]
+    for g in p["pages"]:
+        t, n = place["pg%d" % g["index"]]
+        # NO PADDING INSIDE THE OPERAND — see the note over cel_plan. This line carried
+        # the identical `%-3d,` and emitted `fcb 13 ,$0D`, i.e. ONE byte, so every page
+        # after the first read its neighbour's track into its neighbour's block: page 0
+        # went to block $0F, page 1 fetched page 2's tracks into a FRAMEBUFFER block, and
+        # page 2 fetched page 4's into block $00. The scene ran; the vizier stopped
+        # animating, because the guard correctly refused every frame whose page was
+        # missing. One formatting habit, two tables, and the second one was written after
+        # the first had already been diagnosed.
+        L.append("                fcb     %d,$%02X             ; page %d, %s B of %s"
+                 % (t, g["block"], g["index"], format(g["bytes"], ","),
+                    format(K.ROT_CAP, ",")))
+    L.append("cel_page_tab_end")
+    L.append("")
+    L.append("* The pages that must be in RAM before the scene starts: one per block, the")
+    L.append("* first user of each. The rest arrive in the song holds.")
+    startup = []
+    seen = set()
+    for g in p["pages"]:
+        if g["block"] not in seen:
+            seen.add(g["block"])
+            startup.append(g["index"])
+    L.append("CEL_N_STARTUP   equ     %d" % len(startup))
+    L.append("cel_startup_tab")
+    L.append("                fcb     " + ",".join(str(i) for i in startup))
+    (OUT / "cel_pages.s").write_text("\n".join(L) + "\n", encoding="utf-8")
 
 
 # The two scene scripts, DERIVED FROM THE SAME PLAN as the phases, because they are the

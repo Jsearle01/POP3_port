@@ -95,12 +95,40 @@ DISK_ROOM_SEC   equ     ROOM_TRACKS*SECS_PER_TRACK
 * the default CPU map ($38-$3F). The same two numbers are therefore free in BOTH sizes —
 * where $3E/$3F would be the CPU's own map at 512 KB. This is the P3.10 lesson that put
 * buffer B at $14 instead of $18, applied one register along.
-CEL_BASE        equ     $C000
-CEL_MMU         equ     $FFA6           ; the register covering $C000-$DFFF
-CEL_BLOCK       equ     $0E             ; and $0F at $FFA7 — free at 128 KB and 512 KB
-DISK_CEL_TRK    equ     11              ; the span packing freed; build.bat CEL_TRACK
-CEL_TRACKS      equ     3               ; 13,824 B >= the 13,049 B image (build.bat agrees)
-DISK_CEL_SEC    equ     CEL_TRACKS*SECS_PER_TRACK
+* ★★ AND AT P3.78 THE IMAGE NO LONGER FITS THE BANK, so it is SPLIT.
+*
+* The complete scene is 39,682 B of cel image against a bank that is 31,744 B addressable
+* (two mappings, each losing its top 512 B to MC3 and I/O — P3.75 §3A). So the cels are
+* packed into a PINNED page at $C000 and five ROTATING pages that all live at $E000 and
+* take turns in $FFA7, one per group of beats. Three are in RAM at once; the other two
+* arrive off disk during the two song holds, over pages whose content the residency table
+* proves finished.
+*
+* WHICH page is showing is decided by the beat schedule in the bundle (char_draw.s's
+* vm_beat_tick), because the beats are what the schedule is about. This file's job is the
+* two mechanical halves: put the pages in RAM at startup, and service the mid-scene read
+* the schedule asks for. Both talk to the bundle through three bytes in the constant page.
+CEL_BASE        equ     $C000           ; the PINNED page
+CEL_PAGE        equ     $E000           ; whichever rotating page is mapped
+CEL_MMU         equ     $FFA6           ; the register covering $C000-$DFFF; +1 covers
+*                                       ;   $E000-$FFFF, of which $E000-$FDFF is reachable
+
+* --- the three bytes shared with the bundle. See char_draw.s for the full reason; the
+* --- short of it is that these two files never link together, so a shared variable has
+* --- to be an address both are told, and it has to be in the constant page because the
+* --- thing it describes is the MMU remap that would otherwise take it away.
+                ifndef  CEL_VARBASE
+CEL_VARBASE     equ     $FE02
+                endc
+cel_pg_block    equ     CEL_VARBASE+0
+cel_pg_sig      equ     CEL_VARBASE+1   ; 2 B
+cel_rd_req      equ     CEL_VARBASE+3   ; page+1 the schedule wants read; 0 = none
+cel_res_block   equ     CEL_VARBASE+4   ; the PINNED page's block. PUBLISHED BY THE
+*                                       ;   BUNDLE'S LOADER rather than named here: the
+*                                       ;   generated page table is its one home and that
+*                                       ;   table moved out of this file with the loader,
+*                                       ;   so the room learns the number instead of
+*                                       ;   keeping a second copy of it.
 
 * WHERE THE PACKED BLOB LIVES, and it is main RAM rather than the draw window.
 *
@@ -155,6 +183,7 @@ FLAME_BASE      equ     $3000
 * were never the check — both passed while these were wrong.
 BLIT_TAB        equ     FLAME_BASE+40           ; blit_cel / blit_save / blit_erase
 CHARS_TAB       equ     FLAME_BASE+46           ; chars_frame (piece D), +2 = chars_due
+CELS_TAB        equ     FLAME_BASE+50           ; cel_load_startup, +2 = cel_service_read
 
 ROOM_BLOB       equ     $3000
 
@@ -173,6 +202,7 @@ probe_cel0      fcb     0               ; $0209  cel each torch is showing —
 probe_cel1      fcb     0               ; $020A  the pixel check composites these
 
 ROOM_MAGIC      equ     $4B00
+
 
 room_start
                 orcc    #$50            ; mask while the machine comes up
@@ -248,17 +278,13 @@ room_start
 * addresses, different physical memory -- which is the entire point of the MMU, and
 * exactly the confusion between the CPU's view and the machine's that gfx.s calls out at
 * its own head.
-                jsr     cel_bank_map
-                ldx     #CEL_BASE
-                lda     #DISK_CEL_TRK
-                ldb     #DISK_CEL_SEC
-                jsr     load_tracks
-                lbne    room_failed
-
-* THE LAST READ IS DONE — release the drive now, once, instead of after each of the
-* three (P3.76). The motor stayed turning across all three, so dr_spinup's conditional
-* skipped two of them.
-                jsr     disk_read_motor_off
+* ★ THE CEL PAGES ARE READ AFTER bundle_expand NOW (P3.78), FOR ONE REASON. Their loader
+* lives IN the bundle -- the room could not carry it and stay under the LOADM ceiling
+* (flame_cels.s cels_tab) -- so it does not exist until the bundle is expanded. See
+* room_ready below; this is only the note where the read used to be.
+*
+* Nothing about the P3.72f lesson is given back: the load still happens BEFORE
+* room_present, so it is still a black screen the viewer waits at, not a finished room.
 
                 ldx     HAL_gfx_draw_base       ; X -> the picture
                 ldu     #ROOM_BLOB              ; U -> the blob, in main RAM
@@ -273,9 +299,25 @@ room_start
 * and doing it here rather than after the swap means it happens against a black
 * screen instead of against the finished room.
                 jsr     HAL_gfx_mirror
-                bcs     room_mirror_slow        ; 16-colour would refuse; this is not
+                bcc     room_filled             ; 16-colour would refuse; this is not
 
+* THE FALLBACK, and it is the OLD behaviour rather than a failure. If the mirror ever
+* refuses -- it does so only in a mode whose framebuffer needs the whole window -- the
+* second buffer still has to be filled, and expanding the blob again is exactly how this
+* worked before. The scene stays correct; it just costs the 15 frames back.
+*
+* ★ IT REJOINS THE MAIN PATH NOW RATHER THAN DUPLICATING ITS TAIL (P3.78). It used to
+* carry its own copy of bundle_expand + the reveal and fall into room_ready; both copies
+* then had to grow when the cel load was added, and ROOM.BIN has ONE BYTE of headroom
+* under the LOADM ceiling. Merging costs the slow path one extra buffer flip, which shows
+* the buffer it has just filled — correct either way.
+                jsr     room_present            ; reveal, then fill the other buffer
+                ldx     HAL_gfx_draw_base
+                ldu     #ROOM_BLOB
+                jsr     lz_unpack
+room_filled
                 jsr     bundle_expand           ; the blob is spent — expand over it
+                jsr     room_load_cels          ; ...and only now can its loader be called
 
 * THE BANK MUST BE RE-MAPPED HERE. The mirror above rewrote $FFA6/$FFA7 to reach the
 * front buffer and restored them to the BACK buffer's blocks, not to the bank — the same
@@ -284,26 +326,6 @@ room_start
                 jsr     cel_bank_map
 
                 jsr     room_present            ; the room appears, ready to animate
-
-* AND AGAIN INTO THE OTHER BUFFER. The flames are drawn per frame and the page is
-* flipped per frame, so BOTH buffers have to hold the room -- otherwise every other
-* frame shows a cleared screen. The oracle avoids this by drawing its flames straight
-* onto the displayed page (`lay`, a direct hires call) and never flipping for them;
-* our HAL maps only the back buffer, so the port flips instead. This second expand is
-* now the ONLY thing between the picture appearing and the flames moving, and it is
-* CPU-bound rather than disk-bound.
-                bra     room_ready
-
-* THE FALLBACK, and it is the OLD behaviour rather than a failure. If the mirror ever
-* refuses -- it does so only in a mode whose framebuffer needs the whole window -- the
-* second buffer still has to be filled, and expanding the blob again is exactly how
-* this worked before. The scene stays correct; it just costs the 15 frames back.
-room_mirror_slow
-                jsr     room_present
-                ldx     HAL_gfx_draw_base
-                ldu     #ROOM_BLOB
-                jsr     lz_unpack
-                jsr     bundle_expand           ; only now is the blob finished with
 
 room_ready
 * No cel-pointer patching any more: the slot records and the cel data are in the
@@ -462,6 +484,21 @@ rl_fwrap
                 anda    #1
                 ldx     HAL_gfx_draw_base
                 jsr     [CHARS_TAB]             ; chars_frame, in the bundle
+* ★ THE STAGED READ (P3.78). The beat schedule raises cel_rd_req when a page is due, and
+* it only ever does so in a beat it has ALREADY asserted draws nothing but pinned cels —
+* so the block the track lands in is one nothing on screen is coming from.
+*
+* SERVICED HERE, AFTER THE DRAW AND BEFORE THE FLIP, for one reason: this is the point in
+* the loop where the frame is complete. Reading before the draw would leave the half-built
+* back buffer displayed across the whole transfer; reading after the flip would be the
+* same thing one frame later. Neither is better than freezing on a finished frame.
+*
+* THE TORCHES FREEZE FOR THE TRANSFER AND IT IS SURFACED, NOT SMOOTHED. There is no DMA
+* here: disk_read_range polls the FDC with interrupts masked and the CPU IS the transfer,
+* so nothing else runs. Jay accepted 1.7 s at P3.75 §4A for one track plus a spin-up; a
+* page is two tracks, so this is the number to check at the gate rather than the design.
+                ldy     #load_tracks            ; the bundle has no HAL and no room —
+                jsr     [CELS_TAB+2]            ;   the disk arrives as an argument
                 jsr     room_present            ; waits for VBL, moves VOFFSET, re-maps
 * The probes must name what is DISPLAYED, not what was last drawn. flicker draws into
 * the back buffer; only the swap makes it the front. Publishing the cel numbers here
@@ -895,15 +932,48 @@ bundle_expand
 *
 * Clobbers A only. Safe to call with the bank already mapped.
 * ---------------------------------------------------------------
+* ---------------------------------------------------------------
+* room_load_cels — the split image's pages, through the bundle that now owns the loader.
+*
+* ★ IT CANNOT RUN BEFORE bundle_expand, which is what moved it out of the startup read
+* block. The loader lives in the bundle (flame_cels.s cels_tab — the room could not carry
+* it and stay under the LOADM ceiling), and the bundle does not exist until it is
+* expanded. Everything else about the ordering is unchanged: on the main path this is
+* still before room_present, so it is still a black screen the viewer waits at rather
+* than a finished room with disk running under it (the P3.72f lesson, kept).
+*
+* ★★ AND IT LIVES HERE, WITH THE OTHER SUBROUTINES, RATHER THAN AT ITS CALL SITE. Written
+* inline after the fallback path's `bsr`, the return FELL THROUGH INTO THE ROUTINE AGAIN
+* and then RTS'd out of the room's startup entirely — the room stalled at status 1 with
+* the read count climbing past twice what the schedule asks for (14 against 6), which
+* reads exactly like a disk problem and is not one. A routine defined immediately below
+* its own caller is a fall-through waiting for the first path that does not branch away.
+* ---------------------------------------------------------------
+room_load_cels
+                ldy     #load_tracks            ; the bundle has no HAL and no room; the
+                jsr     [CELS_TAB]              ;   disk arrives as an argument
+                lbne    room_failed
+* THE LAST READ IS DONE — release the drive now, once, instead of after each (P3.76).
+* The motor stays turning across every startup read, so dr_spinup's conditional skips all
+* but the first. A staged read mid-scene pays one fresh spin-up for it, which is a
+* deliberate trade: the alternative is a motor turning for the whole scene.
+                jmp     disk_read_motor_off
+
 cel_bank_map
                 pshs    cc
                 orcc    #$50
-                lda     #CEL_BLOCK
-                sta     CEL_MMU                 ; $FFA6 -> $C000-$DFFF
-                inca
-                sta     CEL_MMU+1               ; $FFA7 -> $E000-$FFFF
+                lda     cel_res_block
+                sta     CEL_MMU                 ; $FFA6 -> the PINNED page at $C000
+* ★ AND THE SECOND REGISTER IS NOT A CONSTANT ANY MORE (P3.78). It used to be
+* `inca` — the bank was two adjacent blocks and the pair never changed. The rotating
+* page changes per beat, so the block comes from the byte the beat schedule publishes.
+* Reading it rather than knowing it is what keeps the schedule the ONE home for which
+* page is live: this routine re-applies a decision, it does not make one.
+                lda     cel_pg_block
+                sta     CEL_MMU+1               ; $FFA7 -> $E000-$FDFF
                 puls    cc
                 rts
+
 
 * ---------------------------------------------------------------
 * room_present — swap the buffers, then put the cel bank back.

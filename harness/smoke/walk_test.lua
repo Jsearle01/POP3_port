@@ -46,6 +46,20 @@ local WALK_N  = tonumber(os.getenv("P_WALK_N") or "0")
 -- signature once per frame and refuses to draw from a window that is not the cel bank.
 -- This reads what the engine concluded, beside what the harness concludes externally.
 local BANKERR = tonumber(os.getenv("P_BANKERR") or "0")
+-- ★ THE SPLIT IMAGE'S SECOND HALF (P3.78). The pinned page at $C000 is checked above by
+-- its bounds; the ROTATING page at $E000 is the half that moves, so it is the half a
+-- check has to earn. cel_pg_sig is the signature the beat schedule says the mapped block
+-- must answer with, and 0 means "this beat draws only pinned cels" -- so the harness
+-- makes exactly the comparison the engine makes, from outside, against the same two
+-- addresses. P_BEAT is the schedule cursor; distinct values of it are beats VISITED,
+-- which is how the run proves the scene actually advanced rather than stalling somewhere.
+local PGSIG   = tonumber(os.getenv("P_PGSIG") or "0")     -- cel_pg_sig, constant page
+local BEAT    = tonumber(os.getenv("P_BEAT") or "0")      -- vm_beat, in the bundle
+local RDERR   = tonumber(os.getenv("P_RDERR") or "0")     -- cel_rd_err, in the room
+local LOADS   = tonumber(os.getenv("P_LOADS") or "0")     -- probe_loads, in the room
+local NBEATS  = tonumber(os.getenv("P_NBEATS") or "0")    -- how many the PLAN has
+local NREADS  = tonumber(os.getenv("P_NREADS") or "0")    -- staged reads the pack wants
+local RUNTO   = tonumber(os.getenv("P_RUNTO") or "0")     -- frames to keep running for
 
 local FB_BASE, FB_SIZE = 0x8000, 15360
 local ROOM_MAGIC = 0x4B00
@@ -123,6 +137,10 @@ local occ, prev_cel, last_change, gaps, steps = {}, nil, nil, {}, 0
 local xs = {}
 local bank_bad = 0        -- captures at which the $C000 cel bank was NOT mapped
 local room_fn, first_cel = nil, nil   -- the room's arrival, and the cels it arrived with
+-- the split image's rotating half, sampled every frame for the WHOLE scene
+local page_bad, page_run, page_worst, page_seen = 0, 0, nil, 0
+local beats_seen, n_beats_seen = {}, 0
+local loads_at_room = nil
 
 local function finish(reason)
     -- THE BANK GUARD FIRST, because everything below it is meaningless if the window
@@ -133,6 +151,45 @@ local function finish(reason)
         local e = rd8(BANKERR)
         log(string.format("# engine_bank_guard %s (ch_bankerr = %d)",
                           e == 0 and "PASS" or "FIRED — the engine refused to draw", e))
+    end
+    -- ★ THE ROTATING PAGE, THE STAGED READS, AND WHETHER THE SCENE ACTUALLY RAN (P3.78).
+    if PGSIG ~= 0 then
+        -- ★★ AND IT MUST HAVE LOOKED AT SOMETHING. On the run that first exposed the
+        -- room crash this printed "PASS (0 sustained mismatches)" having compared
+        -- NOTHING AT ALL — the scene never started, so cel_pg_sig was 0 on every frame
+        -- and the check sailed through an empty observation. That is the third time in
+        -- this arc a suite has been green over nothing (P3.72l, P3.77, here), and it is
+        -- the same shape every time: the check tests a condition, and "no samples" is
+        -- not a violation of any condition. So the sample count is part of the
+        -- assertion, not a statistic printed beside it.
+        log(string.format("# page_sig_matched_every_frame %s (%d checked, %d sustained "
+                          .. "mismatches%s)",
+                          (page_bad == 0 and page_seen > 0) and "PASS" or "FAIL",
+                          page_seen, page_bad,
+                          page_worst and (", worst " .. page_worst) or ""))
+    end
+    if BEAT ~= 0 then
+        -- A SCENE THAT STALLS IS THE FAILURE THIS CATCHES, and it is the one the pixel
+        -- captures structurally cannot: they all land in the first few hundred frames.
+        -- If a beat's page never arrives the guard refuses to draw, the VM goes on
+        -- stepping, and the scene runs to the end looking like a held pose.
+        log(string.format("# beats_visited %s (%d of %d)",
+                          n_beats_seen >= NBEATS and "PASS" or "FAIL",
+                          n_beats_seen, NBEATS))
+    end
+    if RDERR ~= 0 and loads_at_room then
+        -- TWO load_tracks CALLS PER PAGE, not one. The page is two whole tracks and the
+        -- second is read SKEWED so it ends at the top of the window (char_draw
+        -- cel_read_page), so probe_loads advances by two per staged read. Counting calls
+        -- and comparing against pages reported "4 of 2 completed" for a run in which
+        -- both reads were perfect — a check wrong in the direction that cries wolf,
+        -- which spends attention just as surely as one that stays quiet.
+        local calls = rd8(LOADS) - loads_at_room
+        local e = rd8(RDERR)
+        log(string.format("# staged_reads %s (%d of %d pages, %d disk calls, "
+                          .. "cel_rd_err = %d)",
+                          (calls == NREADS * 2 and e == 0) and "PASS" or "FAIL",
+                          calls // 2, NREADS, calls, e))
     end
     log("# --- PHASE OCCUPANCY, measured on the running machine ---")
     local cels = {}
@@ -211,6 +268,8 @@ local function tick()
             if room_fn == nil then
                 room_fn = fn
                 first_cel = rd8(VIZ + CH_CEL) * 256 + rd8(PRI + CH_CEL)
+                -- the startup reads are done by now; anything after this is a STAGED one
+                loads_at_room = (LOADS ~= 0) and rd8(LOADS) or nil
                 log(string.format("# room up at frame %d, loads=%d status $%02X",
                                   fn, rd8(ENGINE + 4), rd8(ENGINE + 5)))
             end
@@ -226,6 +285,51 @@ local function tick()
             finish("FAIL — the room never came up")
         end
         return
+    end
+
+    -- ── THE ROTATING PAGE, EVERY FRAME, FOR THE WHOLE SCENE (P3.78) ────────────────
+    --
+    -- ★ A MISMATCH ONLY COUNTS IF IT PERSISTS, and that is not leniency — it is the one
+    -- thing that makes this instrument sound. room_present is `jsr HAL_gfx_swap` then
+    -- `jsr cel_bank_map`, and HAL_gfx_swap ends by writing ALL FOUR window registers to
+    -- bring the new back buffer in (P3.68). So between those two calls $FFA6/$FFA7 hold
+    -- framebuffer blocks, legitimately, for a few hundred cycles per frame -- and
+    -- HAL_gfx_swap waits for VBL, which is exactly when a frame notifier fires. A
+    -- single-sample check would report the engine's own correct swap as a fault: an
+    -- instrument reading a transient it is synchronised to (P3.71's shape, one register
+    -- along). Requiring the mismatch to survive consecutive frames tests for a mapping
+    -- that is actually WRONG rather than one that is mid-update.
+    --
+    -- The engine's own guard has no such problem -- it runs inside chars_frame with the
+    -- mapping settled -- which is why ch_bankerr stays the primary and this is
+    -- corroboration from outside.
+    if PGSIG ~= 0 then
+        local want = rd8(PGSIG) * 256 + rd8(PGSIG + 1)
+        if want ~= 0 then
+            page_seen = page_seen + 1
+            local got = rd8(0xE000) * 256 + rd8(0xE001)
+            if got ~= want then
+                page_run = page_run + 1
+                if page_run == 3 then
+                    page_bad = page_bad + 1
+                    page_worst = string.format("frame %d: $%04X, wanted $%04X",
+                                               fn, got, want)
+                    log(string.format("#   PAGE WRONG at frame %d: $%04X, wanted $%04X",
+                                      fn, got, want))
+                end
+            else
+                page_run = 0
+            end
+        else
+            page_run = 0
+        end
+    end
+    if BEAT ~= 0 then
+        local b = rd8(BEAT) * 256 + rd8(BEAT + 1)
+        if b ~= 0 and not beats_seen[b] then
+            beats_seen[b] = true
+            n_beats_seen = n_beats_seen + 1
+        end
     end
 
     -- SAMPLE EVERY FRAME. The VM steps every ~3 frames, so per-frame sampling sees every
@@ -272,8 +376,15 @@ local function tick()
         log(string.format("# capture %s at frame %d (+%d): %s",
                           tag, fn, fn - first_fn, ok and "ok" or "WRITE FAILED"))
         next_shot = fn + GAP
-    elseif shot_n >= SHOTS then
-        finish(string.format("%d captures over %d frames", shot_n, fn - first_fn))
+    elseif shot_n >= SHOTS and (RUNTO == 0 or fn - first_fn >= RUNTO) then
+        -- ★ THE CAPTURES END LONG BEFORE THE SCENE DOES (P3.78), and stopping with them
+        -- would have made every check above blind to fourteen of the eighteen beats. The
+        -- 28 pixel captures cover ~280 frames; the scene is ~2,500 and both staged reads
+        -- land past frame 1,000. So the run continues, sampling the page and the beat
+        -- cursor, and only the framebuffer capturing stops. RUNTO is derived by the
+        -- runner from the PLAN's own play counts rather than guessed.
+        finish(string.format("%d captures over %d frames, scene ran %d frames past them",
+                             shot_n, GAP * SHOTS, fn - first_fn - GAP * SHOTS))
     end
 end
 

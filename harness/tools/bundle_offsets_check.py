@@ -25,12 +25,24 @@ Exit 1 on any mismatch, missing symbol or unparseable declaration: a check that 
 find its inputs must fail, not pass quietly.
 """
 import argparse
+import json
 import pathlib
 import re
 import sys
 
 # room source symbol -> the symbol it must equal in the flames link map
-PAIRS = {"BLIT_TAB": "blit_tab", "CHARS_TAB": "chars_tab"}
+PAIRS = {"BLIT_TAB": "blit_tab", "CHARS_TAB": "chars_tab",
+         "CELS_TAB": "cels_tab"}    # P3.78: the split image's loader
+
+# Generated tables whose ROW STRIDE the engine hard-codes, and which therefore have to be
+# measured rather than trusted. Both of these emitted a short row at P3.78, from the same
+# cause — a `%-3d,` column alignment in the generator, which lwasm reads as an operand
+# terminated by whitespace and assembles as ONE byte with no complaint. Neither failed to
+# assemble, link, boot or run.
+#
+#   (start symbol, end symbol, bytes per row, how many rows)
+STRIDES = [("cel_plan", "cel_plan_end", 5, lambda m: len(m["schedule"]) + 1),
+           ("cel_page_tab", "cel_page_tab_end", 2, lambda m: len(m["pages"]))]
 
 
 def room_offsets(src):
@@ -79,6 +91,43 @@ def main():
             bad = 1
         else:
             print("  ok   %-10s FLAME_BASE+%-3d = $%04X == %s" % (name, off, got, sym))
+
+    # ─── ★★ THE BEAT SCHEDULE'S ROW STRIDE, MEASURED FROM THE LINKED BYTES ────────────
+    #
+    # cel_plan is a table of fixed 5-byte rows that the engine walks with `leau 5,u`. A
+    # row that emits four bytes instead of five does not fail to assemble, does not fail
+    # to link and does not crash: the walk simply lands one byte further into every
+    # subsequent row, so the schedule maps block $00 and requests page 109, and the scene
+    # plays through with the wrong window under it.
+    #
+    # That happened, and the cause was a COLUMN-ALIGNMENT format in the generator —
+    # `fcb 7  ,$0D`, where lwasm terminates the operand at the whitespace and emits one
+    # byte. Rows were five bytes long or four depending on whether the play count reached
+    # three digits, which is why the first two beats behaved and the third did not.
+    #
+    # Nothing in the toolchain can see that. A byte count can, and this is it: the linked
+    # distance from cel_plan to cel_plan_end against 5 x (beats + 1) from the pack
+    # manifest — two independent statements of one fact, which is the only shape of check
+    # that catches a generator agreeing with itself.
+    plan_path = pathlib.Path("content/cutscene/chars/cel_pack.json")
+    if plan_path.exists():
+        man = json.loads(plan_path.read_text(encoding="utf-8"))
+        for start, end, row, count in STRIDES:
+            if start not in syms or end not in syms:
+                print("  FAIL %s / %s are not both in %s — the stride is UNCHECKED, "
+                      "which is the state this check exists to make impossible"
+                      % (start, end, a.map))
+                bad = 1
+                continue
+            want, got = count(man) * row, syms[end] - syms[start]
+            if got != want:
+                print("  FAIL %s is %d B linked but %d rows x %d B is %d B (off by %+d) "
+                      "— a row emitted the wrong number of bytes"
+                      % (start, got, count(man), row, want, got - want))
+                bad = 1
+            else:
+                print("  ok   %-12s %2d rows x %d B = %3d B linked"
+                      % (start, count(man), row, got))
 
     if bad:
         print("  the room would call into the middle of the bundle. Fix the `equ`s in %s"

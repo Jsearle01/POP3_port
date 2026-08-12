@@ -36,6 +36,8 @@
                 section prog
                 export  chars_frame
                 export  ch_bankerr
+                export  cel_load_startup
+                export  cel_service_read
                 export  chars_due
 * THE BLITTER BY SYMBOL, NOT BY OFFSET (P3.62). This file is LINKED INTO THE BUNDLE
 * alongside blit_core.o [build.bat: lwlink ... flame_cels.o blit_core.o char_draw.o],
@@ -162,12 +164,54 @@ PRI_PEEL_BASE   equ     $6C00+VIZ_PEEL*2
 * image's SHAPE -- how many cels, starting at which -- and that is exactly why the image
 * carries WALK_LO/WALK_N as its own first two bytes and this file READS them rather than
 * assembling a second copy. A duplicated layout constant is what CHAR_TAB was.
-CEL_BASE        equ     $C000           ; where cutscene_room maps the bank
+CEL_BASE        equ     $C000           ; where cutscene_room maps the PINNED page
 CEL_MAGIC       equ     CEL_BASE        ; $C3,$5A — the image says who it is (P3.77)
 CEL_WALK_LO     equ     CEL_BASE+2      ; first cel number the image covers
 CEL_WALK_N      equ     CEL_BASE+3      ; how many cels it covers
 CEL_WALK_TAB    equ     CEL_BASE+4      ; [cel][facing][phase] -> cel data
 CEL_MAGIC_VAL   equ     $C35A
+
+* ---------------------------------------------------------------
+* ★ THE IMAGE IS SPLIT NOW (P3.78), AND THE SECOND HALF MOVES.
+*
+* The scene outgrew one bank. 39,682 B of cel image against 31,744 B addressable, so the
+* cels are packed into a PINNED page at $C000 (above — the table, and the cels that must
+* never go away) and five ROTATING pages that all live at $E000 and take turns in $FFA7,
+* one per group of beats, two of them arriving off disk mid-scene.
+*
+* ★★ AND THAT IS WHY EVERY PAGE CARRIES ITS OWN SIGNATURE. P3.77's guard checked two
+* bytes at $C000 and its own uncertainty flag named what splitting would do to it: "if
+* the packer puts cels in more than one block, each block needs its own signature or the
+* guard only proves one of them is mapped." The pinned page is the half that CANNOT be
+* wrong — it is never remapped. The rotating page is the half that changes every few
+* beats, and so the only half where a wrong block is reachable at all. A guard that
+* checked only $C000 after the split would have gone on passing while proving nothing
+* about the pointers that actually move.
+CEL_PAGE        equ     $E000           ; where the rotating page is mapped
+CEL_PAGE_SIG    equ     CEL_PAGE        ; ...and its first two bytes are its own magic
+CEL_MMU         equ     $FFA6           ; GIME window; +1 is the rotating page's register
+
+* --- the three bytes char_draw and cutscene_room share, and WHY THEY ARE THERE ------
+* These two files never link together — one is the disk-resident bundle at $3000, the
+* other is ROOM.BIN at $2000 — so a shared variable cannot be a symbol. It has to be an
+* address both are told, which is what build.bat's -DCEL_VARBASE is (the same shape as
+* DR_VARBASE, and for the same reason).
+*
+* $FE02 IS IN THE CONSTANT PAGE, AND THAT IS THE WHOLE REQUIREMENT. MC3=1 holds
+* $FE00-$FEFF present through every MMU remap [gfx.s:390], and the thing these bytes
+* describe IS the remap — a variable that told you which block to map, and that lived in
+* a block, would be the one variable guaranteed to disappear exactly when it was needed.
+* disk_read.s owns $FE00/$FE01 for precisely this property and documents $FE02-$FE1F as
+* free; POP claims three of them here.
+                ifndef  CEL_VARBASE
+CEL_VARBASE     equ     $FE02
+                endc
+cel_pg_block    equ     CEL_VARBASE+0   ; the GIME block $FFA7 owes this beat
+cel_pg_sig      equ     CEL_VARBASE+1   ; 2 B — the signature it must answer with; 0 =
+*                                       ;   "this beat draws only pinned cels"
+cel_rd_req      equ     CEL_VARBASE+3   ; page+1 to read into it during this beat; 0 = none
+cel_res_block   equ     CEL_VARBASE+4   ; the PINNED page's block, published for the
+*                                       ;   room's re-map after every buffer flip
 
 * ---------------------------------------------------------------
 * PIECE D — THE CHARACTER DRAW, and the seed of the VM's character slots.
@@ -334,29 +378,55 @@ chars_frame
                 ldu     #pri_script             ; SHE HAS A SCRIPT NOW TOO (P3.65)
                 stu     vm_scr+2
 cf_running
-* ★ THE BANK GUARD (P3.77) — check the window IS the cel bank before drawing from it.
+                jsr     vm_nextframe            ; decide — and this is where a beat, and
+*                                               ;   therefore the mapping, may change
+* ★ THE BANK GUARD — check the window IS the pages this frame's pointers need (P3.77,
+* ★ made PER-BLOCK at P3.78).
 *
-* Every cel pointer in walk_tab is ABSOLUTE. If the wrong GIME block sits under $C000 the
-* pointers stay valid-looking and blit_cel draws whatever bytes are there: no crash, no
-* bad address, just garbage that reads as a rendering bug. Capture-05 was exactly that,
-* and it cost three dispatches to attribute because nothing in the machine complained.
+* Every cel pointer in walk_tab is ABSOLUTE. If the wrong GIME block sits under $C000 or
+* $E000 the pointers stay valid-looking and blit_cel draws whatever bytes are there: no
+* crash, no bad address, just garbage that reads as a rendering bug. Capture-05 was
+* exactly that, and it cost three dispatches to attribute because nothing in the machine
+* complained.
 *
-* ONCE PER FRAME, NOT PER CEL. The mapping only changes at beat boundaries, so a frame is
-* the finest granularity at which the answer can differ, and ~14 cy against a 58,026 cy
-* budget is not a cost worth optimising. Per cel would be ~10 cy x however many are drawn
-* and would say nothing extra.
+* ★ IT RUNS AFTER vm_nextframe, NOT BEFORE, AND THE ORDER IS LOAD-BEARING. P3.77 put it
+* at the head of the frame, which was right while one image was mapped for the whole
+* scene and wrong the moment the mapping could change: the beat boundary happens INSIDE
+* vm_nextframe, so a guard before it checks the page the LAST frame drew from and then
+* lets this frame draw from a page nothing checked. Between the two calls, the map is the
+* map the draw will actually use. vm_nextframe itself touches no banked memory — it reads
+* cel_table and img_map, both bundle-resident — so nothing is exposed by moving it.
 *
-* IT REFUSES RATHER THAN DRAWING. A frame that skips both characters is instantly visible
-* and harms nothing; a frame that draws from an unmapped window corrupts the peel's saved
-* background and the damage accumulates. ch_bankerr latches for the harness.
+* TWO CHECKS, BECAUSE THERE ARE TWO PAGES AND ONLY ONE OF THEM MOVES:
                 ldd     CEL_MAGIC
-                cmpd    #CEL_MAGIC_VAL
+                cmpd    #CEL_MAGIC_VAL          ; the PINNED page: the table lives here
+                bne     cf_bank_bad
+* ...and the ROTATING page, against the signature THIS BEAT needs. A shared magic would
+* pass on any of the five pages, which is the same failure as no check at all one level
+* up. A plausibility test would be worse: P3.77 chose a magic over one because "a
+* plausibility test on WALK_LO would pass on a wrong block that happened to look sane",
+* and a page ORDINAL is exactly that — 0..4 are bytes any cel stream contains.
+                ldd     cel_pg_sig
+                beq     cf_bank_ok              ; 0 = this beat draws only pinned cels,
+*                                               ;   so no rotating page is owed. That is
+*                                               ;   a state the schedule asserts, not a
+*                                               ;   gap: cel_pack checks the beat's set
+*                                               ;   really is a subset of the pinned one.
+*                                               ;   It is also what lets a disk read hide
+*                                               ;   in a song hold — see cel_plan.s.
+                cmpd    CEL_PAGE_SIG
                 beq     cf_bank_ok
+cf_bank_bad
                 lda     #1
                 sta     ch_bankerr              ; latched: the harness reads this
                 rts                             ; draw NOTHING this frame
+*
+* IT REFUSES RATHER THAN DRAWING. A frame that skips both characters is instantly visible
+* and harms nothing; a frame that draws from an unmapped window corrupts the peel's saved
+* background and the damage accumulates. ONCE PER FRAME, NOT PER CEL: the mapping only
+* changes at beat boundaries, so a frame is the finest granularity at which the answer
+* can differ, and ~24 cy against a 58,026 cy budget is not a cost worth optimising.
 cf_bank_ok
-                jsr     vm_nextframe            ; decide
                 jsr     vm_frameadv             ; draw
                 rts
 
@@ -1236,6 +1306,9 @@ vm_cnt          fcb     0,0             ; plays left on the current script entry
 vm_ix           fcb     0
 vm_rec          fdb     0
 vm_img          fcb     0
+vm_beat         fdb     0               ; cursor into cel_plan; 0 until the first step
+vm_bcnt         fcb     0               ; animation steps left in the current beat
+vm_pend         fcb     0               ; the beat is spent; switch at the NEXT step
 
 * ---------------------------------------------------------------
 * vm_resolve — cel number in A -> the record's cel fields.
@@ -1406,6 +1479,11 @@ vn_wrap
                 addd    vm_now
                 std     vm_due                  ; fire again at now + count
 
+* ★ THE BEAT TICKS FIRST, so the window is showing the page this step's cels live in
+* before either character is asked which cel that is. The other order would select a cel
+* from the new beat and place it through the old beat's mapping for one frame.
+                jsr     vm_beat_tick
+
                 clr     ch_idx                  ; step both characters
                 ldx     #viz_slot
                 jsr     vm_step
@@ -1414,6 +1492,111 @@ vn_wrap
                 ldx     #pri_slot
                 jsr     vm_step
 vn_hold
+                rts
+
+* ---------------------------------------------------------------
+* vm_beat_tick — the PER-BEAT BLOCK SCHEDULE (P3.78).
+*
+* Ticked once per animation step, from the same place and on the same clock as the two
+* character scripts, because it is the same fact seen from a third angle: which sequence
+* runs for how many plays decides which cels are drawn, and which cels are drawn decides
+* which block has to be mapped. All three come out of one walk of bake_scene.PLAN.
+*
+* ONE HOME PER FACT (P3.31), and this is the case where it stops being tidiness. A
+* schedule that could drift from the content it schedules does not fail loudly — the beat
+* runs, the cels are drawn, and the bytes come from whatever block happened to be there.
+* That is the silent-garbage failure the guard above exists for, and P3.75 §3F called it
+* the worst version of the bug for exactly that reason.
+*
+*   cel_plan rows, five bytes:  fcb plays, block / fdb sig / fcb read
+*
+* A row with plays = 0 is the TERMINAL beat and holds forever. That is not the end of the
+* scene: every sequence ends in a `goto`, so both characters go on drawing whatever they
+* settled on. cel_pack pins the terminal beat's cels for that reason — see its Phase 1a.
+* ---------------------------------------------------------------
+* ★★ THE SWITCH IS DEFERRED BY ONE STEP, AND THAT IS THE WHOLE CORRECTNESS OF IT.
+*
+* The obvious form — decrement, and when the count reaches zero take the next beat right
+* there — maps the next beat's page for the step that is still the CURRENT beat's last.
+* The packer attributes that step's cel to the beat whose plays were being spent, so the
+* engine drew a page-3 cel with page 4 in the window: a valid-looking pointer into real
+* cel data belonging to somebody else. Measured, on the machine, at the last step of
+* Vexit —
+*
+*     f4625  cel=60  col=43  w=8  h=48   dest=$A0AB     the last correct frame
+*     f4631  cel=61  col=43  w=1  h=192  dest=$C3AB     a header read out of the wrong page
+*
+* — h=192 and w=1 are not a cel; they are two bytes of somebody else's pixels read as a
+* header, and the blit then walked 192 rows INTO THE CEL BANK ITSELF at $C3AB, over the
+* pinned page, until the stack ran from $7EFE down to $00FA.
+*
+* ★ AND THE PER-BLOCK GUARD CANNOT CATCH THIS, WHICH IS WORTH STATING PLAINLY. The guard
+* asks "is the page this BEAT needs mapped?" and at that moment the answer was YES — beat
+* 15's page was correctly mapped for beat 15. The fault was that the cel came from beat
+* 14. A signature proves which page is in the window; it cannot prove that the cel about
+* to be drawn belongs to the beat the window is set for. Getting the boundary right is
+* what makes the guard's answer mean what it says.
+*
+* So: when the count reaches zero the beat is merely marked SPENT, and the next beat is
+* applied at the top of the following step — the first step that really belongs to it.
+vm_beat_tick
+                ldu     vm_beat
+                bne     vb_running
+                ldu     #cel_plan               ; first step of the scene: beat 0
+                bsr     vb_apply
+                bra     vb_tick
+vb_running
+                lda     vm_pend
+                beq     vb_tick
+                clr     vm_pend
+                ldu     vm_beat
+                leau    5,u                     ; the previous step spent it — take the
+                bsr     vb_apply                ;   next beat NOW, before this step draws
+vb_tick
+                lda     vm_bcnt
+                beq     vb_done                 ; terminal beat: 0 plays, holds forever
+                deca
+                sta     vm_bcnt
+                bne     vb_done
+                inc     vm_pend                 ; spent; the NEXT step is the next beat's
+vb_done
+                rts
+
+* vb_apply — U -> a beat row. Bring its block in, publish what the guard must see, and
+* raise the read request if this beat is where a page arrives off disk.
+*
+* THE $FFA7 WRITE NEEDS NO INTERRUPT MASK, and the difference from cel_bank_map is worth
+* stating rather than copying. That routine writes TWO registers, and between them the
+* window is half one page and half another — a state nothing may observe. This writes
+* ONE, so every instant before and after it is a complete, valid map. Masking here would
+* be ceremony borrowed from a routine whose hazard this one does not have.
+vb_apply
+                stu     vm_beat
+                lda     ,u                      ; plays in this beat
+                sta     vm_bcnt
+                lda     1,u                     ; the block it needs at $FFA7
+* ★ THE SEEDED **REAL WRONG MAPPING** (P3.78 §4). P3.77 could exercise the guard only by
+* falsifying the value it compares against, which tests the comparison and nothing else —
+* its own report flagged that the real failure had never been made reachable. The split
+* makes it reachable and this is it: map the block NEXT TO the one the schedule chose.
+*
+* Nothing else changes. The beat still expects the right signature, every pointer in
+* walk_tab is still valid-looking, and the window underneath still holds a real page of
+* real cel data — just not this beat's. That is capture-05's shape exactly, and it is the
+* shape no expected-value seed can produce.
+*
+* Built with SEEDFLAG=-DSEED_WRONGBLOCK; absent from every normal build.
+                ifdef   SEED_WRONGBLOCK
+                inca
+                endc
+                sta     cel_pg_block            ; ...told to room_present's re-map, which
+                sta     CEL_MMU+1               ;    has to redo this after every flip
+                ldd     2,u                     ; and the signature that block must show
+                std     cel_pg_sig
+                lda     4,u
+                beq     vb_norq
+                sta     cel_rd_req              ; a page arrives during this beat
+vb_norq
                 rts
 
 * ---------------------------------------------------------------
@@ -1624,9 +1807,13 @@ pri_demo
 * chx is mirrored by facing in the VM (P3.25-verified) and startV0 sets CharFace=-1
 * [SUBS.S:1147], so these positive deltas carry him LEFT from 197 toward the princess
 * at 120 -- 10 px per cycle, reaching her at step 45.
+* ★ viz_walk2 IS A REAL ENTRY POINT, not a comment (P3.78). Vexit ends `goto Vwalk2`
+* [SEQTABLE.S:1553], so the vizier's walk OUT joins the loop one cel in, skipping cel 48
+* and its chx,2. The port had no such label because nothing had ever jumped there; adding
+* the beat is what made the distinction load-bearing rather than descriptive.
 viz_walk        fcb     SEQ_CHX,1               ; the one-off entry step
 viz_walk1       fcb     48,SEQ_CHX,2
-                fcb     49,SEQ_CHX,6
+viz_walk2       fcb     49,SEQ_CHX,6
                 fcb     50,SEQ_CHX,1
                 fcb     51,SEQ_CHX,-1
                 fcb     52,SEQ_CHX,1
@@ -1654,6 +1841,255 @@ viz_stop        fcb     SEQ_CHX,1
 * Vstand [SEQTABLE.S:1496] — `db 54,goto / dw Vstand`, one cel, held.
 viz_stand       fcb     54,SEQ_GOTO
                 fdb     viz_stand
+
+* ---------------------------------------------------------------
+* THE REMAINING FOUR SEQUENCES (P3.78), transcribed from SEQTABLE.S.
+*
+* These are DATA, and the whole point of the arc that built the interpreter is that
+* landing a beat is now transcription rather than code. Every one of them is the oracle's
+* bytes with the port's opcode names substituted; nothing is adapted, and where a
+* sequence does something structurally interesting it is called out rather than smoothed.
+* ---------------------------------------------------------------
+
+* Vraise [SEQTABLE.S:1503] — "raises arms" [SUBS.S:713]. The gesture the whole scene
+* builds to, and the beat that must not land alone.
+*
+*     Vraise  db 85,67,67,67,67,67,67
+*             db 68,69,70,71,72,73,74,75,83,84
+*     :loop   db 76 / goto :loop
+*
+* ★ THE SIX REPEATS OF 67 ARE FREE AND THE SHAPE IS THE POINT. PlayCut0 gives Vraise
+* `play 1` and then hands the next thirteen plays to Pback [SUBS.S:715-719] — his arms go
+* on rising underneath her retreat, because `play N` advances BOTH characters. So one
+* play of Vraise draws cel 85 and stops there; the raise is only a raise because Pback's
+* thirteen follow it. Landing Vraise without Pback would show one frame of a pose the
+* scene then cannot continue from, which is why bake_scene.PLAN carries them as one edit.
+viz_raise       fcb     85,67,67,67,67,67,67
+                fcb     68,69,70,71,72,73,74,75,83,84
+viz_raise_l     fcb     76
+                fcb     SEQ_GOTO
+                fdb     viz_raise_l
+
+* Vexit [SEQTABLE.S:1536] — "lower arms, turn & exit" [SUBS.S:741].
+*
+* THREE THINGS HAPPEN IN ONE SEQUENCE and they are easy to read past: he lowers his arms
+* (77-82), STANDS STILL for six frames on cel 54, turns (57-66 with the x corrections),
+* and then `aboutface,chx,16 / chx,3 / goto Vwalk2` — walking out on the WALK cels,
+* mirrored, from the second entry of the loop.
+*
+* ★ THE MIRROR IS WHY THE EXIT COSTS WHAT IT DOES. Reusing the walk's cel NUMBERS reuses
+* none of its baked BYTES: a mirrored cel is a different conversion at a different column
+* parity, so v48m..v53m are 4,565 B of genuinely new data (P3.76 §3E). That is the single
+* biggest item the packer had to place, and it is why the last two beats share a page.
+viz_exit        fcb     77,78,79,80,81,82
+                fcb     SEQ_CHX,1
+                fcb     54,54,54,54,54,54       ; standing — the oracle's own comment
+                fcb     57
+                fcb     58
+                fcb     59
+                fcb     60
+                fcb     61,SEQ_CHX,2
+                fcb     62,SEQ_CHX,-1
+                fcb     63,SEQ_CHX,-3
+                fcb     64
+                fcb     65,SEQ_CHX,-1
+                fcb     66
+                fcb     SEQ_ABOUTFACE
+                fcb     SEQ_CHX,16
+                fcb     SEQ_CHX,3
+                fcb     SEQ_GOTO
+                fdb     viz_walk2               ; NOT viz_walk1 — see the note there
+
+* Pback [SEQTABLE.S:1574] — she backs away from the raised arms [SUBS.S:717].
+*
+*     Pback  db aboutface,chx,11 / 12 / chx,1,13 / chx,1,14 / chx,3,15 / chx,1,16
+*     :loop  db 17 / goto :loop
+*
+* THE OPENING aboutface IS THE SECOND ONE SHE MAKES. Palert turned her to the door; this
+* turns her back, which is why cels 12-17 are NORMAL bakes while her standing cel between
+* the two turns is the mirrored one (P3.75 §3C, traced cel by cel). She is mirrored only
+* for the held stretch in the middle of the scene.
+pri_back        fcb     SEQ_ABOUTFACE
+                fcb     SEQ_CHX,11
+                fcb     12
+                fcb     SEQ_CHX,1,13
+                fcb     SEQ_CHX,1,14
+                fcb     SEQ_CHX,3,15
+                fcb     SEQ_CHX,1,16
+pri_back_l      fcb     17
+                fcb     SEQ_GOTO
+                fdb     pri_back_l
+
+* Pslump [SEQTABLE.S:1659] — she slumps, and the scene rests there [SUBS.S:747].
+*
+*     Pslump  db 1 / :loop db 18 / goto :loop
+*
+* Two cels for twenty-eight plays: one transition and one held pose. It is the cheapest
+* beat in the scene (1,334 B live) and the last thing the port draws.
+pri_slump       fcb     1
+pri_slump_l     fcb     18
+                fcb     SEQ_GOTO
+                fdb     pri_slump_l
+
+* ---------------------------------------------------------------
+* THE SPLIT IMAGE'S LOADER (P3.78) — here rather than in the room, and the reason is
+* measured. See flame_cels.s's cels_tab for the numbers; the short of it is that HEAD's
+* ROOM.BIN ended eleven bytes under the LOADM ceiling and this code took it through.
+*
+* THE ROOM STILL OWNS THE DISK. load_tracks is the room's — it knows about SAM speed, the
+* driver's parameter block and the probe counters — so it arrives in Y, the same way the
+* HAL's frame count and draw base arrive in U and X. This bundle links without the HAL and
+* without the room; every cross-image call is an argument, never a symbol.
+*
+* ★ AND IT IS STASHED IMMEDIATELY, BECAUSE THE CALL DESTROYS THE POINTER TO ITSELF.
+* disk_read_range's inner loop does `ldy #SECS_TRACK*256` to count the transfer
+* (disk_read.s dr_read_track_m1), so Y does not survive one read — and a loader that
+* reads four pages through `jsr ,y` calls the first one correctly and then jumps through
+* whatever the FDC left behind. The symptom was not a crash: the room sat at status 1
+* with its read count climbing past twice the schedule's, which reads as a disk fault.
+* Keeping the argument in a variable costs two bytes and removes the whole class.
+*
+* Both entry points return load_tracks' own Z (set = success).
+* ---------------------------------------------------------------
+
+* cel_load_startup — the pinned page, then the first page of each rotating block.
+*   Y = the room's load_tracks.  Leaves the window on page 0, which the first beat wants.
+cel_load_startup
+                sty     cel_disk
+* ★ CLEAR THE SHARED BYTES FIRST, AND THIS IS NOT DEFENSIVE PROGRAMMING — IT IS THE PRICE
+* OF THE CONSTANT PAGE. cel_rd_req and cel_pg_sig live at $FE02+ because MC3=1 keeps that
+* page present through every MMU remap, which is exactly the property they need. What
+* comes with it is that they are ORDINARY RAM holding whatever was there at power-on:
+* they are not part of any loaded image, so nothing initialises them the way an `fcb 0`
+* in the bundle initialises vm_beat.
+*
+* Measured, because it cost a debugging round: with the byte left alone, room_loop's very
+* first pass read a garbage cel_rd_req, decremented it into a garbage page number, indexed
+* cel_page_tab past its end and mapped a wild block at $FFA7 — the machine reset, and the
+* trace showed $FFA6/$FFA7 back at the boot default $3E/$3F with probe_status reading 0.
+* That looks exactly like "the program never ran", which is the one diagnosis it is not.
+                clr     cel_rd_req
+                clr     cel_pg_sig              ; nothing is owed until the first beat
+                clr     cel_pg_sig+1            ;   tick publishes the schedule's answer
+                lda     #CEL_RES_BLOCK
+                sta     cel_res_block           ; published for the room's re-map
+                sta     CEL_MMU                 ; $FFA6 -> the pinned page
+* TWO CALLS, THE SECOND SKEWED — see cel_read_page below for the whole reason.
+                ldx     #CEL_RES_LO
+                lda     #CEL_RES_TRK
+                ldb     #CEL_SECS
+                jsr     [cel_disk]
+                bne     cs_out
+                ldx     #CEL_RES_HI
+                lda     #CEL_RES_TRK+1
+                ldb     #CEL_SECS
+                jsr     [cel_disk]
+                bne     cs_out
+                clr     cl_n
+cs_next
+                lda     cl_n
+                cmpa    #CEL_N_STARTUP
+                bhs     cs_first
+                inc     cl_n
+                ldx     #cel_startup_tab
+                lda     a,x
+                bsr     cel_read_page
+                beq     cs_next
+                bra     cs_out
+cs_first
+* cel_read_page left the window on whatever it loaded LAST — the highest-numbered startup
+* page, not the first one drawn. Put it back on page 0 before the scene starts. (The beat
+* schedule would fix this on its first tick anyway; doing it here means the window is
+* never briefly wrong on the frame the room is revealed.)
+                lda     cel_page_tab+2          ; page 0's block
+                sta     cel_pg_block
+                sta     CEL_MMU+1
+                clra                            ; Z set = success
+cs_out
+                rts
+
+* cel_read_page — A = page number, Y = the room's load_tracks.
+*
+* ★ THE MAP HAPPENS BEFORE THE READ, and that is why a mid-scene read can only be issued
+* in a beat the schedule has marked as needing no rotating page: load_tracks writes
+* through CPU addresses, so the block being filled is a block the window HAS to be
+* showing. During a song hold both characters are drawn from pinned cels, so $FFA7 is
+* free and a track can land in it without taking anything off the screen.
+*
+* THE TORCHES FREEZE FOR THE TRANSFER, and nothing here can prevent it: disk_read_range
+* polls the FDC with interrupts masked and there is no DMA on this machine — the CPU is
+* the transfer. That cost is measured at the gate, not quoted from the design.
+* ★★ TWO CALLS, AND THE SECOND ONE IS SKEWED. This is the single most load-bearing
+* detail in the split, so it is stated here as well as in cel_pack.py.
+*
+* disk_read_range reads WHOLE TRACKS only — its own header says so and calls a partial
+* tail a deferred capability. A page holds up to 7,680 B and therefore takes two tracks,
+* which is 9,216 B of transfer into a window that reaches $FDFF. A plain two-track read
+* to $E000 writes 1,536 bytes PAST it: through $FE00-$FEFF, which is the constant page
+* holding the disk driver's own NMI and motor flags, and then through $FF00-$FFFF, WHICH
+* IS THE GIME AND THE MMU. Built that way the machine reset the instant the first page
+* landed, and the trace read $FFA6/$FFA7 back at the boot default with probe_status 0 —
+* indistinguishable, from outside, from a program that never started.
+*
+* So the second track is laid out on disk to END where the window ends: it carries the
+* page's last 4,608 bytes and is read to $EC00, finishing exactly at $FE00. The two reads
+* overlap by 1,536 bytes and carry identical data there, so the result is the whole page
+* and nothing outside it. cel_link.py applies the skew and asserts the reconstruction.
+cel_read_page
+                lsla                            ; A = page number -> the row's offset
+                tfr     a,b
+                clra                            ; D = page * 2, unsigned in 16 bits so a
+*                                               ;   grown table cannot hit `leax a,x`'s
+*                                               ;   signed-byte edge (the trap co_variant
+*                                               ;   documents from P3.65)
+                ldx     #cel_page_tab
+                leax    d,x
+                lda     1,x                     ; the block this page belongs in
+                sta     cel_pg_block
+                sta     CEL_MMU+1               ; ...and bring it in, before the read
+                lda     ,x                      ; track A
+                ldb     #CEL_SECS
+                pshs    a
+                ldx     #CEL_PAGE_LO
+                jsr     [cel_disk]
+                bne     cp_out
+                lda     ,s                      ; track B, the skewed one
+                inca
+                ldb     #CEL_SECS
+                ldx     #CEL_PAGE_HI
+                jsr     [cel_disk]
+cp_out
+                puls    a,pc                    ; PULS leaves CC alone: the Z above is
+*                                               ;   still the caller's answer
+
+* cel_service_read — called once per frame by the room, Y = load_tracks.
+*
+* The schedule raises cel_rd_req at a beat boundary; this is where it is honoured. It
+* lives here rather than in room_loop for the same ceiling reason as the rest, and it
+* costs the room one `ldy` and one indirect call.
+cel_service_read
+                sty     cel_disk
+                lda     cel_rd_req
+                beq     cr_none
+                deca                            ; the request is page+1, so 0 = none
+                clr     cel_rd_req
+                bsr     cel_read_page
+                beq     cr_none
+                inc     cel_rd_err              ; latched for the harness. The bank guard
+*                                               ;   will refuse the next beat anyway — the
+*                                               ;   page it wanted is garbage — so this
+*                                               ;   only says WHICH of the two it was.
+cr_none
+                rts
+
+cl_n            fcb     0               ; cel_load_startup's cursor
+cel_disk        fdb     0               ; the room's load_tracks — see the header
+cel_rd_err      fcb     0               ; non-zero if a staged read ever failed
+
+* --- where every page of the split image lives on disk. GENERATED by bake_scene.py from
+* --- the same pack that decided the split, and placed on disk by build.bat from the same
+* --- JSON, so the table and the medium cannot disagree without the build re-running.
+                include "content/cutscene/chars/cel_pages.s"
 
 * --- the VM's cel-id table, generated from ALTSET2 ---------------------
                 include "content/cutscene/cel_table.s"

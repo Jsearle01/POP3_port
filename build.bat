@@ -116,13 +116,20 @@ REM value as ZERO, with no warning (see the DR_VARBASE note below).
 REM ======================================================================
 set DR_VARBASE=0x6A00
 set FLAME_BASE=0x3000
-REM CEL_BASE is the third address of this kind (P3.71): where the cel image is linked,
-REM where cutscene_room.s maps the bank, and what char_draw.s's CEL_BASE equ names. Same
-REM 0x-not-$ rule as the two above -- and link/pop_cels.link needs it a THIRD way, as
-REM bare `C000`, because lwlink's script parser takes neither prefix.
-set CEL_BASE=0xC000
-REM Whole tracks, on the free span packing opened up (tracks 11-15 and 20-24 are unused).
-set CEL_TRACK=11
+REM CEL_BASE AND CEL_TRACK ARE GONE AT P3.78, and their removal is the point rather than
+REM tidying. They were this file's copy of two facts the SPLIT image now decides for
+REM itself: the pinned page is at $C000 and each rotating page at $E000 (their two link
+REM scripts say so, and decb_to_raw checks the binaries against the bases in
+REM cel_pack.json), and the tracks are allocated by the packer because there are twelve
+REM of them across three spans instead of one run of three. A `set CEL_TRACK=11` left
+REM here would have been a stale constant with a live-looking name -- which is exactly
+REM what CHAR_TAB was when it silently went eight bytes wrong (char_draw.s:131).
+REM CEL_VARBASE is a real one, though, and it is shared: two objects that never link
+REM together have to agree on where the beat's block number and page signature live.
+REM $FE02 is in the constant page, which MC3=1 pins through every MMU remap -- the one
+REM property this variable needs, since the thing it describes IS the remap. disk_read.s
+REM owns $FE00/$FE01 and documents $FE02-$FE1F as free.
+set CEL_VARBASE=0xFE02
 REM The window the bundle is expanded inside: FLAME_BASE up to (not into) the disk
 REM driver's parameter block. Loading through DR_VARBASE while the driver is using it
 REM is what hung the room in P3.30, and it hung silently -- a read that lands on a live
@@ -174,6 +181,27 @@ lwasm --obj -DOBJTARGET -I . -o build/obj/lz_unpack.o src/engine/lz_unpack.s
 
 if errorlevel 1 goto :error
 
+REM ★ THE TWO TRANSCRIPTIONS OF THE ORACLE'S SEQUENCES MUST AGREE (P3.78).
+REM char_draw.s carries the scene's sequences as hand-written `fcb` streams; beat_recost
+REM parses the same sequences out of SEQTABLE.S to decide which cels each beat draws, and
+REM the packer builds the bank layout from THAT. Nothing compared them, and they disagreed:
+REM the tracer read `:loop` as a global label where Mechner's assembler scopes it to the
+REM enclosing routine, so Pback's `goto :loop` retargeted to Pslump's and the trace had the
+REM princess holding cel 18 where the engine holds 17. The packer then provisioned a cel
+REM the scene never draws and omitted one it draws for four beats -- and the beat after
+REM Pback drew from an unmapped page, which the blitter walked as a segment stream and
+REM never returned from. The room hung with interrupts masked, five beats from the end.
+REM
+REM The packer's own "is this beat's set reachable" assertion could not catch it: both
+REM sides of that check come from the same trace, so it agreed with itself. This is the
+REM independent one -- run it BEFORE the bundle is assembled, since char_draw.s is what it
+REM reads and the bake is what it protects.
+python harness/tools/verify_sequences.py
+if errorlevel 1 (
+    echo *** BUILD BLOCKED: the port's sequences and the traced oracle disagree ***
+    exit /b 1
+)
+
 echo --- Assemble+link+PACK: cutscene code bundle (disk-resident) ---
 REM MOVED AHEAD OF THE ROOM (P3.31), because the room now depends on this step's
 REM OUTPUT and not merely on its existence: lz_pack emits build/obj/flame_load.inc,
@@ -186,7 +214,7 @@ REM calling them through a hard-coded offset. Only cutscene_room.s needs the bas
 REM %SEEDFLAG% is normally EMPTY. It exists so a deliberately-seeded fault can be built
 REM without editing this file (P3.71 §2 — a probe's silence counts only once it has been
 REM shown to detect a seeded failure). Set it in the environment, never here.
-lwasm --obj -DOBJTARGET %SEEDFLAG% -I . -o build/obj/char_draw.o src/engine/char_draw.s
+lwasm --obj -DOBJTARGET %SEEDFLAG% -DCEL_VARBASE=%CEL_VARBASE% -I . -o build/obj/char_draw.o src/engine/char_draw.s
 if errorlevel 1 goto :error
 lwasm --obj -DOBJTARGET -I . -o build/obj/blit_core.o src/engine/blit_core.s
 if errorlevel 1 goto :error
@@ -236,27 +264,21 @@ python harness/tools/lz_pack.py build/assets/flames.raw --out-dir build/assets ^
        --window-cap %FLAME_WINDOW% --dest-base %FLAME_BASE% --emit-inc build/obj/flame_load.inc
 if errorlevel 1 goto :error
 
-echo --- Assemble: the CEL IMAGE, its own unit at $C000 (P3.71) ---
-REM The scene's cel pixels and their [cel][facing][phase] table, linked SEPARATELY from
-REM the bundle and read off disk into a GIME bank mapped at CPU $C000. See
-REM link/pop_cels.link for why $C000, and why the load address is bare hex there.
+REM ======================================================================
+REM THE CEL IMAGE IS SPLIT AS OF P3.78, and it is built AFTER the disk image
+REM exists, because placing it needs the .dsk to write into. See the block
+REM further down, past the imgtool create -- this note is left here, where the
+REM single-image build used to be, so the move is visible rather than silent.
 REM
-REM UNPACKED, DELIBERATELY, unlike the flame bundle one step above. The bundle is packed
-REM because it must land in the 14,848 B between FLAME_BASE and the disk parameter block
-REM and no whole-track count fits it. This has no such neighbour: it is read straight
-REM into a bank whose 16,384 B belong to nothing else, so whole tracks are free and an
-REM expand step would only add a copy and a second failure mode.
-lwasm --obj -DOBJTARGET -I . -o build/obj/cel_image.o content/cutscene/chars/cel_image.s
-if errorlevel 1 goto :error
-lwlink --decb --script=link/pop_cels.link --map=build/obj/cels.map -o build/cel_image.bin build/obj/cel_image.o
-if errorlevel 1 goto :error
-python harness/tools/decb_to_raw.py --bin build/cel_image.bin --out build/assets/cel_image.raw --base %CEL_BASE%
-if errorlevel 1 goto :error
-call :size build/assets/cel_image.raw
+REM It was ONE unit linked at $C000 (link/pop_cels.link, P3.71) while the scene
+REM was eleven beats. The full scene is 39,682 B of cel image against a bank
+REM that is 31,744 B addressable, so it is now a PINNED page at $C000 plus five
+REM ROTATING pages that all link at $E000 and take turns in $FFA7.
+REM ======================================================================
 
 echo --- Assemble: P3.17 princess room (4-colour, static) ---
 
-lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DFLAME_BASE=%FLAME_BASE% -I . -o build/obj/cutscene_room.o src/engine/cutscene_room.s
+lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DFLAME_BASE=%FLAME_BASE% -DCEL_VARBASE=%CEL_VARBASE% -I . -o build/obj/cutscene_room.o src/engine/cutscene_room.s
 if errorlevel 1 goto :error
 call :size build/obj/intro_seq.o
 
@@ -399,12 +421,24 @@ python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/pr
 if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/flames.lz --track 30 --tracks 2 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
-REM The cel image, onto the span packing opened up (tracks 11-15 and 20-24 were free).
-REM THREE whole tracks = 13,824 B, against an image of 13,049 B with Palert in the scene.
-REM Two tracks held the pre-Palert 7,633 B and would silently truncate this one, so the
-REM count is a real constraint and not a round number: it must be >= the image and the
-REM room's CEL_TRACKS must match, or load_tracks reads the wrong number of sectors.
-python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/cel_image.raw --track %CEL_TRACK% --tracks 3 --reserve --imgtool "%IMGTOOL%"
+echo --- The SPLIT cel image: pinned page + rotating pages (P3.78) ---
+REM Two-pass, and driven from content/cutscene/chars/cel_pack.json rather than from a
+REM page count written here. The count is what the packer is allowed to change when the
+REM scene gains a beat, so hard-coding `for %%N in (0 1 2 3 4)` would put that fact in a
+REM second place -- and the first symptom of the two disagreeing is a page that never got
+REM linked, which reads as cels that are simply absent.
+REM
+REM Pass 1 links every rotating page at $E000 (link/pop_cels_pg.link). Pass 2 reads their
+REM link MAPS and writes the walk table from the addresses the linker chose -- it cannot
+REM be labels any more, because the table lives in the pinned unit and most of what it
+REM points at does not. Pass 3 links the pinned page at $C000 with that table in it.
+REM Pass 4 flattens each and places it on its own whole tracks.
+REM
+REM EVERY PAGE IS CHECKED AGAINST 7,680 B ON THE LINKED LENGTH, not on the packer's
+REM estimate -- $E000..$FDFF is what the window reaches, and a page that overran would
+REM write cel data at addresses the CPU answers from the constant page and the I/O
+REM registers instead. That check lives in cel_table.py and it fails the build.
+python harness/tools/cel_link.py --dsk build/probe.dmk --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 
 "%IMGTOOL%" dir coco_dmk_rsdos build\probe.dmk
