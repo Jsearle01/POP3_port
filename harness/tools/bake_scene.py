@@ -178,6 +178,17 @@ PREP = ROOT / "harness/tools/cel_blit_prep.py"
 #                  which 5 held plays at 6 f is 30                    ->  358 frames
 #
 #    (The oracle's own X values here are 8 and 12, which are neither of these.)
+#
+#    s_Buildup, TRACED AT P3.77 and not yet in PLAN — it belongs with Vraise/Pback, which
+#    do not fit until the swap lands, and alone it would add 6.6 s of dead pause to an
+#    ending that has nothing after it:
+#
+#      s_Buildup  his last cel change -> Vraise's first, f4256 -> f4656 = 400 frames,
+#                 less the one held play of Vstop's `play 4`      ->  394 frames (6.6 s)
+#
+#    Measured with the character box narrowed to screen x 200-350: the torches sit at
+#    ~182 and ~362 and a wider box counts their flicker as scene motion (384 changes
+#    against the true 281).
 # THE MEASURED PLAY PERIOD, NOT cad_tab's 6. vm_nextframe re-bases its due as
 # `now + count`, and since P3.72k the loop samples it at the FLAME rate (~2.8 frames)
 # rather than at the step, so `now` is systematically a little late and a play costs
