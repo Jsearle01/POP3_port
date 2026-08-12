@@ -185,7 +185,13 @@ BLIT_TAB        equ     FLAME_BASE+40           ; blit_cel / blit_save / blit_er
 CHARS_TAB       equ     FLAME_BASE+46           ; chars_frame (piece D), +2 = chars_due
 CELS_TAB        equ     FLAME_BASE+50           ; cel_load_startup, +2 = cel_service_read
 
-ROOM_BLOB       equ     $3000
+* ★ THE ROOM BLOB MOVED TO FLAME_LOAD AT P3.78b. It was $3000, which is where the
+* expanded bundle lives — and the bundle is now expanded FIRST so that its cel loader
+* exists before the picture is revealed (see room_start). FLAME_LOAD is free from the
+* moment bundle_expand has run: it is where the PACKED bundle was read to, and nothing
+* reads it again. 4,608 B from $5800 ends at $69FF, clear of the disk parameter block at
+* $6A00 — the same bound the packed bundle already had to satisfy.
+ROOM_BLOB       equ     FLAME_LOAD
 
 SAM_SLOW        equ     $FFD8           ; the FDC needs normal speed (§2G disk rule)
 SAM_FAST        equ     $FFD9
@@ -241,24 +247,49 @@ room_start
 * remapped by the swap, so a blob living there is gone the moment the buffers flip,
 * while $3000 stays put. One track read becomes one track read plus a memory
 * decompress of a few frames.
-                ldx     #ROOM_BLOB
-                lda     #DISK_ROOM_TRK
-                ldb     #DISK_ROOM_SEC
-                jsr     load_tracks
-                lbne    room_failed             ; LONG: the cel read below moved the target
-
-* THE BUNDLE ARRIVES PACKED, AND IT LANDS ABOVE WHERE IT WILL LIVE.
+* ★★ THE BUNDLE IS READ AND EXPANDED FIRST NOW (P3.78b), AND THE ORDER IS THE FIX.
 *
-* Both reads still happen here, before the picture, so this is still two reads and no
-* disk between the room appearing and the flames moving. What changed is WHERE: the
-* packed blob is read to FLAME_LOAD, high in the window, and expanded down to
-* FLAME_BASE later -- see bundle_expand. Reading it here is safe because the packed
-* blob does not overlap the room blob it will eventually overwrite.
+* P3.78 moved the cel-page loader INTO the bundle, because the room could not carry it and
+* stay under the LOADM ceiling. That made the cel read depend on bundle_expand — and
+* bundle_expand had to follow HAL_gfx_mirror, because it lands on the room blob's ground.
+* So the cel pages ended up after the mirror, and THE MIRROR IS THE REVEAL: it writes the
+* finished room into the FRONT buffer, the displayed one. Eight tracks of disk then ran
+* with the completed picture on screen and nothing moving.
+*
+* That is precisely the bug P3.72f removed, and the paragraph it left behind says so. I
+* re-introduced it and then wrote "the load still happens BEFORE room_present, so it is
+* still a black screen" three paragraphs underneath the text explaining that the reveal is
+* at the mirror and NOT at room_present. Jay found it in one viewing: "the initial disk
+* load is occurring with the static screen shown, it shouldn't appear until after the
+* load."
+*
+* THE ORDER THAT WORKS, and it needs no new code — only the blob to move house:
+*
+*     bundle -> expand      the loader exists, and nothing is on screen
+*     cel pages             eight tracks, still against black
+*     room blob -> unpack   the picture is BUILT but not shown
+*     mirror                ...and only now is it revealed, with every read finished
+*
+* The room blob moves from $3000 to FLAME_LOAD, because $3000 is where the expanded bundle
+* now lives by the time the blob is read. FLAME_LOAD is free the instant bundle_expand has
+* run — it is where the PACKED bundle sat — and the slow path's second unpack reads it
+* from there too.
                 ldx     #FLAME_LOAD
                 lda     #DISK_FLAME_TRK
                 ldb     #DISK_FLAME_SEC
                 jsr     load_tracks
-                lbne    room_failed             ; LONG: the cel read below moved the target
+                lbne    room_failed
+                jsr     bundle_expand           ; the bundle is live from here on
+
+* THE CEL PAGES — eight tracks, and every one of them against a black screen.
+                jsr     room_load_cels
+
+* THE ROOM PICTURE, read LAST and into the space the packed bundle has just vacated.
+                ldx     #ROOM_BLOB
+                lda     #DISK_ROOM_TRK
+                ldb     #DISK_ROOM_SEC
+                jsr     load_tracks
+                lbne    room_failed
 
 * THE CEL IMAGE, AND IT BELONGS HERE WITH THE OTHER TWO — MOVED UP AT P3.72f.
 *
@@ -278,13 +309,8 @@ room_start
 * addresses, different physical memory -- which is the entire point of the MMU, and
 * exactly the confusion between the CPU's view and the machine's that gfx.s calls out at
 * its own head.
-* ★ THE CEL PAGES ARE READ AFTER bundle_expand NOW (P3.78), FOR ONE REASON. Their loader
-* lives IN the bundle -- the room could not carry it and stay under the LOADM ceiling
-* (flame_cels.s cels_tab) -- so it does not exist until the bundle is expanded. See
-* room_ready below; this is only the note where the read used to be.
-*
-* Nothing about the P3.72f lesson is given back: the load still happens BEFORE
-* room_present, so it is still a black screen the viewer waits at, not a finished room.
+* THE P3.72f LESSON IS KEPT BY THE ORDER ABOVE, not by a claim here: every disk read is
+* finished before HAL_gfx_mirror runs, and the mirror is the reveal.
 
                 ldx     HAL_gfx_draw_base       ; X -> the picture
                 ldu     #ROOM_BLOB              ; U -> the blob, in main RAM
@@ -316,9 +342,6 @@ room_start
                 ldu     #ROOM_BLOB
                 jsr     lz_unpack
 room_filled
-                jsr     bundle_expand           ; the blob is spent — expand over it
-                jsr     room_load_cels          ; ...and only now can its loader be called
-
 * THE BANK MUST BE RE-MAPPED HERE. The mirror above rewrote $FFA6/$FFA7 to reach the
 * front buffer and restored them to the BACK buffer's blocks, not to the bank — the same
 * four-register ownership P3.68 established and P3.71 was bitten by. The cels are already

@@ -49,6 +49,16 @@ export P_BLK_A=$(printf '0x%02X' $(( 0x$BLK_A - 0x$CODEBASE )))
 export P_BLK_B=$(printf '0x%02X' $(( 0x$BLK_B - 0x$CODEBASE )))
 export P_CURMODE="0x$(grep -E "^Symbol: HAL_gfx_cur_mode " "$MAP" | sed -E 's/.*= *//')"
 export P_DUMP_BACK="${P_DUMP_BACK:-0}"
+
+# ★ HOW MANY DISK CALLS THE STARTUP OWES, DERIVED FROM THE PACK (P3.78b).
+# room (1) + flame bundle (1) + the pinned page and the first page of each rotating block,
+# TWO calls each because a unit's second track is read skewed so it ends at the top of the
+# window. The literal `3` this replaced predated the split and failed as a disk fault.
+PACK=content/cutscene/chars/cel_pack.json
+if [ -f "$PACK" ]; then
+    NROT=$(python -c "import json,sys;p=json.load(open(sys.argv[1]));print(len({g['block'] for g in p['pages']}))" "$PACK") || NROT=3
+    export P_WANT_LOADS=$(( 1 + 1 + 2 + NROT * 2 ))
+fi
 export P_SWAPS="0x$(grep -E "^Symbol: HAL_gfx_swaps " "$MAP" | sed -E 's/.*= *//')"
 # The character slot records live in the disk-resident bundle (P3.22), so their
 # addresses come from the FLAMES map, not the room map.

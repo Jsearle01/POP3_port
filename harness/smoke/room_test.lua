@@ -14,6 +14,7 @@
 --
 -- 4-colour geometry: 80 bytes/row x 192 = 15,360 B, half the 16-colour framebuffer.
 local ENGINE  = tonumber(os.getenv("P_ENGINE") or "0x2000")
+local WANT_LOADS = tonumber(os.getenv("P_WANT_LOADS") or "3")
 local CUR_BACK= tonumber(os.getenv("P_CURBACK") or "0x7B06")
 local BLOCK_A = tonumber(os.getenv("P_BLK_A") or "0x10")
 local BLOCK_B = tonumber(os.getenv("P_BLK_B") or "0x14")
@@ -299,8 +300,16 @@ local function tick()
         -- or a screen of garbage cels, and `>= 2` would pass for both. It is also the
         -- P3.50 shape from the safe side: a guard keyed to the expected-good value,
         -- where the good value legitimately moved and the guard correctly fired.
-        check("disk_reads_ok", rd8(ENGINE + 4) == 3,
-              string.format("loads=%d (want 3: room + flame bundle + cel image), status $%02X",
+        -- ★ THE COUNT IS HANDED IN, NOT WRITTEN DOWN (P3.78b). It was `== 3` — room,
+        -- bundle, cel image — and the P3.78 split turned the one cel-image read into a
+        -- pinned page plus three rotating pages, each of which is TWO disk calls because
+        -- its second track is read skewed. Ten, today. A literal here would have to be
+        -- edited every time the pack changes shape, and the failure it produces looks
+        -- exactly like a disk fault; the runner reads the real number out of the same
+        -- cel_pack.json the build placed the tracks from.
+        check("disk_reads_ok", rd8(ENGINE + 4) == WANT_LOADS,
+              string.format("loads=%d (want %d: room + bundle + the pack's pages), "
+                            .. "status $%02X", WANT_LOADS,
                             rd8(ENGINE + 4), rd8(ENGINE + 5)))
         -- The GIME's VRES register is write-only: reading $FF99 returns bus noise,
         -- not what was written ($1B came back for a register set to $15). Check the
