@@ -83,9 +83,16 @@ local function log_positions(tag)
         -- ch_last's entry grew to 8 bytes to carry the parity, so it read the vizier's
         -- record for both characters and reported the princess standing where he was.
         -- Third home of one constant; the runner now derives it from the symbols.
+        -- ★ ENTRY LAYOUT SINCE P3.78b: x(2), y, w, h, par, face, fdx, awid = 9 bytes.
+        -- CH_X became 16-bit when the vizier's exit walked him past 255. walk_test.lua and
+        -- peel_census.lua were re-pointed and THIS ONE WAS NOT, so the recorded character
+        -- boxes came back at columns -31..-19 — and a nonsense box excludes nothing, so the
+        -- princess's own pixels were counted as "room disturbed outside the torches", 148
+        -- bytes per capture. It read as a rendering fault in the clip that had just landed.
+        -- P3.65's lesson exactly: a format change is what strands a checker on the old tree.
         local o = LAST + (ch * 2 + shown) * LAST_STRIDE
         -- +5 is the FACING (P3.71) — see the same note in walk_test.lua.
-        return rd8(o), rd8(o + 1), rd8(o + 5)
+        return rd8(o) * 256 + rd8(o + 1), rd8(o + 2), rd8(o + 6)
     end
     local vx, vy, vf = lastxy(0)
     local px, py, pfc = lastxy(1)

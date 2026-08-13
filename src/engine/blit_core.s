@@ -124,11 +124,18 @@ blit_cel
 * row loop still runs, and not one byte is written. That is where the vizier's exit ends
 * up, and it has to cost nothing rather than be special-cased at the call site — co_erase
 * must walk the same geometry to restore what the save took.
-                lda     bc_lead
-                leax    a,x
+* ★★ SIXTEEN-BIT, BECAUSE `leax a,x` TAKES A AS A **SIGNED** BYTE. blit_cel_full passes
+* bc_keep = $FF meaning "wider than any cel", and as a signed offset that is MINUS ONE — so
+* clip_hi landed BELOW clip_lo, every segment trimmed to nothing, and the torches stopped
+* drawing entirely. The room suite called it "flames did not move between the captures - a
+* still picture", which is what a window of negative width looks like from outside.
+                ldb     bc_lead
+                clra
+                leax    d,x                     ; unsigned, 16-bit
                 stx     bc_clip_lo
-                lda     bc_keep
-                leax    a,x
+                ldb     bc_keep
+                clra
+                leax    d,x
                 stx     bc_clip_hi              ; one PAST the last writable byte
 
 bc_row
