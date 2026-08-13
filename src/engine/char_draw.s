@@ -53,6 +53,8 @@
                 import  blit_cel
                 import  blit_save
                 import  blit_erase
+                import  bc_lead
+                import  bc_keep
                 endc
 
 FB_STRIDE_4C    equ     80              ; 320 px at 4 px/byte
@@ -1206,6 +1208,56 @@ cs_noflip
                 addd    ch_tmp16
                 addd    ch_base
                 std     ch_dest
+
+* ---------------------------------------------------------------
+* ★★ THE CLIP WINDOW (P3.78d) — computed ONCE here, applied by all three primitives.
+*
+* Until the vizier's exit, no character in this port had ever left the screen, and the
+* draw path had no bound on the column it wrote. `co_setup` computes col = px/4 and the
+* blitter walks `width` bytes from there, so a character past the right edge simply wrote
+* on into the NEXT ROW — the vizier-sized rectangle Jay saw re-entering from the left.
+*
+* The oracle clips every image to LEFTCUT..RIGHTCUT in bytes [HIRES.S CROP]. This is the
+* same thing: the visible virtual screen is cols VIS_L..VIS_R, and the window is expressed
+* as two numbers the blitter can use directly —
+*
+*     bc_lead   bytes of the cel to suppress at its LEFT
+*     bc_keep   bytes to actually write; ZERO means the cel is wholly off-screen
+*
+* Both are pure functions of (col, width), which is what makes the erase safe: co_erase
+* rebuilds col from the STORED x and width, so it recomputes the identical window and
+* restores exactly the bytes the save took. A window derived from anything the frame knows
+* but the save did not would restore the wrong span.
+                ldd     #VIS_L
+                subd    ch_col                  ; D = VIS_L - col
+                bgt     cs_lead                 ; ...positive: the cel starts left of it
+                clra
+                clrb
+cs_lead
+                cmpd    ch_w                    ; clamp: never more than the cel is wide
+                blo     cs_lead_ok
+                ldb     ch_w
+cs_lead_ok
+                stb     bc_lead
+* keep = min(col + w, VIS_R+1) - col - lead, floored at zero.
+                ldd     ch_col
+                addb    ch_w
+                adca    #0                      ; D = col + w
+                cmpd    #VIS_R+1
+                ble     cs_keep_end
+                ldd     #VIS_R+1                ; D = min(col + w, VIS_R+1)
+cs_keep_end
+                subd    ch_col                  ; D = that, as an offset into the cel
+                ble     cs_keep_zero            ; signed: the cel is entirely right of VIS_L
+*                                               ;   ...or entirely past VIS_R
+                subb    bc_lead                 ; 0 < D <= w here, so A is 0 and B holds it
+                bls     cs_keep_zero            ; the lead already covers all of it
+                stb     bc_keep
+                bra     cs_keep_done
+cs_keep_zero
+                clr     bc_keep                 ; nothing of this cel is on screen
+cs_keep_done
+* ---------------------------------------------------------------
 
                 ldx     ch_rec
                 ldd     CH_PEEL,x

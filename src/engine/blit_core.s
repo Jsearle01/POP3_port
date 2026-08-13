@@ -55,6 +55,9 @@
                 export  blit_save
                 export  blit_erase
                 export  blit_blast
+                export  blit_cel_full
+                export  blit_save_full
+                export  blit_erase_full
                 endc
 
 FB_STRIDE       equ     80              ; 320 px at 4 px/byte, the 4-colour mode
@@ -74,6 +77,35 @@ SEG_MERGE       equ     $03
 * The caller supplies the byte column; the PHASE is already in the data, so there
 * is no sub-byte argument and nothing to get wrong at the call site.
 * ---------------------------------------------------------------
+* ---------------------------------------------------------------
+* ★★ THE UNCLIPPED ENTRIES — for callers that have no clip window of their own.
+*
+* The clip window (bc_lead/bc_keep) is GLOBAL, set by co_setup for the character it is
+* about to place. The torches are not characters: the room draws them straight through
+* blit_tab and never calls co_setup — so on the first build of the clip they inherited
+* whatever window the last character draw had left behind, and came back 30 flame bytes
+* wrong and 296 room bytes disturbed.
+*
+* A global that some callers must remember to set is a trap, so the callers who do not
+* clip get their own doors instead. blit_cel takes a BOUND, so $FF is "wider than any
+* cel"; the peel pair takes a COUNT, so theirs is the width already in B.
+* ---------------------------------------------------------------
+blit_cel_full
+                clr     bc_lead
+                lda     #$FF                    ; a bound, not a count — nothing is trimmed
+                sta     bc_keep
+                bra     blit_cel
+
+blit_save_full
+                clr     bc_lead
+                stb     bc_keep                 ; B is the width: save all of it
+                lbra    blit_save
+
+blit_erase_full
+                clr     bc_lead
+                stb     bc_keep
+                lbra    blit_erase
+
 blit_cel
                 pshs    cc
                 orcc    #$50                    ; S becomes a data pointer below
@@ -84,13 +116,27 @@ blit_cel
                 lda     ,u+                     ; width (bytes) — the row stride
                 sta     bc_width
                 stx     bc_rowbase
+* ★★ THE CLIP WINDOW FOR THIS ROW (P3.78d). bc_lead/bc_keep come from co_setup and are
+* offsets into the CEL, so the window in destination addresses is [base+lead,
+* base+lead+keep). Both bounds travel with the row, exactly as bc_rowbase does.
+*
+* A keep of ZERO means the cel is wholly off screen: every segment trims to nothing, the
+* row loop still runs, and not one byte is written. That is where the vizier's exit ends
+* up, and it has to cost nothing rather than be special-cased at the call site — co_erase
+* must walk the same geometry to restore what the save took.
+                lda     bc_lead
+                leax    a,x
+                stx     bc_clip_lo
+                lda     bc_keep
+                leax    a,x
+                stx     bc_clip_hi              ; one PAST the last writable byte
 
 bc_row
                 ldx     bc_rowbase              ; X walks this row's destination
 
 bc_seg
                 lda     ,u+                     ; segment opcode
-                beq     bc_row_done             ; SEG_END
+                lbeq    bc_row_done             ; SEG_END (long: the trim grew this)
                 cmpa    #SEG_SKIP
                 beq     bc_skip
                 cmpa    #SEG_BLAST
@@ -102,6 +148,16 @@ bc_seg
 * sequence.
                 lda     ,u+                     ; count
                 sta     bc_count
+                bsr     bc_trim                 ; -> bc_pre / bc_run, each 0..count
+                lda     bc_pre
+                beq     bm_run
+                leax    a,x                     ; step over the part left of the window
+                lsla                            ; ...TWO source bytes per destination byte
+                leau    a,u
+bm_run
+                lda     bc_run
+                beq     bm_post
+                sta     bc_count
 bc_merge_loop
                 lda     ,x                      ; 4  read destination
                 anda    ,u+                     ; 6  keep where the cel is clear
@@ -109,31 +165,117 @@ bc_merge_loop
                 sta     ,x+                     ; 6  write back
                 dec     bc_count
                 bne     bc_merge_loop
-                bra     bc_seg
+bm_post
+                lda     bc_seglen
+                suba    bc_pre
+                suba    bc_run                  ; whatever is right of the window
+                lbeq    bc_seg
+                leax    a,x
+                lsla
+                leau    a,u
+                lbra    bc_seg
 
 bc_skip
                 lda     ,u+                     ; count — transparent, draw nothing
                 leax    a,x                     ; but the pointer still has to move
-                bra     bc_seg
+                lbra    bc_seg
 
 bc_blast
                 lda     ,u+                     ; count
                 sta     bc_count
-                leas    a,x                     ; S = one past this segment's end
+                bsr     bc_trim
+                lda     bc_pre
+                beq     bb_run
+                leax    a,x                     ; ONE source byte per destination byte here
+                leau    a,u
+bb_run
+                lda     bc_run
+                beq     bb_post
+                sta     bc_count
+                leas    a,x                     ; S = one past the part we are keeping
                 ldy     #bc_blast_back
                 sty     bb_ret
                 jmp     blit_blast              ; NOT jsr — see blit_blast's header
 bc_blast_back
+                lda     bc_run
+                leax    a,x                     ; X past the kept part
+bb_post
+                lda     bc_seglen
+                suba    bc_pre
+                suba    bc_run
+                lbeq    bc_seg
+                leax    a,x
+                leau    a,u
+                lbra    bc_seg
+
+* ---------------------------------------------------------------
+* bc_trim — how much of this segment lies inside the row's clip window?
+*
+* Entry: X = the segment's first destination byte, bc_count = its length.
+* Exit:  bc_seglen = that length, kept because bc_count is reused as a loop counter
+*        bc_pre    = bytes before the window — skip them
+*        bc_run    = bytes to write
+*        the remainder, seglen - pre - run, lies right of the window.
+* Clobbers A, B, bc_segx. X is unchanged.
+*
+* WHY PER SEGMENT AND NOT PER BYTE. The merge path is a measured 6809 floor at 22 cy/byte
+* (P3.19) and a bounds test inside it would cost about a third again. Segments are RUNS, so
+* the test happens once per run instead — and for a character fully on screen every segment
+* takes the `ble`/`blo` fast exits and nothing is added to the inner loop at all.
+*
+* THE ADDRESS MATHS IS DONE AS DIFFERENCES, which is what keeps it signed-safe: the
+* framebuffer is at $8000-$BBFF, negative as a signed 16-bit number, but every subtraction
+* here is between two addresses at most a cel-width apart, so the result is a small signed
+* value and `ble` reads it correctly.
+* ---------------------------------------------------------------
+bc_trim
+                stx     bc_segx
                 lda     bc_count
-                leax    a,x                     ; X past the segment
-                bra     bc_seg
+                sta     bc_seglen
+                clr     bc_pre
+                clr     bc_run
+* pre = clip_lo - X, clamped to [0, seglen]
+                ldd     bc_clip_lo
+                subd    bc_segx
+                ble     bt_run                  ; segment starts at or after the window
+                tsta
+                bne     bt_allpre               ; more than 255 short of it
+                cmpb    bc_seglen
+                bhs     bt_allpre               ; the whole segment is left of the window
+                stb     bc_pre
+bt_run
+* run = min(X + seglen, clip_hi) - X - pre
+                ldd     bc_segx
+                addb    bc_seglen
+                adca    #0
+                cmpd    bc_clip_hi              ; ADDRESSES, so unsigned
+                blo     bt_end
+                ldd     bc_clip_hi
+bt_end
+                subd    bc_segx
+                ble     bt_done                 ; the window ends at or before the segment
+                subb    bc_pre
+                bls     bt_done                 ; the pre already covers all of it
+                stb     bc_run
+bt_done
+                rts
+bt_allpre
+                lda     bc_seglen
+                sta     bc_pre                  ; ...and run stays 0
+                rts
 
 bc_row_done
                 ldx     bc_rowbase
                 leax    FB_STRIDE,x
                 stx     bc_rowbase
+                ldx     bc_clip_lo              ; the window travels with the row
+                leax    FB_STRIDE,x
+                stx     bc_clip_lo
+                ldx     bc_clip_hi
+                leax    FB_STRIDE,x
+                stx     bc_clip_hi
                 dec     bc_rows
-                bne     bc_row
+                lbne    bc_row
 
                 lds     bc_saved_s
                 puls    cc
@@ -222,16 +364,30 @@ bb_done
 *          A = rows, B = width in bytes
 * ---------------------------------------------------------------
 blit_save
+* ★ CLIPPED SINCE P3.78d, AND THE PEEL'S STRIDE DELIBERATELY IS NOT. Only the bytes inside
+* the window are read from the framebuffer, because only those are the ones blit_cel wrote
+* — but the peel row still advances by the CEL's full width, because CH_STRIDE and
+* blit_erase both index it by that. co_erase recomputes the identical window from the
+* STORED x and width, so the restore covers exactly the span the save took.
                 pshs    cc,x,y,u
                 sta     bc_prows
                 stb     bc_width
-                lsrb                            ; hoisted: pairs = width/2
-                stb     bc_pairs
-                lda     bc_width
-                anda    #1
-                sta     bc_odd                  ; hoisted: is there a trailing byte
+                sty     bc_peelrow
 bs_row
                 tfr     x,u                     ; U = framebuffer row (source)
+                ldy     bc_peelrow
+                lda     bc_lead
+                leau    a,u                     ; both sides step over the off-screen left
+                leay    a,y
+                lda     bc_keep
+                beq     bs_next                 ; wholly off screen: save nothing
+                lsra
+                sta     bc_pairs
+                lda     bc_keep
+                anda    #1
+                sta     bc_odd
+                lda     bc_pairs
+                beq     bs_odd                  ; fewer than two bytes in the window
 * THE PAIR COUNTER LIVES IN MEMORY, and `decb` is not an option: `ldd ,u++`
 * clobbers B. The shipped version used memory for exactly this reason and a first
 * attempt at hoisting moved the counter into B, which decremented a pixel byte
@@ -244,28 +400,45 @@ bs_pair
                 std     ,y++                    ; 8   forward write — a true COPY
                 dec     bc_count                ; NOT decb — ldd ,u++ clobbers B
                 bne     bs_pair                 ; 3
+bs_odd
                 lda     bc_odd
                 beq     bs_next
                 lda     ,u                      ; the odd trailing byte
-                sta     ,y+                     ; Y advances past it too
+                sta     ,y+
 bs_next
+* THE PEEL ROW ADVANCES BY THE CEL'S WIDTH, not by what the window kept — blit_erase and
+* CH_STRIDE both index it that way, so a clipped save must still leave the stride intact.
+                ldy     bc_peelrow
+                lda     bc_width
+                leay    a,y
+                sty     bc_peelrow
                 leax    FB_STRIDE,x             ; next framebuffer row
-                dec     bc_prows                ; Y is ALREADY on the next peel row
+                dec     bc_prows
                 bne     bs_row
                 puls    cc,x,y,u
                 rts
 
 blit_erase
+* The exact mirror of blit_save, window for window — see there for why.
                 pshs    cc,x,y,u
                 sta     bc_prows
                 stb     bc_width
-                lsrb                            ; hoisted, as in blit_save
-                stb     bc_pairs
-                lda     bc_width
+                sty     bc_peelrow
+be_row
+                tfr     x,u                     ; U = the FRAMEBUFFER row (destination)
+                ldy     bc_peelrow
+                lda     bc_lead
+                leau    a,u
+                leay    a,y
+                lda     bc_keep
+                beq     be_next                 ; wholly off screen: restore nothing
+                lsra
+                sta     bc_pairs
+                lda     bc_keep
                 anda    #1
                 sta     bc_odd
-be_row
-                tfr     y,u                     ; U = peel row (source)
+                lda     bc_pairs
+                beq     be_odd
 * THE PAIR COUNTER LIVES IN MEMORY, and `decb` is not an option: `ldd ,u++`
 * clobbers B. The shipped version used memory for exactly this reason and a first
 * attempt at hoisting moved the counter into B, which decremented a pixel byte
@@ -274,24 +447,24 @@ be_row
                 lda     bc_pairs
                 sta     bc_count
 be_pair
-                ldd     ,u++                    ; from the peel
-                std     ,x++                    ; back into the framebuffer
-                dec     bc_count                ; NOT decb — ldd ,u++ clobbers B
+                ldd     ,y++                    ; from the peel
+                std     ,u++                    ; back into the framebuffer
+                dec     bc_count                ; NOT decb — ldd ,y++ clobbers B
                 bne     be_pair
+be_odd
                 lda     bc_odd
                 beq     be_next
-                lda     ,u
-                sta     ,x+
+                lda     ,y
+                sta     ,u
 be_next
-* X has walked exactly `width` bytes across this row, so it needs the REMAINDER of
-* the stride, not the whole of it. Y is advanced explicitly because the source
-* pointer here is U (a copy of Y), so Y itself never moved.
+* X is the ROW BASE now and is never walked — U does the walking, from a copy of it — so
+* the framebuffer advance is the whole stride rather than the remainder the old form had
+* to compute. The peel advances by the CEL's width, for the reason blit_save states.
+                ldy     bc_peelrow
                 lda     bc_width
-                leay    a,y                     ; next peel row
-                ldd     #FB_STRIDE
-                subb    bc_width
-                sbca    #0
-                leax    d,x                     ; next framebuffer row
+                leay    a,y
+                sty     bc_peelrow
+                leax    FB_STRIDE,x             ; next framebuffer row
                 dec     bc_prows
                 bne     be_row
                 puls    cc,x,y,u
@@ -332,3 +505,21 @@ bc_tmp          rmb     1
 bc_pairs        rmb     1       ; hoisted width/2 — recomputing these per
 bc_odd          rmb     1       ;   row cost 127 cy/row instead of ~83
 bb_ret          rmb     2       ; software return — S is busy being the destination
+
+* --- THE CLIP WINDOW (P3.78d) -----------------------------------------------
+* bc_lead / bc_keep are the CALLER's: co_setup computes them once per placement and all
+* three primitives read them, which is what makes the draw, the save and the erase agree
+* on one span. Exported because char_draw.s is a different object in the same bundle.
+                ifdef   OBJTARGET
+                export  bc_lead
+                export  bc_keep
+                endc
+bc_lead         rmb     1       ; bytes of the cel suppressed at its LEFT
+bc_keep         rmb     1       ; bytes actually written; 0 = wholly off screen
+bc_clip_lo      rmb     2       ; the window in destination addresses, for this row
+bc_clip_hi      rmb     2       ;   (hi is one PAST the last writable byte)
+bc_pre          rmb     1       ; bc_trim's answer for the segment in hand
+bc_run          rmb     1
+bc_seglen       rmb     1       ; the segment's length, kept while bc_count counts
+bc_segx         rmb     2       ; ...and its start, so the address maths can use subd
+bc_peelrow      rmb     2       ; the peel row, advanced by the CEL width not the window

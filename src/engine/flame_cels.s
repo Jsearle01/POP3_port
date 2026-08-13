@@ -37,9 +37,9 @@
                 section prog
                 import  chars_frame
                 import  chars_due
-                import  blit_cel
-                import  blit_save
-                import  blit_erase
+                import  blit_cel_full
+                import  blit_save_full
+                import  blit_erase_full
                 import  cel_load_startup
                 import  cel_service_read
                 export  torch0_cels     ; only so lwlink has an exec address to
@@ -93,7 +93,9 @@ torch1_cels     fdb     flseg1_1,flseg1_2,flseg1_3      ; phase 1, 13x3B, px 201
 * and no disk reads. The bundle is already executable -- the flames' compiled cels
 * are JSR'd out of it -- so the blitter belongs here alongside the cels it draws.
 * The room reaches it through this table rather than by link-time symbol.
-blit_tab        fdb     blit_cel,blit_save,blit_erase
+* ★ THE UNCLIPPED ENTRIES (P3.78d). The room draws the torches through this table and
+* never sets the character clip window, so it must not inherit one. See blit_core.
+blit_tab        fdb     blit_cel_full,blit_save_full,blit_erase_full
 
 * --- P3.22: piece D's character draw, same track, same reason ---------------
 * Third time the LOADM ceiling has pushed something out of ROOM.BIN. P3.22 proved
