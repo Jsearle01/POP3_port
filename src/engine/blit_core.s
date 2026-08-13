@@ -241,6 +241,17 @@ bc_trim
                 sta     bc_seglen
                 clr     bc_pre
                 clr     bc_run
+* ★ THE UNCLIPPED FAST PATH. blit_cel_full sets bc_keep = $FF to mean "wider than any
+* cel", and for those callers — the torches — there is nothing to trim and no reason to
+* compute it. Taking the whole segment here skips four 16-bit subtractions per run on a
+* path that draws every frame.
+                lda     bc_keep
+                cmpa    #$FF
+                bne     bt_clipped
+                lda     bc_seglen
+                sta     bc_run                  ; the entire segment, untouched
+                rts
+bt_clipped
 * pre = clip_lo - X, clamped to [0, seglen]
                 ldd     bc_clip_lo
                 subd    bc_segx
