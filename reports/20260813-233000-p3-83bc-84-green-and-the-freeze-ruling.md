@@ -171,3 +171,28 @@ duplicated, on the P3.76 §9 precedent.
 ### 11 — Commits
 
 `db4244a`, `b5b79b7`, `22c9e31` — pushed to origin/wip before this report.
+
+---
+
+### 12 — 25.3 GATE — OBSERVED BY JAY (recorded after the report above)
+
+**Launch path: `live-disk`** — `run_room_live.sh`, real `LOADM"ROOM"` + `EXEC` off a mounted
+floppy, **RGB**, 512 KB, normal speed. 78 seconds observed, which reaches the end of the
+scene. Not a poke, not a still.
+
+**Jay's words, verbatim: "looks fine."**
+
+**What was under gate**, and none of it had been seen before: `Vraise` -> `Pback` ->
+`Vexit` -> `Pslump`; the exit clipping at the right edge (the fault that took four
+dispatches); and the two staged reads as they land in the scene.
+
+**MOTION-BEARING AND GATED LIVE** — the scene is animation throughout and this was a running
+machine, so it satisfies CLAUDE.md §4's requirement that motion is not gated on a still.
+
+**Not self-certified**, and deliberately not inflated: *"looks fine"* is a pass, not
+enthusiasm. The freeze duration was ruled on separately (§1, §9) and is accepted rather than
+liked.
+
+**Still absent from the gated scene** and known: the hourglass and its lightning flash, the
+`s_Magic` hold between `Pback` and `Vexit`, `addglass1` state 1, `s_StTimer`, the 16-colour
+swap and the `Prolog2` handoff.
