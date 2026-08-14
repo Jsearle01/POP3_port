@@ -135,9 +135,18 @@ def main():
             # ONLY THIS CAPTURE'S ROW. The file holds every capture, and excluding all
             # of them would excuse bytes no character was standing on at this instant —
             # a check that widens itself is a check that stops failing.
-            if len(f) != 7 or f[0] != a.tag:
+            # ★ NINE FIELDS, NOT SEVEN (P3.83). P3.71 added both characters' FACING to the
+            # position line and this reader was not updated, so `len(f) != 7` skipped every
+            # line for eleven dispatches and `covered` stayed empty — the exclusion this
+            # whole block exists for was DEAD, and a character standing in front of a torch
+            # would have been reported as broken flames. It never fired because nobody
+            # stood there; that is luck, not a passing test.
+            #
+            # The count is checked on every build now by harness_offsets_check.py, which
+            # compares what the writers emit against what the readers require.
+            if len(f) != 9 or f[0] != a.tag:
                 continue
-            vx, vy, vc, px, py, pc = map(int, f[1:])
+            vx, vy, vc, px, py, pc = map(int, f[1:7])
             for x, y, cel in ((vx, vy, vc), (px, py, pc)):
                 # SETUPCHAR's expression (P3.58) — see verify_room_flicker.py
                 _i, fdx, _fy, fchk, _l = R.altset2()[cel]

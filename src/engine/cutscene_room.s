@@ -607,7 +607,8 @@ flicker
 
                 ldd     #TORCH0_OFF
                 std     t_off
-                ldd     #TORCH0_CELS            ; phase-0 cels — px 112, unchanged
+                ldd     #TORCH0_CELS            ; phase-3 cels — px 111 (P3.56; the "phase-0,
+*                                               ;   px 112" this said was the pre-P3.56 siting)
                 std     t_tab
                 lda     fl_slot
                 jsr     slot_peel

@@ -202,6 +202,25 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM ★★ THE HARNESS'S OWN OFFSETS, SWEPT ON EVERY BUILD (P3.83).
+REM
+REM A stale checker does not fail -- it PASSES FOR THE WRONG REASON, and all five this
+REM project has found were found by accident while chasing something else: P3.65's reader
+REM of a file the bake no longer produced; P3.71's capture path that un-mapped the cel bank
+REM and so caused the failure it was measuring; P3.80's room_test.lua at the pre-16-bit
+REM ch_last offsets, which is why "296 bytes disturbed" was blamed on the clip for two
+REM dispatches; P3.82's flame checker skipping every position line on a field count that
+REM had been wrong for eleven dispatches; and P3.83's beat counter, which reported 16 of 18
+REM for a scene that reaches all eighteen.
+REM
+REM This is that sweep made mechanical, so the sixth is found on purpose. It is DEMONSTRATED
+REM to fire: seeding walk_test.lua's CH_CEL back to its pre-16-bit value exits 1.
+python harness/tools/harness_offsets_check.py
+if errorlevel 1 (
+    echo *** BUILD BLOCKED: a harness offset no longer matches the build ***
+    exit /b 1
+)
+
 echo --- Assemble+link+PACK: cutscene code bundle (disk-resident) ---
 REM MOVED AHEAD OF THE ROOM (P3.31), because the room now depends on this step's
 REM OUTPUT and not merely on its existence: lz_pack emits build/obj/flame_load.inc,

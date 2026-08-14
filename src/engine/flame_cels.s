@@ -60,13 +60,26 @@
 *
 * TWO TABLES BECAUSE THE TWO TORCHES SIT ON DIFFERENT SUB-BYTE PHASES. ptorchoff is
 * db 0,6 [SUBS.S:307]; Apple hires is 7 px/byte against CoCo3's 4, and 7 does not divide
-* into 4, so torch 0 lands on phase 0 and torch 1 on phase 1. One set could only place
-* both on the same phase, which is exactly why the right torch sat a pixel left of true
-* and why correcting it used to drag the left one with it.
+* into 4, so the two torches land on DIFFERENT phases. One set could only place both on
+* the same phase, which is exactly why the right torch sat a pixel left of true and why
+* correcting it used to drag the left one with it.
 *
-* The offsets are unchanged -- +0 and +18, where flame_draw and flame_save were -- so
-* blit_tab (+58) and chars_tab (+64) do not move and the room's constants still hold.
-torch0_cels     fdb     flseg0_1,flseg0_2,flseg0_3      ; phase 0, 13x2B, px 112
+* ★ THE PHASES ARE 3 AND 1, NOT 0 AND 1 (corrected P3.83). P3.56 moved torch 0 from byte
+* 28 to byte 27, where byte 27 + phase 3 = px 111 exactly. build.bat is the authority and
+* builds them `--phase 3` and `--phase 1`.
+*
+* ★ AND THE OFFSETS BELOW ARE STALE TOO: blit_tab is at +40 and chars_tab at +46, not the
+* +58/+64 this said — P3.54 retired the third dispatch table and shifted everything after
+* it up by 18. The live numbers are checked on every build by bundle_offsets_check.py
+* against the link map, which is why the drift was harmless here and would not have been
+* if anyone had trusted the comment. +0 and +18 for the two cel tables are still right.
+* ★ CORRECTED AT P3.83 TO THE MEASURED TRUTH. This said "phase 0, 13x2B, px 112", which
+* was right until P3.56 moved torch 0 from byte 28 to byte 27 and put it on phase 3
+* (byte 27 + phase 3 = px 111 exactly, where rounding up to byte 28 gave px 112). The
+* room's own `equ` was updated then and this line was not. Authorities, in order:
+* build.bat builds these `--phase 3`, and the machine reports width 3 — a blit_cel tap
+* at P3.82 logged `rows=13 width=3` for both torches.
+torch0_cels     fdb     flseg0_1,flseg0_2,flseg0_3      ; phase 3, 13x3B, px 111
                 fdb     flseg0_4,flseg0_5,flseg0_6
                 fdb     flseg0_7,flseg0_8,flseg0_9
 torch1_cels     fdb     flseg1_1,flseg1_2,flseg1_3      ; phase 1, 13x3B, px 201
