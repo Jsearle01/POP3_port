@@ -117,7 +117,8 @@ class PackError(Exception):
     a packing that silently drops a constraint is the failure the guard exists for."""
 
 
-def pack(beats, sizes, table_bytes, read_beats, n_rot=len(ROT_BLOCKS)):
+def pack(beats, sizes, table_bytes, read_beats, n_rot=len(ROT_BLOCKS),
+         _pinned=None, _depth=0):
     """beats:  [(beat_index, name, plays, {variant})]  in play order
        sizes:  {variant: bytes}
        table_bytes: the walk_tab's size, which lives in the resident page
@@ -148,7 +149,11 @@ def pack(beats, sizes, table_bytes, read_beats, n_rot=len(ROT_BLOCKS)):
     # all; the excess has to be pinned. Pback (9,538 B) and the pre-Pslump hold (9,090 B)
     # are the two, measured. Longest-span variants go first: they are the ones most
     # likely to be wanted by a neighbouring beat too, so pinning them buys twice.
-    resident = set()
+    # _pinned carries cels a previous pass found duplicated across pages (see the
+    # no-cel-in-two-pages check below). Bounded so a pathological set cannot spin.
+    if _depth > 8:
+        raise PackError('the pin-and-re-solve loop did not converge in 8 passes')
+    resident = set(_pinned) if _pinned else set()
     for bi, name, _p, vs in beats:
         over = bytes_of(vs - resident) - ROT_CAP
         if over <= 0:
@@ -310,6 +315,39 @@ def pack(beats, sizes, table_bytes, read_beats, n_rot=len(ROT_BLOCKS)):
         else:
             beat_page[bi] = next(k for k in range(len(pages))
                                  if pages[k][1][0] > bi)
+
+    # ── ★★★ NO CEL MAY LIVE IN TWO PAGES, AND THE TABLE IS WHY ───────────────────────
+    #
+    # cel_walk_tab holds ONE absolute address per (cel, facing, phase). A cel placed in two
+    # pages sits at a different offset in each, so that single address is right for at most
+    # one of them — and at the others the pointer lands on unrelated bytes, co_dims reads
+    # them as a cel header, and the peel blits whatever it finds.
+    #
+    # THIS IS AN INVARIANT THE TABLE ALWAYS IMPLIED AND NOTHING EVER ASSERTED. It never
+    # arose while the resident page was large, because a cel carried across a page boundary
+    # was pinned; P3.85's re-encode shrank every cel by a quarter, the resident set fell to
+    # five, and the packer duplicated `p17_p0` into pages 1, 2 and 3 instead. Measured on
+    # the machine: blit_save handed rows=252 width=66 from co_save, and the room reset.
+    #
+    # The fix is the invariant, not a special case: a cel wanted by beats that map different
+    # pages must be RESIDENT. Detect it, pin it, and re-solve — the grouping can change once
+    # a cel leaves the pages, so this iterates rather than patching one pass.
+    seen_in = {}
+    for k, (vs, _bs) in enumerate(pages):
+        for v in vs:
+            seen_in.setdefault(v, []).append(k)
+    dup = sorted((v for v, ks in seen_in.items() if len(ks) > 1), key=str)
+    if dup:
+        extra = bytes_of(set(dup))
+        if bytes_of(resident | set(dup)) > res_budget:
+            raise PackError(
+                "%d cel(s) are wanted by beats in different pages and must be pinned "
+                "(%s B), but the resident page has only %s B left — the lookup table "
+                "cannot hold two addresses for one cel"
+                % (len(dup), format(extra, ","),
+                   format(res_budget - bytes_of(resident), ",")))
+        return pack(beats, sizes, table_bytes, read_beats, n_rot,
+                    _pinned=(resident | set(dup)), _depth=_depth + 1)
 
     # ── VERIFY, because a packer that cannot be wrong out loud is the whole hazard ───
     out_pages = []
