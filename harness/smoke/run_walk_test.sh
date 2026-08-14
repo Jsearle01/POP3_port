@@ -91,6 +91,12 @@ CELVAR=$(sed -n 's/^set CEL_VARBASE=\(0x[0-9A-Fa-f]*\).*/\1/p' build.bat | head 
 [ -n "$CELVAR" ] || { echo "[run_walk_test] CEL_VARBASE not found in build.bat"; exit 1; }
 export P_PGSIG=$(printf '0x%X' $(( CELVAR + 1 )))
 export P_BEAT="0x$(sym "$FMAP" vm_beat)"
+# The schedule table's own bounds, so beats_visited counts CURSOR VALUES INSIDE IT and
+# not the garbage vm_beat holds before the first tick ($FFFF and $C000 both appear in
+# the boot traces, both non-zero, both were being counted -- which is how the check
+# came to report "19 of 18" and pass for the wrong reason.
+export P_PLAN_LO="0x$(sym "$FMAP" cel_plan)"
+export P_PLAN_HI="0x$(sym "$FMAP" cel_plan_end)"
 export P_RDERR="0x$(sym "$MAP" cel_rd_err)"
 export P_LOADS="0x$(sym "$MAP" probe_loads)"
 export P_NBEATS=$(python -c "import json;print(len(json.load(open('$PACK'))['schedule']))")

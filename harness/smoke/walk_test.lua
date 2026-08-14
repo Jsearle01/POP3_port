@@ -55,6 +55,8 @@ local BANKERR = tonumber(os.getenv("P_BANKERR") or "0")
 -- which is how the run proves the scene actually advanced rather than stalling somewhere.
 local PGSIG   = tonumber(os.getenv("P_PGSIG") or "0")     -- cel_pg_sig, constant page
 local BEAT    = tonumber(os.getenv("P_BEAT") or "0")      -- vm_beat, in the bundle
+local PLAN_LO = tonumber(os.getenv("P_PLAN_LO") or "0")   -- cel_plan .. cel_plan_end,
+local PLAN_HI = tonumber(os.getenv("P_PLAN_HI") or "0")   --   so garbage is not a "beat"
 local RDERR   = tonumber(os.getenv("P_RDERR") or "0")     -- cel_rd_err, in the room
 local LOADS   = tonumber(os.getenv("P_LOADS") or "0")     -- probe_loads, in the room
 local NBEATS  = tonumber(os.getenv("P_NBEATS") or "0")    -- how many the PLAN has
@@ -255,6 +257,27 @@ local function tick()
         return
     end
     local magic = rd8(ENGINE + 6) * 256 + rd8(ENGINE + 7)
+
+    -- ★★ BEATS ARE COUNTED FROM THE MOMENT THE SCHEDULE STARTS, NOT FROM FIRST MOVEMENT.
+    --
+    -- This sampler used to sit below the `state == "running"` early return, so it only ran
+    -- once the scene MOVED — and the first two beats are `Pstand` and the 761-frame
+    -- s_Princess hold, during which nothing moves by design. It therefore reported
+    -- "beats_visited 16 of 18" for a scene that reaches all eighteen, and it did so for
+    -- five dispatches while being read as evidence the scene did not finish.
+    --
+    -- Measured on the machine before changing it: the schedule reaches beat 17, the
+    -- terminal beat, at f5011 — vm_beat walks rows 0..17 in order with no gaps. The scene
+    -- was never the problem; the window was.
+    if BEAT ~= 0 then
+        local b = rd8(BEAT) * 256 + rd8(BEAT + 1)
+        local in_table = (PLAN_LO == 0) or (b >= PLAN_LO and b < PLAN_HI)
+        if b ~= 0 and in_table and not beats_seen[b] then
+            beats_seen[b] = true
+            n_beats_seen = n_beats_seen + 1
+        end
+    end
+
     if state == "running" then
         -- CAPTURE FROM THE FIRST MOVEMENT, NOT FROM THE ROOM (P3.72l).
         --
@@ -326,13 +349,6 @@ local function tick()
             end
         else
             page_run = 0
-        end
-    end
-    if BEAT ~= 0 then
-        local b = rd8(BEAT) * 256 + rd8(BEAT + 1)
-        if b ~= 0 and not beats_seen[b] then
-            beats_seen[b] = true
-            n_beats_seen = n_beats_seen + 1
         end
     end
 
