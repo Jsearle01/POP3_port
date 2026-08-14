@@ -155,7 +155,7 @@ bc_seg
 * sequence.
                 lda     ,u+                     ; count
                 sta     bc_count
-                bsr     bc_trim                 ; -> bc_pre / bc_run, each 0..count
+                lbsr    bc_trim                 ; -> bc_pre / bc_run, each 0..count
                 lda     bc_pre
                 beq     bm_run
                 leax    a,x                     ; step over the part left of the window
@@ -190,16 +190,26 @@ bc_skip
 bc_blast
                 lda     ,u+                     ; count
                 sta     bc_count
-                bsr     bc_trim
-                lda     bc_pre
-                beq     bb_run
-                leax    a,x                     ; ONE source byte per destination byte here
-                leau    a,u
-bb_run
+                lbsr    bc_trim
+* ★★★ A TRIMMED BLAST CANNOT SIMPLY TAKE FEWER SOURCE BYTES, and that is the whole of this
+* branch. cel_blit_prep bakes each blast's groups in the order blit_blast CONSUMES them —
+* high destination address first, because `pshs` descends — so WHICH source byte belongs
+* to WHICH column depends on the segment's FULL length. Advancing U by `pre` and blasting
+* `run` bytes therefore draws the wrong pixels, which is what put the room's last visible
+* column back to background whenever the vizier straddled it (walk captures 14-17, all at
+* col 74, `got $FF` where the cel's pixel belonged).
+*
+* MERGE has no such problem and is trimmed directly: its (mask,src) pairs are in forward
+* order, so skipping `pre` of them is skipping 2*pre bytes and nothing else moves.
+*
+* So: the whole segment is visible -> the untouched fast path. Otherwise the segment is
+* blasted IN FULL into a scratch row and the kept part copied out. The cost falls only at
+* a screen edge; every ordinary blast keeps the stack path exactly as it was.
                 lda     bc_run
-                beq     bb_post
-                sta     bc_count
-                leas    a,x                     ; S = one past the part we are keeping
+                cmpa    bc_seglen
+                bne     bb_clipped
+* run == seglen implies pre == 0 (run <= seglen - pre), so there is nothing to skip.
+                leas    a,x                     ; S = one past this segment's end
                 ldy     #bc_blast_back
                 sty     bb_ret
                 jmp     blit_blast              ; NOT jsr — see blit_blast's header
@@ -222,15 +232,48 @@ bc_blast_back
 * landed on the PREVIOUS row's col 50. Two wrong bytes out of thirty-nine, localised, at a
 * first column: the extent, the position and the row-selection all follow from it.
                 lds     bc_saved_s              ; ...before any bsr/rts can run again
-                lda     bc_run
-                leax    a,x                     ; X past the kept part
-bb_post
-                lda     bc_seglen
-                suba    bc_pre
-                suba    bc_run
-                lbeq    bc_seg
+                lda     bc_seglen               ; the whole segment was drawn
                 leax    a,x
-                leau    a,u
+                lbra    bc_seg
+
+* ---------------------------------------------------------------
+* bb_clipped — a blast the window cuts. Blast it ALL into scratch, copy the kept part.
+*
+* U MUST BE CONSUMED EITHER WAY, which is why even a fully-off-screen blast comes through
+* here rather than being skipped: the source bytes belong to this segment and the next
+* segment's opcode is after them.
+* ---------------------------------------------------------------
+bb_clipped
+                stx     bc_dstx                 ; the real destination, parked
+                lda     bc_seglen
+                sta     bc_count
+                lds     #bc_scratch_end         ; blast descends into scratch instead
+                ldy     #bb_clip_back
+                sty     bb_ret
+                jmp     blit_blast
+bb_clip_back
+                lds     bc_saved_s              ; real stack back before anything else
+                ldb     bc_run
+                beq     bb_clip_done            ; nothing of it is on screen
+                ldx     #bc_scratch_end
+                lda     bc_seglen
+                nega
+                leax    a,x                     ; scratch start = end - seglen
+                lda     bc_pre
+                leax    a,x                     ;   ...+ the part left of the window
+                tfr     x,y                     ; Y = source
+                ldx     bc_dstx
+                lda     bc_pre
+                leax    a,x                     ; X = destination + pre
+bb_clip_copy
+                lda     ,y+
+                sta     ,x+
+                decb
+                bne     bb_clip_copy
+bb_clip_done
+                ldx     bc_dstx
+                lda     bc_seglen
+                leax    a,x                     ; X past the whole segment, as ever
                 lbra    bc_seg
 
 * ---------------------------------------------------------------
@@ -559,3 +602,10 @@ bc_run          rmb     1
 bc_seglen       rmb     1       ; the segment's length, kept while bc_count counts
 bc_segx         rmb     2       ; ...and its start, so the address maths can use subd
 bc_peelrow      rmb     2       ; the peel row, advanced by the CEL width not the window
+bc_dstx         rmb     2       ; a clipped blast's real destination, parked while it
+*                               ;   blasts into the scratch row below
+* THE SCRATCH ROW. A blast segment can be at most one cel wide, and the widest cel in the
+* scene is 10 bytes (measured: the longest run anywhere is 10, P3.79's histogram). 16 is
+* that with headroom, and blit_blast descends from bc_scratch_end into it.
+bc_scratch      rmb     16
+bc_scratch_end  equ     *
