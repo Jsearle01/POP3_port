@@ -41,7 +41,7 @@ PAIRS = {"BLIT_TAB": "blit_tab", "CHARS_TAB": "chars_tab",
 # assemble, link, boot or run.
 #
 #   (start symbol, end symbol, bytes per row, how many rows)
-STRIDES = [("cel_plan", "cel_plan_end", 5, lambda m: len(m["schedule"]) + 1),
+STRIDES = [("cel_plan", "cel_plan_end", 6, lambda m: len(m["schedule"]) + 1),
            ("cel_page_tab", "cel_page_tab_end", 2, lambda m: len(m["pages"]))]
 
 

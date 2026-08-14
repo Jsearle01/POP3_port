@@ -18,7 +18,7 @@ viz_script
                 fdb     viz_stop
                 fcb     60
                 fdb     viz_raise
-                fcb     19
+                fcb     35
                 fdb     viz_exit
                 fcb     0               ; hold
 pri_script
@@ -27,7 +27,7 @@ pri_script
                 fdb     pri_alert
                 fcb     170
                 fdb     pri_back
-                fcb     47
+                fcb     63
                 fdb     pri_slump
                 fcb     0               ; hold
 

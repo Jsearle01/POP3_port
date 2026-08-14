@@ -166,6 +166,33 @@ cels_tab        fdb     cel_load_startup,cel_service_read
                 include "build/flames_seg/t1_8.s"
                 include "build/flames_seg/t1_9.s"
 
+* ── THE HOURGLASS (P3.85) ────────────────────────────────────────────────────────────
+*
+* It lives HERE, in the bundle, and not in the paged cel image — which is the whole
+* reason it fits at all. From the beat it appears it is drawn every frame to the end of
+* the scene, spanning beats that map two different rotating blocks, and a cel that
+* straddles a mapping change is the one thing cel_pack refuses. Six dispatches costed it
+* against the pinned page and deferred it; the question was never the size (994 B against
+* 4,330 B spare) but the RESIDENCY, and the bundle is already resident for exactly this
+* kind of thing. The torches, the stars and the sand are one class of object in the
+* oracle too [SUBS.S:360 pstars, GAMEBG.S DRAWGLASS] and now in one class of storage.
+*
+* NO FIXED OFFSET, unlike the torch tables at the head. Those are reached by the ROOM,
+* which is a separate program and must index the bundle by arithmetic; these are reached
+* by char_draw.s, which is linked INTO the bundle and can import the symbol. An import
+* cannot drift where an offset can.
+                ifdef   OBJTARGET
+                export  glass_cels
+                export  flow_cels
+                endc
+glass_cels      fdb     glseg_g0,glseg_g1       ; addglass1 X=0 / X=1  [SUBS.S:722,745]
+flow_cels       fdb     glseg_f0,glseg_f1,glseg_f2      ; psandcount 0,1,2
+                include "build/glass_seg/g0.s"
+                include "build/glass_seg/g1.s"
+                include "build/glass_seg/f0.s"
+                include "build/glass_seg/f1.s"
+                include "build/glass_seg/f2.s"
+
 * The character cels moved to char_draw.s at P3.22, next to the slot records that
 * point at them, so the linker resolves the pointers instead of the room patching
 * them at run time.

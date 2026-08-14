@@ -787,6 +787,16 @@
   },
   {
    "beat": 14,
+   "name": "s_Magic",
+   "plays": 16,
+   "block": 14,
+   "sig": 42573,
+   "page": 1,
+   "resident_only": false,
+   "read": null
+  },
+  {
+   "beat": 15,
    "name": "Vexit",
    "plays": 17,
    "block": 15,
@@ -796,7 +806,7 @@
    "read": null
   },
   {
-   "beat": 15,
+   "beat": 16,
    "name": "(hold)",
    "plays": 12,
    "block": 13,
@@ -806,7 +816,7 @@
    "read": null
   },
   {
-   "beat": 16,
+   "beat": 17,
    "name": "Pslump",
    "plays": 28,
    "block": 13,
@@ -816,7 +826,7 @@
    "read": null
   },
   {
-   "beat": 17,
+   "beat": 18,
    "name": "Vstand",
    "plays": 0,
    "block": 13,

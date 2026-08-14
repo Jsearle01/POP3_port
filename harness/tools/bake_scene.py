@@ -259,23 +259,108 @@ PLAN = [("p", "Pstand", 7),       # play 2 + play 5, both standing [SUBS.S:665-6
         #   running through them. Landing Vraise alone would flick to a pose the scene
         #   then cannot continue from, which is why these two are one edit and not two.
         ("p", "Pback", 13),       # she backs away; his arms finish rising underneath
-        ("-", "", 5),             # play 5 (the oracle raises SPEED to 12 here — see §7)
+        ("-", "", 5),             # play 5 — the hourglass beat: the glass appears, the
+        #                           flash runs, SPEED goes to 12. TRACED P3.85: 41 frames
+        #                           for these five plays, and `lightning` steps 5→0 once
+        #                           per play at 8-frame spacing, so the flash is FIVE
+        #                           STEPS, one level each — not the five raw frames the
+        #                           `lda #5 / sta lightning` reads like.
+        ("song", "s_Magic", 113),      # TRACED P3.85 — see below
         ("v", "Vexit", 17),       # he turns and walks out; Vexit ends `goto Vwalk2`
         ("-", "", 12),            # play 12
         ("p", "Pslump", 28),      # she slumps against the wall
         ("v", "Vstand", 0)]       # 0 = hold; the script's last entry
 
-# s_Magic and s_StTimer are NOT in the PLAN, and their absence is deliberate: PlayCut0
-# plays both [SUBS.S:733,754] but neither has been traced off the oracle the way P3.77
-# traced s_Buildup. A hold is a DURATION, and writing one nobody measured would be a
-# fabricated number wearing a measured one's clothes. They add no cels, so their absence
-# costs the pack nothing and the scene only runs shorter than the original.
+# ── s_Magic: TRACED AT P3.85, and the tracing is why it is here ──────────────────────
 #
-# THE ORACLE'S SPEED CHANGES ARE ALSO NOT MODELLED. PlayCut0 sets SPEED 12 before the
+# It sat out of the PLAN for the reason written here before: a hold is a DURATION, and
+# writing one nobody measured would be a fabricated number wearing a measured one's
+# clothes. That is now discharged rather than waived — 113 frames (1.89 s), measured on
+# the oracle by `harness/tools/oracle_glass_beats.lua`.
+#
+# ★ AND IT WAS MEASURED OFF THE VARIABLES, NOT THE SCREEN, after two screen-watching
+# versions of that tool each gave a confident wrong answer. PlayCut0 brackets the cue
+# exactly [SUBS.S:733-737]: `sta psandcount` immediately before, `lda #7 / sta SPEED`
+# immediately after. Write-taps on psandcount ($E14A) and SPEED ($030C) name both edges
+# by their source-level identity, so there is no geometry to guess and nothing to
+# mis-attribute. The screen could not do it because the SAND FLOWS THROUGHOUT s_Magic —
+# the one cue this scene needed is the one that is not a quiet gap. Addresses come from
+# the assembler listings in oracle/source/obj/*.LST, beside the `ds` that reserves them.
+#
+# s_StTimer [SUBS.S:754] is still NOT traced and still absent, on the same rule.
+#
+# THE ORACLE'S SPEED CHANGES ARE STILL NOT MODELLED. PlayCut0 sets SPEED 12 before the
 # hourglass beat and again at the end [SUBS.S:729,752]; the port's cadence table is flat
-# at the measured 7 frames/play (P3.72k). Applying SPEED would change every subsequent
-# beat's real time and none of the port's holds were measured against it. Flagged, not
-# faked.
+# at the measured 7 frames/play (P3.72k). The trace now says what that costs at this one
+# beat — the oracle spends 41 frames on those five plays (8.2 f/play), the port will
+# spend 35 (7 f/play) — a six-frame difference at one beat, which is why the flat table
+# stays. Applying SPEED properly would change every subsequent beat's real time and none
+# of the port's other holds were measured against it. Flagged, not faked, and now with
+# the size of the flag known at the beat where it is largest.
+
+
+# ── THE HOURGLASS, AS A PER-BEAT SCENERY FLAG (P3.85) ───────────────────────────────
+#
+# PlayCut0 turns it on with two stores and never off [SUBS.S:722,733,745]:
+#
+#     ldx #0 / jsr addglass1   at the hourglass beat   -> the glass, state 0
+#     lda #0 / sta psandcount  immediately after       -> the sand starts flowing
+#     ldx #1 / jsr addglass1   after Vexit             -> the glass, state 1
+#
+# ★ WHY THIS IS A PLAN COLUMN AND NOT A FLAG THE DRAW CODE SETS FOR ITSELF. The plays,
+# the block and the signature already come from this one walk, and the whole reason they
+# do is that a second derivation of "which beat is it" drifts from the first (P3.78's
+# beat-switch was exactly that: a mapping correct FOR THE BEAT, applied to a cel from the
+# previous one). The hourglass is another per-beat fact, so it goes where the per-beat
+# facts live. The room then has nothing to decide — it draws what the row says.
+#
+# TRACED, NOT ASSUMED: the beat boundaries come from oracle_glass_beats.lua, which
+# watched SPEED/lightning/psandcount rather than the screen. See the s_Magic note above.
+SC_GLASS0 = 0x01           # the hourglass body, state 0
+SC_FLOW   = 0x02           # the sand, cycling flow0..flow2 one per play
+SC_GLASS1 = 0x04           # the body switches to state 1 (replaces SC_GLASS0)
+SC_FLASH  = 0x08           # `lda #5 / sta lightning` — five steps, one level per step
+
+# beat index -> flags. The indices are POSITIONS IN `PLAN` and are asserted below against
+# the beat names, so inserting a beat cannot silently move the hourglass to a neighbour.
+SCENERY = {
+    13: ("(hold)",  SC_GLASS0 | SC_FLASH),   # the glass appears, with the flash over it
+    14: ("s_Magic", SC_GLASS0 | SC_FLOW),    # ...and the sand runs through the cue
+    15: ("Vexit",   SC_GLASS1 | SC_FLOW),    # addglass1 X=1 [SUBS.S:745]
+    16: ("(hold)",  SC_GLASS1 | SC_FLOW),
+    17: ("Pslump",  SC_GLASS1 | SC_FLOW),
+    18: ("Vstand",  SC_GLASS1 | SC_FLOW),
+}
+PLAN_STRIDE = 6            # plays, block, sig(2), read, scenery
+
+
+def scenery_at(bi):
+    return SCENERY.get(bi, ("", 0))[1]
+
+
+def scenery_note(bi):
+    f = scenery_at(bi)
+    return "  ".join(n for b, n in ((SC_GLASS0, "glass0"), (SC_GLASS1, "glass1"),
+                                    (SC_FLOW, "flow"), (SC_FLASH, "flash")) if f & b)
+
+
+def check_scenery():
+    """The flags are keyed by INDEX; make the index prove it still means what it says.
+
+    A beat inserted above 13 would move every hourglass flag one beat early and nothing
+    would complain — the rows would still be well-formed and the pack would still fit.
+    s_Magic was inserted this very dispatch, which is exactly the edit that would have
+    done it. So the names are asserted, not trusted.
+    """
+    for bi, (want, _f) in SCENERY.items():
+        if bi >= len(PLAN):
+            raise SystemExit("  FAIL scenery beat %d is past the end of PLAN" % bi)
+        got = PLAN[bi][1] or "(hold)"
+        if got != want:
+            raise SystemExit(
+                "  FAIL scenery beat %d should be %s but PLAN says %s — a beat was "
+                "inserted or removed above it and the hourglass moved with it"
+                % (bi, want, got))
 
 
 def expand(plan):
@@ -411,6 +496,7 @@ def convert_src(who, cel, mirror, render_col, quiet=True):
 
 
 def main():
+    check_scenery()               # before anything is written, not after
     alt = R.altset2()
     want = needed()
     _viz, _pri, beats = trace_scene(with_beats=True)
@@ -663,17 +749,20 @@ def emit_plan_s(p):
     for s in p["schedule"]:
         L.append("                fcb     %d,$%02X" % (s["plays"], s["block"]))
         L.append("                fdb     $%04X" % s["sig"])
-        L.append("                fcb     %d               ; beat %-2d %-12s plays %-4d%s%s"
-                 % (0 if s["read"] is None else s["read"] + 1, s["beat"], s["name"],
-                    s["plays"], "  pinned-only" if s["resident_only"] else "",
-                    "  READ page %d" % s["read"] if s["read"] is not None else ""))
+        L.append("                fcb     %d,%d             ; beat %-2d %-12s plays %-4d%s%s%s"
+                 % (0 if s["read"] is None else s["read"] + 1, scenery_at(s["beat"]),
+                    s["beat"], s["name"], s["plays"],
+                    "  pinned-only" if s["resident_only"] else "",
+                    "  READ page %d" % s["read"] if s["read"] is not None else "",
+                    "  " + scenery_note(s["beat"]) if scenery_at(s["beat"]) else ""))
     L.append("                fcb     0,0")
     L.append("                fdb     0")
-    L.append("                fcb     0               ; terminator")
+    L.append("                fcb     0,0             ; terminator")
     L.append("cel_plan_end")
     L.append("* cel_plan_end exists so the stride can be CHECKED rather than trusted:")
     L.append("* bundle_offsets_check.py compares (cel_plan_end - cel_plan) against")
-    L.append("* 5 x (beats + 1) out of the link map, and fails the build on any other")
+    L.append("* %d x (beats + 1) out of the link map, and fails the build on any other"
+             % PLAN_STRIDE)
     L.append("* answer. The bug above assembled cleanly and ran; nothing but a byte count")
     L.append("* could have caught it.")
     (OUT / "cel_plan.s").write_text("\n".join(L) + "\n", encoding="utf-8")

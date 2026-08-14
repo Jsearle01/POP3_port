@@ -267,6 +267,24 @@ for %%N in (1 2 3 4 5 6 7 8 9) do (
   python harness/tools/cel_blit_prep.py content/cutscene/flames/flame%%N/converted.s --phase 3 --label flseg0_%%N --out build/flames_seg/t0_%%N.s || goto :error
   python harness/tools/cel_blit_prep.py content/cutscene/flames/flame%%N/converted.s --phase 1 --label flseg1_%%N --out build/flames_seg/t1_%%N.s || goto :error
 )
+REM --- the hourglass and its sand, the same way (P3.85) --------------------------
+REM Five cels, not the twelve P3.64 costed and six dispatches then deferred against:
+REM PlayCut0 reaches glass states 0 and 1 only [SUBS.S:722,745], plus the three sand
+REM frames. 994 B measured. They ride in the flame bundle rather than the paged cel
+REM image because they are live from the hourglass beat to the end of the scene, across
+REM a block change the packer will not let a cel straddle.
+REM
+REM PHASES ARE NOT THE SAME FOR THE TWO, for the torches' reason. CoCo px = Apple px + 20
+REM (280 centred in 320): glassx 19 -> px 153 = byte 38 phase 1, and flowx 20 -> px 160 =
+REM byte 40 phase 0. One phase for both would put the glass a pixel off, which is the
+REM exact defect P3.56 spent a dispatch correcting on the left torch.
+if not exist build\glass_seg mkdir build\glass_seg
+python harness/tools/cel_blit_prep.py content/cutscene/glass/glass0/converted.s --phase 1 --label glseg_g0 --out build/glass_seg/g0.s || goto :error
+python harness/tools/cel_blit_prep.py content/cutscene/glass/glass1/converted.s --phase 1 --label glseg_g1 --out build/glass_seg/g1.s || goto :error
+python harness/tools/cel_blit_prep.py content/cutscene/glass/flow0/converted.s --phase 0 --label glseg_f0 --out build/glass_seg/f0.s || goto :error
+python harness/tools/cel_blit_prep.py content/cutscene/glass/flow1/converted.s --phase 0 --label glseg_f1 --out build/glass_seg/f1.s || goto :error
+python harness/tools/cel_blit_prep.py content/cutscene/glass/flow2/converted.s --phase 0 --label glseg_f2 --out build/glass_seg/f2.s || goto :error
+
 lwasm --obj -DOBJTARGET -I . -o build/obj/flame_cels.o src/engine/flame_cels.s
 if errorlevel 1 goto :error
 lwlink --decb --script=link/pop_flames.link --map=build/obj/flames.map -o build/flame_cels.bin build/obj/flame_cels.o build/obj/blit_core.o build/obj/char_draw.o
