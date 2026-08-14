@@ -204,6 +204,24 @@ bb_run
                 sty     bb_ret
                 jmp     blit_blast              ; NOT jsr — see blit_blast's header
 bc_blast_back
+* ★★★ PUT THE REAL STACK BACK, IMMEDIATELY. This one instruction is the whole of the two
+* flame bytes, and blit_blast's own header states the rule I broke:
+*
+*     "S IS THE DESTINATION POINTER while this runs... Anything that touches S implicitly
+*      (jsr, rts, pshs of the return, an interrupt) is unsafe inside a blast."
+*
+* The pre-clip walker obeyed it by accident: it contained no call of any kind, so S could
+* stay a framebuffer pointer from the first blast right through to `lds bc_saved_s` at the
+* end of the cel. P3.78d added `bsr bc_trim` to the segment walk — and a `bsr` executed
+* after a blast pushes its return address INTO THE FRAMEBUFFER, two bytes below wherever
+* the blast left S, and `rts` reads them back from there.
+*
+* MEASURED, and the data is what proved it rather than the argument: in torch 1 cel 8,
+* rows 5 and 6 are the ONLY two rows of thirteen that contain a BLAST segment — and screen
+* rows 106 and 107 are exactly the two bytes that were wrong. Each row's merge `bsr`
+* landed on the PREVIOUS row's col 50. Two wrong bytes out of thirty-nine, localised, at a
+* first column: the extent, the position and the row-selection all follow from it.
+                lds     bc_saved_s              ; ...before any bsr/rts can run again
                 lda     bc_run
                 leax    a,x                     ; X past the kept part
 bb_post
