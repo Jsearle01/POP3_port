@@ -146,11 +146,19 @@ PASS flame pixels are exactly cel 3/8 over the room: 78 bytes byte-identical
 
 **Walk suite (with the hourglass in):**
 ```
-19 beats, 1 staged reads
+19 beats, 1 staged reads, live-disk, 28 captures
 bank_mapped_at_every_capture PASS   engine_bank_guard PASS (ch_bankerr = 0)
 page_sig_matched_every_frame PASS (1283 checked)
 beats_visited PASS (19 of 19)       staged_reads PASS (1 of 1 pages, cel_rd_err = 0)
+every capture 0 bytes WRONG; stability: all captures agree
+STABLE: both runs walked the same positions and produced the same result
 ```
+
+**Both suites were re-run after the flash went in, and both are green on that build.**
+One re-run was needed for a reason worth recording: invoking the runners through
+PowerShell resolves `bash` to **WSL's**, not Git Bash's, and WSL's rejected the scripts
+outright (`line 16: set: -`, then `$'\r'`). The room suite had silently not run at all.
+The suites above were run under Git Bash against the final build.
 
 **25.2:** N/A — ROM build, no sibling-import artifact.
 **25.3: PENDING JAY.**
@@ -216,4 +224,5 @@ hardest on exactly the cases where the output is busy.
 
 ### 11 — Commit
 
-(filled at commit time) — pushed to origin/wip before this report.
+`19771df` — pushed to origin/wip before this report.
+Candidate pushed to the pool separately.
