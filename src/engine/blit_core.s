@@ -302,13 +302,22 @@ bc_trim
                 sta     bc_seglen
                 clr     bc_pre
                 clr     bc_run
-* ★ THE UNCLIPPED FAST PATH. blit_cel_full sets bc_keep = $FF to mean "wider than any
-* cel", and for those callers — the torches — there is nothing to trim and no reason to
-* compute it. Taking the whole segment here skips four 16-bit subtractions per run on a
-* path that draws every frame.
+* ★★ THE UNCLIPPED FAST PATH, AND IT IS A FRAME-BUDGET ITEM RATHER THAN A TIDINESS ONE.
+*
+* A character fully on screen needs no trimming at all, but the first form of this only
+* recognised bc_keep = $FF (blit_cel_full's "wider than any cel", for the torches) and so
+* charged every CHARACTER segment the full arithmetic. Measured: the room's flip cadence
+* went from 2-3 frames to 3-4 when the clip landed — roughly 450 segments a frame paying
+* ~40 cy each, about 18,000 of a 29,859 cy frame.
+*
+* The window cannot cut anything when it starts at the cel's first byte and reaches at
+* least its last, so `lead == 0 and keep >= width` is the whole test, and it is two
+* compares once per segment instead of four 16-bit subtractions.
+                lda     bc_lead
+                bne     bt_clipped              ; something is cut off the left
                 lda     bc_keep
-                cmpa    #$FF
-                bne     bt_clipped
+                cmpa    bc_width
+                blo     bt_clipped              ; ...or off the right
                 lda     bc_seglen
                 sta     bc_run                  ; the entire segment, untouched
                 rts

@@ -700,6 +700,11 @@ def emit_pages_s(p, place):
          "*   fcb first_track, block",
          "",
          "CEL_N_PAGES     equ     %d" % len(p["pages"]),
+         # ★ HOW MANY STAGED READS THE SCENE OWES (P3.84). The drive is held across all of
+         # them so dr_spinup's conditional skips every one after the first, and released
+         # the moment the last completes — so the count has to be a fact the pack owns
+         # rather than a number the engine remembers.
+         "CEL_N_READS     equ     %d" % len(p["reads"]),
          "CEL_SECS        equ     18              ; one track, and a read is always one",
          "CEL_RES_BLOCK   equ     $%02X" % K.RES_BLOCK,
          "CEL_RES_TRK     equ     %d" % place["res"][0],

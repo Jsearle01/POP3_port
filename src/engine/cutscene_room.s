@@ -975,13 +975,26 @@ bundle_expand
 * ---------------------------------------------------------------
 room_load_cels
                 ldy     #load_tracks            ; the bundle has no HAL and no room; the
-                jsr     [CELS_TAB]              ;   disk arrives as an argument
+                ldu     #disk_read_motor_off    ;   disk arrives as arguments
+                jsr     [CELS_TAB]
                 lbne    room_failed
-* THE LAST READ IS DONE — release the drive now, once, instead of after each (P3.76).
-* The motor stays turning across every startup read, so dr_spinup's conditional skips all
-* but the first. A staged read mid-scene pays one fresh spin-up for it, which is a
-* deliberate trade: the alternative is a motor turning for the whole scene.
-                jmp     disk_read_motor_off
+* ★ THE DRIVE IS NOT RELEASED HERE ANY MORE (P3.84). It used to be, and each of the two
+* mid-scene staged reads then found a stopped motor and paid dr_spinup's delay loop again
+* — ~0.40 s apiece (P3.76's A/B measurement), inside a freeze the viewer is watching.
+*
+* The bundle holds it across the whole schedule and releases it the instant the LAST
+* staged read completes, counting down from the pack's own CEL_N_READS. Releasing here
+* was the right call while the cels were one startup load; it stopped being right when
+* the schedule grew reads of its own.
+*
+* ★★ WHAT THIS DOES **NOT** DO, and the difference is worth stating: it does not HIDE the
+* spin-up, it removes it from the second read only. Hiding it means starting the motor
+* early and letting the flame loop run through it — and dr_spinup keys on the driver's own
+* `dr_motor_on` flag, NOT on DSKREG ("that is why the flag is the driver's and not the
+* caller's", disk_read.s). So poking DSKREG early would spin the motor and the driver would
+* still burn the loop. That needs an exported disk_read_motor_on, which is a HAL change and
+* a Karateka back-port under CLAUDE.md §2G — a separate task, not this one.
+                rts
 
 cel_bank_map
                 pshs    cc

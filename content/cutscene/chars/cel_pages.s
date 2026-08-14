@@ -17,6 +17,7 @@
 *   fcb first_track, block
 
 CEL_N_PAGES     equ     5
+CEL_N_READS     equ     2
 CEL_SECS        equ     18              ; one track, and a read is always one
 CEL_RES_BLOCK   equ     $0C
 CEL_RES_TRK     equ     11
