@@ -13,26 +13,23 @@
 * beat schedule carries the value this beat's pointers need. A shared magic, or
 * a plausibility test, would pass on any of the five.
 *
-*   beats 13..14   block $0D   7,004 B of 7,680
+*   beats 15..16   block $0D   6,900 B of 7,680
 
                 section prog
                 export  cel_page3
 cel_page3
                 fdb     $A86F           ; the signature for THIS page
 
-                include "content/cutscene/chars/v54_p1.s"
-                include "content/cutscene/chars/v57_p1.s"
-                include "content/cutscene/chars/v58_p1.s"
-                include "content/cutscene/chars/v59_p1.s"
-                include "content/cutscene/chars/v60_p1.s"
-                include "content/cutscene/chars/v61_p0.s"
-                include "content/cutscene/chars/v75_p3.s"
-                include "content/cutscene/chars/v76_p3.s"
-                include "content/cutscene/chars/v77_p1.s"
-                include "content/cutscene/chars/v78_p0.s"
-                include "content/cutscene/chars/v79_p2.s"
-                include "content/cutscene/chars/v80_p0.s"
-                include "content/cutscene/chars/v81_p0.s"
-                include "content/cutscene/chars/v82_p3.s"
-                include "content/cutscene/chars/v83_p3.s"
-                include "content/cutscene/chars/v84_p3.s"
+                include "content/cutscene/chars/p1_p0.s"
+                include "content/cutscene/chars/p17_p0.s"
+                include "content/cutscene/chars/v48_m_p3.s"
+                include "content/cutscene/chars/v49_m_p0.s"
+                include "content/cutscene/chars/v50_m_p1.s"
+                include "content/cutscene/chars/v51_m_p0.s"
+                include "content/cutscene/chars/v52_m_p1.s"
+                include "content/cutscene/chars/v53_m_p2.s"
+                include "content/cutscene/chars/v62_p1.s"
+                include "content/cutscene/chars/v63_p2.s"
+                include "content/cutscene/chars/v64_p0.s"
+                include "content/cutscene/chars/v65_p1.s"
+                include "content/cutscene/chars/v66_p2.s"

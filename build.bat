@@ -221,6 +221,18 @@ if errorlevel 1 (
     exit /b 1
 )
 
+REM ★ EVERY BAKED CEL WALKED THE WAY THE 6809 WALKS IT (P3.85).
+REM cel_blit_prep replays each cel as it emits it, but that checks the PIXELS. This checks
+REM the STREAM'S SHAPE: does every cel consume exactly the bytes it occupies? A stream that
+REM ends one byte early leaves the blitter reading the NEXT cel's header as a segment, and
+REM the damage surfaces somewhere else entirely -- which is the failure mode a format change
+REM produces. Added when the segment header was packed to one byte.
+python harness/tools/verify_cel_streams.py
+if errorlevel 1 (
+    echo *** BUILD BLOCKED: a baked cel stream is malformed ***
+    exit /b 1
+)
+
 echo --- Assemble+link+PACK: cutscene code bundle (disk-resident) ---
 REM MOVED AHEAD OF THE ROOM (P3.31), because the room now depends on this step's
 REM OUTPUT and not merely on its existence: lz_pack emits build/obj/flame_load.inc,

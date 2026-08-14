@@ -13,7 +13,7 @@
 * beat schedule carries the value this beat's pointers need. A shared magic, or
 * a plausibility test, would pass on any of the five.
 *
-*   beats 2..2   block $0D   4,681 B of 7,680
+*   beats 2..9   block $0D   7,290 B of 7,680
 
                 section prog
                 export  cel_page0
@@ -28,3 +28,11 @@ cel_page0
                 include "content/cutscene/chars/p7_p0.s"
                 include "content/cutscene/chars/p8_p1.s"
                 include "content/cutscene/chars/p9_p3.s"
+                include "content/cutscene/chars/v48_p1.s"
+                include "content/cutscene/chars/v49_p1.s"
+                include "content/cutscene/chars/v50_p1.s"
+                include "content/cutscene/chars/v51_p2.s"
+                include "content/cutscene/chars/v52_p0.s"
+                include "content/cutscene/chars/v53_p3.s"
+                include "content/cutscene/chars/v55_p3.s"
+                include "content/cutscene/chars/v56_p3.s"

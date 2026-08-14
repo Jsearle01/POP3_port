@@ -16,8 +16,8 @@
 *
 *   fcb first_track, block
 
-CEL_N_PAGES     equ     5
-CEL_N_READS     equ     2
+CEL_N_PAGES     equ     4
+CEL_N_READS     equ     1
 CEL_SECS        equ     18              ; one track, and a read is always one
 CEL_RES_BLOCK   equ     $0C
 CEL_RES_TRK     equ     11
@@ -28,11 +28,10 @@ CEL_PAGE_HI     equ     $EC00           ; ending at $FE00 — the last byte the
 *                                       ;   window owns before MC3 and I/O
 
 cel_page_tab
-                fcb     13,$0D             ; page 0, 4,681 B of 7,680
-                fcb     15,$0E             ; page 1, 5,598 B of 7,680
-                fcb     20,$0F             ; page 2, 7,678 B of 7,680
-                fcb     22,$0D             ; page 3, 7,004 B of 7,680
-                fcb     32,$0E             ; page 4, 7,521 B of 7,680
+                fcb     13,$0D             ; page 0, 7,290 B of 7,680
+                fcb     15,$0E             ; page 1, 7,591 B of 7,680
+                fcb     20,$0F             ; page 2, 4,216 B of 7,680
+                fcb     22,$0D             ; page 3, 6,900 B of 7,680
 cel_page_tab_end
 
 * The pages that must be in RAM before the scene starts: one per block, the

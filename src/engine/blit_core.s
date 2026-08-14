@@ -41,9 +41,12 @@
 * SEGMENT FORMAT (per row, from cel_blit_prep.py)
 * ---------------------------------------------------------------
 *   $00            end of row
-*   $01 nn         skip nn transparent bytes
-*   $02 nn <data>  blast nn opaque bytes (groups pre-reversed)
-*   $03 nn <pairs> merge nn bytes as (mask,src): dest = (dest AND mask) OR src
+*   $40|n          skip n transparent bytes
+*   $80|n <data>   blast n opaque bytes (groups pre-reversed)
+*   $C0|n <pairs>  merge n bytes as (mask,src): dest = (dest AND mask) OR src
+*
+* ONE HEADER BYTE since P3.85 — opcode in the top two bits, count in the low six. See the
+* note at bc_seg for the measurement that motivated it.
 *
 * Transparency is index 0 and there is no opacity sidecar (P3.18 3B), so the mask
 * is built from index-0 pixels at bake time.
@@ -62,10 +65,16 @@
 
 FB_STRIDE       equ     80              ; 320 px at 4 px/byte, the 4-colour mode
 
+* --- THE PACKED SEGMENT HEADER (P3.85) -----------------------------------------
+* One byte: opcode in the top two bits, count in the low six. cel_blit_prep.py emits it
+* and refuses a run that will not fit, so the bound is checked at bake time rather than
+* trusted here.
+SEG_MASK        equ     $3F             ; the count
+SEG_OP          equ     $C0             ; the opcode field
+SEGP_SKIP       equ     $40
+SEGP_BLAST      equ     $80
+SEGP_MERGE      equ     $C0             ; (the fall-through case; named for the reader)
 SEG_END         equ     $00
-SEG_SKIP        equ     $01
-SEG_BLAST       equ     $02
-SEG_MERGE       equ     $03
 
 * ---------------------------------------------------------------
 * blit_cel — draw one pre-shifted cel, masked, into the framebuffer.
@@ -141,21 +150,34 @@ blit_cel
 bc_row
                 ldx     bc_rowbase              ; X walks this row's destination
 
+* ★★ ONE HEADER BYTE SINCE P3.85: opcode in the top two bits, count in the low six.
+*
+* P3.79 measured this scene's cels at 4.87x the oracle's 7,891 B, of which only 1.75x is
+* the pixel-depth floor (Apple packs 7 px per byte, CoCo3 packs 4). The rest was
+* PUNCTUATION -- 64.9% of the image was per-segment and per-row headers against 23.1%
+* actual pixels, because every run cost an opcode byte AND a count byte while 6,330 of the
+* scene's 11,111 segments are ONE BYTE LONG. The longest run anywhere is 10, so the count
+* needs four bits and six is ample.
+*
+* This is also FASTER, which was not the point but is worth stating: one fetch and two
+* masks instead of two fetches, on the path walked once per segment per row.
 bc_seg
-                lda     ,u+                     ; segment opcode
-                lbeq    bc_row_done             ; SEG_END (long: the trim grew this)
-                cmpa    #SEG_SKIP
+                lda     ,u+                     ; opcode + count, one byte
+                lbeq    bc_row_done             ; $00 = SEG_END (a real run has n >= 1)
+                tfr     a,b
+                andb    #SEG_MASK               ; B = the count
+                stb     bc_count
+                anda    #SEG_OP                 ; A = the opcode field
+                cmpa    #SEGP_SKIP
                 beq     bc_skip
-                cmpa    #SEG_BLAST
+                cmpa    #SEGP_BLAST
                 beq     bc_blast
 * --- SEG_MERGE: dest = (dest AND mask) OR src, one byte at a time --------
 * 22 cy/byte, and that is a 6809 FLOOR rather than an estimate: there is no
 * 16-bit AND/OR against memory and no register-to-register logic op (no `ora b`),
 * so a masked byte cannot be done two at a time. P3.19 counted this exact
 * sequence.
-                lda     ,u+                     ; count
-                sta     bc_count
-                lbsr    bc_trim                 ; -> bc_pre / bc_run, each 0..count
+                lbsr    bc_trim                 ; -> bc_pre / bc_run (bc_count is set)
                 lda     bc_pre
                 beq     bm_run
                 leax    a,x                     ; step over the part left of the window
@@ -183,13 +205,11 @@ bm_post
                 lbra    bc_seg
 
 bc_skip
-                lda     ,u+                     ; count — transparent, draw nothing
+                lda     bc_count                ; transparent, draw nothing
                 leax    a,x                     ; but the pointer still has to move
                 lbra    bc_seg
 
 bc_blast
-                lda     ,u+                     ; count
-                sta     bc_count
                 lbsr    bc_trim
 * ★★★ A TRIMMED BLAST CANNOT SIMPLY TAKE FEWER SOURCE BYTES, and that is the whole of this
 * branch. cel_blit_prep bakes each blast's groups in the order blit_blast CONSUMES them —

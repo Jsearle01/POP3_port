@@ -27,14 +27,9 @@ cel_image
                 fcb     85              ; WALK_N,  read from $C003
                 include "build/obj/cel_walk_tab.s"
 
-* --- the pinned cels (5,942 B) ---
+* --- the pinned cels (2,104 B) ---
                 include "content/cutscene/chars/p11_p1.s"
                 include "content/cutscene/chars/p11_m_p1.s"
-                include "content/cutscene/chars/p17_p0.s"
                 include "content/cutscene/chars/p18_p0.s"
-                include "content/cutscene/chars/v52_m_p1.s"
-                include "content/cutscene/chars/v53_m_p2.s"
                 include "content/cutscene/chars/v54_p3.s"
                 include "content/cutscene/chars/v54_m_p1.s"
-                include "content/cutscene/chars/v73_p0.s"
-                include "content/cutscene/chars/v85_p0.s"

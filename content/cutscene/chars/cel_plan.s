@@ -31,46 +31,46 @@ cel_plan
                 fcb     5,$0D
                 fdb     $0000
                 fcb     0               ; beat 3  (hold)       plays 5     pinned-only
-                fcb     7,$0E
-                fdb     $A64D
+                fcb     7,$0D
+                fdb     $A53C
                 fcb     0               ; beat 4  Vwalk        plays 7   
-                fcb     4,$0E
-                fdb     $A64D
+                fcb     4,$0D
+                fdb     $A53C
                 fcb     0               ; beat 5  Vstop        plays 4   
                 fcb     51,$0D
                 fdb     $0000
-                fcb     4               ; beat 6  s_Vizier     plays 51    pinned-only  READ page 3
+                fcb     0               ; beat 6  s_Vizier     plays 51    pinned-only
                 fcb     4,$0D
                 fdb     $0000
                 fcb     0               ; beat 7  (hold)       plays 4     pinned-only
-                fcb     29,$0E
-                fdb     $A64D
+                fcb     29,$0D
+                fdb     $A53C
                 fcb     0               ; beat 8  Vwalk        plays 29  
-                fcb     4,$0E
-                fdb     $A64D
+                fcb     4,$0D
+                fdb     $A53C
                 fcb     0               ; beat 9  Vstop        plays 4   
-                fcb     56,$0E
+                fcb     56,$0D
                 fdb     $0000
-                fcb     5               ; beat 10 s_Buildup    plays 56    pinned-only  READ page 4
+                fcb     4               ; beat 10 s_Buildup    plays 56    pinned-only  READ page 3
                 fcb     1,$0E
-                fdb     $0000
-                fcb     0               ; beat 11 Vraise       plays 1     pinned-only
-                fcb     13,$0F
-                fdb     $A75E
+                fdb     $A64D
+                fcb     0               ; beat 11 Vraise       plays 1   
+                fcb     13,$0E
+                fdb     $A64D
                 fcb     0               ; beat 12 Pback        plays 13  
-                fcb     5,$0D
-                fdb     $A86F
+                fcb     5,$0E
+                fdb     $A64D
                 fcb     0               ; beat 13 (hold)       plays 5   
-                fcb     17,$0D
-                fdb     $A86F
+                fcb     17,$0F
+                fdb     $A75E
                 fcb     0               ; beat 14 Vexit        plays 17  
-                fcb     12,$0E
-                fdb     $A980
+                fcb     12,$0D
+                fdb     $A86F
                 fcb     0               ; beat 15 (hold)       plays 12  
-                fcb     28,$0E
-                fdb     $A980
+                fcb     28,$0D
+                fdb     $A86F
                 fcb     0               ; beat 16 Pslump       plays 28  
-                fcb     0,$0E
+                fcb     0,$0D
                 fdb     $0000
                 fcb     0               ; beat 17 Vstand       plays 0     pinned-only
                 fcb     0,0

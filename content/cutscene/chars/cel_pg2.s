@@ -13,22 +13,23 @@
 * beat schedule carries the value this beat's pointers need. A shared magic, or
 * a plausibility test, would pass on any of the five.
 *
-*   beats 12..12   block $0F   7,678 B of 7,680
+*   beats 14..14   block $0F   4,216 B of 7,680
 
                 section prog
                 export  cel_page2
 cel_page2
                 fdb     $A75E           ; the signature for THIS page
 
-                include "content/cutscene/chars/p12_p1.s"
-                include "content/cutscene/chars/p13_p2.s"
-                include "content/cutscene/chars/p14_p1.s"
-                include "content/cutscene/chars/p15_p3.s"
-                include "content/cutscene/chars/p16_p1.s"
-                include "content/cutscene/chars/v67_p0.s"
-                include "content/cutscene/chars/v68_p0.s"
-                include "content/cutscene/chars/v69_p0.s"
-                include "content/cutscene/chars/v70_p2.s"
-                include "content/cutscene/chars/v71_p1.s"
-                include "content/cutscene/chars/v72_p0.s"
-                include "content/cutscene/chars/v74_p1.s"
+                include "content/cutscene/chars/p17_p0.s"
+                include "content/cutscene/chars/v54_p1.s"
+                include "content/cutscene/chars/v57_p1.s"
+                include "content/cutscene/chars/v58_p1.s"
+                include "content/cutscene/chars/v59_p1.s"
+                include "content/cutscene/chars/v60_p1.s"
+                include "content/cutscene/chars/v61_p0.s"
+                include "content/cutscene/chars/v77_p1.s"
+                include "content/cutscene/chars/v78_p0.s"
+                include "content/cutscene/chars/v79_p2.s"
+                include "content/cutscene/chars/v80_p0.s"
+                include "content/cutscene/chars/v81_p0.s"
+                include "content/cutscene/chars/v82_p3.s"

@@ -49,6 +49,33 @@ from celio import Cel                                    # noqa: E402
 
 SEG_END, SEG_SKIP, SEG_BLAST, SEG_MERGE = 0, 1, 2, 3
 
+# ★★ THE HEADER IS ONE BYTE SINCE P3.85: opcode in the top two bits, count in the low six.
+#
+# Measured at P3.79: the oracle holds 7,891 B of cels for this scene and the port held
+# 38,424 -- 4.87x -- of which only 1.75x is the pixel-depth floor (Apple packs 7 px per
+# byte, CoCo3 packs 4). The rest was PUNCTUATION: 64.9% of the image was per-segment and
+# per-row headers against 23.1% actual pixels, because every run cost an opcode byte AND a
+# count byte and 6,330 of the scene's 11,111 segments are ONE BYTE LONG.
+#
+# The longest run anywhere is 10, so the count needs four bits and six is ample. SEG_END
+# stays $00 and is unambiguous because a real segment always has n >= 1.
+#
+#     $00        end of row
+#     $40 | n    skip n
+#     $80 | n    blast n   (+ n data bytes, groups reversed)
+#     $C0 | n    merge n   (+ 2n mask/src bytes)
+SEG_SHIFT = 6
+SEG_MAX_RUN = (1 << SEG_SHIFT) - 1
+
+
+def seg(op, n):
+    """opcode+count in one byte, with the bound checked rather than assumed."""
+    if not 1 <= n <= SEG_MAX_RUN:
+        raise SystemExit("  FAIL run of %d does not fit %d bits -- the format's bound is "
+                         "%d, and a cel wider than that needs the count widened"
+                         % (n, SEG_SHIFT, SEG_MAX_RUN))
+    return (op << SEG_SHIFT) | n
+
 
 def shift_pixels(cel, phase):
     """The cel's pixel grid shifted right `phase` pixels; width grows by one byte."""
@@ -88,9 +115,9 @@ def encode_row(px, w):
         n = run - c
         data = pack_row(px, w)
         if kind == 'skip':
-            out += [SEG_SKIP, n]
+            out.append(seg(SEG_SKIP, n))
         elif kind == 'blast':
-            out += [SEG_BLAST, n]
+            out.append(seg(SEG_BLAST, n))
             # GROUPS ARE FOUR BYTES, NOT SIX, and the reason is register pressure
             # rather than the stack: `pulu d,x,y` would move six, but X is the
             # blitter's destination pointer and PULU would clobber it. `pulu d,y`
@@ -111,7 +138,7 @@ def encode_row(px, w):
             elif rem:
                 out += body[:rem]
         else:
-            out += [SEG_MERGE, n]
+            out.append(seg(SEG_MERGE, n))
             for i in range(c, run):
                 mask = 0
                 for k in range(4):
@@ -141,12 +168,15 @@ def simulate(segments, h, w, dest_stride=80, initial=None):
     for r in range(h):
         col = 0
         while True:
-            op = segments[p]
+            # ONE BYTE NOW: opcode in the top two bits, count in the low six. The
+            # replay decodes it the way the assembly does rather than being told —
+            # this walker is deliberately independent of encode_row (see the docstring),
+            # and that independence is only worth anything if it parses the real stream.
+            hdr = segments[p]
             p += 1
-            if op == SEG_END:
+            if hdr == SEG_END:
                 break
-            n = segments[p]
-            p += 1
+            op, n = hdr >> SEG_SHIFT, hdr & SEG_MAX_RUN
             if op == SEG_SKIP:
                 col += n
             elif op == SEG_BLAST:

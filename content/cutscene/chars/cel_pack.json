@@ -26,38 +26,11 @@
   [
    [
     "pri",
-    17,
-    0,
-    0
-   ],
-   "p17_p0"
-  ],
-  [
-   [
-    "pri",
     18,
     0,
     0
    ],
    "p18_p0"
-  ],
-  [
-   [
-    "viz",
-    52,
-    1,
-    1
-   ],
-   "v52_m_p1"
-  ],
-  [
-   [
-    "viz",
-    53,
-    1,
-    2
-   ],
-   "v53_m_p2"
   ],
   [
    [
@@ -76,24 +49,6 @@
     1
    ],
    "v54_m_p1"
-  ],
-  [
-   [
-    "viz",
-    73,
-    0,
-    0
-   ],
-   "v73_p0"
-  ],
-  [
-   [
-    "viz",
-    85,
-    0,
-    0
-   ],
-   "v85_p0"
   ]
  ],
  "pages": [
@@ -101,7 +56,7 @@
    "index": 0,
    "block": 13,
    "sig": 42300,
-   "bytes": 4681,
+   "bytes": 7290,
    "track": 13,
    "tracks": 2,
    "cap": 7680,
@@ -178,19 +133,7 @@
       3
      ],
      "p9_p3"
-    ]
-   ]
-  },
-  {
-   "index": 1,
-   "block": 14,
-   "sig": 42573,
-   "bytes": 5598,
-   "track": 15,
-   "tracks": 2,
-   "cap": 7680,
-   "base": 57344,
-   "cels": [
+    ],
     [
      [
       "viz",
@@ -266,11 +209,11 @@
    ]
   },
   {
-   "index": 2,
-   "block": 15,
-   "sig": 42846,
-   "bytes": 7678,
-   "track": 20,
+   "index": 1,
+   "block": 14,
+   "sig": 42573,
+   "bytes": 7591,
+   "track": 15,
    "tracks": 2,
    "cap": 7680,
    "base": 57344,
@@ -319,6 +262,15 @@
       1
      ],
      "p16_p1"
+    ],
+    [
+     [
+      "pri",
+      17,
+      0,
+      0
+     ],
+     "p17_p0"
     ],
     [
      [
@@ -377,24 +329,87 @@
     [
      [
       "viz",
+      73,
+      0,
+      0
+     ],
+     "v73_p0"
+    ],
+    [
+     [
+      "viz",
       74,
       0,
       1
      ],
      "v74_p1"
+    ],
+    [
+     [
+      "viz",
+      75,
+      0,
+      3
+     ],
+     "v75_p3"
+    ],
+    [
+     [
+      "viz",
+      76,
+      0,
+      3
+     ],
+     "v76_p3"
+    ],
+    [
+     [
+      "viz",
+      83,
+      0,
+      3
+     ],
+     "v83_p3"
+    ],
+    [
+     [
+      "viz",
+      84,
+      0,
+      3
+     ],
+     "v84_p3"
+    ],
+    [
+     [
+      "viz",
+      85,
+      0,
+      0
+     ],
+     "v85_p0"
     ]
    ]
   },
   {
-   "index": 3,
-   "block": 13,
-   "sig": 43119,
-   "bytes": 7004,
-   "track": 22,
+   "index": 2,
+   "block": 15,
+   "sig": 42846,
+   "bytes": 4216,
+   "track": 20,
    "tracks": 2,
    "cap": 7680,
    "base": 57344,
    "cels": [
+    [
+     [
+      "pri",
+      17,
+      0,
+      0
+     ],
+     "p17_p0"
+    ],
     [
      [
       "viz",
@@ -452,24 +467,6 @@
     [
      [
       "viz",
-      75,
-      0,
-      3
-     ],
-     "v75_p3"
-    ],
-    [
-     [
-      "viz",
-      76,
-      0,
-      3
-     ],
-     "v76_p3"
-    ],
-    [
-     [
-      "viz",
       77,
       0,
       1
@@ -520,33 +517,15 @@
       3
      ],
      "v82_p3"
-    ],
-    [
-     [
-      "viz",
-      83,
-      0,
-      3
-     ],
-     "v83_p3"
-    ],
-    [
-     [
-      "viz",
-      84,
-      0,
-      3
-     ],
-     "v84_p3"
     ]
    ]
   },
   {
-   "index": 4,
-   "block": 14,
-   "sig": 43392,
-   "bytes": 7521,
-   "track": 32,
+   "index": 3,
+   "block": 13,
+   "sig": 43119,
+   "bytes": 6900,
+   "track": 22,
    "tracks": 2,
    "cap": 7680,
    "base": 57344,
@@ -559,6 +538,15 @@
       0
      ],
      "p1_p0"
+    ],
+    [
+     [
+      "pri",
+      17,
+      0,
+      0
+     ],
+     "p17_p0"
     ],
     [
      [
@@ -595,6 +583,24 @@
       0
      ],
      "v51_m_p0"
+    ],
+    [
+     [
+      "viz",
+      52,
+      1,
+      1
+     ],
+     "v52_m_p1"
+    ],
+    [
+     [
+      "viz",
+      53,
+      1,
+      2
+     ],
+     "v53_m_p2"
     ],
     [
      [
@@ -648,17 +654,12 @@
  "res_tracks": 2,
  "res_cap": 8192,
  "track_bytes": 4608,
- "res_bytes": 7306,
+ "res_bytes": 3468,
  "reads": [
   {
-   "at_beat": 6,
+   "at_beat": 10,
    "page": 3,
    "block": 13
-  },
-  {
-   "at_beat": 10,
-   "page": 4,
-   "block": 14
   }
  ],
  "schedule": [
@@ -706,9 +707,9 @@
    "beat": 4,
    "name": "Vwalk",
    "plays": 7,
-   "block": 14,
-   "sig": 42573,
-   "page": 1,
+   "block": 13,
+   "sig": 42300,
+   "page": 0,
    "resident_only": false,
    "read": null
   },
@@ -716,9 +717,9 @@
    "beat": 5,
    "name": "Vstop",
    "plays": 4,
-   "block": 14,
-   "sig": 42573,
-   "page": 1,
+   "block": 13,
+   "sig": 42300,
+   "page": 0,
    "resident_only": false,
    "read": null
   },
@@ -728,9 +729,9 @@
    "plays": 51,
    "block": 13,
    "sig": 0,
-   "page": 3,
+   "page": 0,
    "resident_only": true,
-   "read": 3
+   "read": null
   },
   {
    "beat": 7,
@@ -738,7 +739,7 @@
    "plays": 4,
    "block": 13,
    "sig": 0,
-   "page": 3,
+   "page": 0,
    "resident_only": true,
    "read": null
   },
@@ -746,9 +747,9 @@
    "beat": 8,
    "name": "Vwalk",
    "plays": 29,
-   "block": 14,
-   "sig": 42573,
-   "page": 1,
+   "block": 13,
+   "sig": 42300,
+   "page": 0,
    "resident_only": false,
    "read": null
   },
@@ -756,9 +757,9 @@
    "beat": 9,
    "name": "Vstop",
    "plays": 4,
-   "block": 14,
-   "sig": 42573,
-   "page": 1,
+   "block": 13,
+   "sig": 42300,
+   "page": 0,
    "resident_only": false,
    "read": null
   },
@@ -766,29 +767,29 @@
    "beat": 10,
    "name": "s_Buildup",
    "plays": 56,
-   "block": 14,
+   "block": 13,
    "sig": 0,
-   "page": 4,
+   "page": 3,
    "resident_only": true,
-   "read": 4
+   "read": 3
   },
   {
    "beat": 11,
    "name": "Vraise",
    "plays": 1,
    "block": 14,
-   "sig": 0,
-   "page": 4,
-   "resident_only": true,
+   "sig": 42573,
+   "page": 1,
+   "resident_only": false,
    "read": null
   },
   {
    "beat": 12,
    "name": "Pback",
    "plays": 13,
-   "block": 15,
-   "sig": 42846,
-   "page": 2,
+   "block": 14,
+   "sig": 42573,
+   "page": 1,
    "resident_only": false,
    "read": null
   },
@@ -796,9 +797,9 @@
    "beat": 13,
    "name": "(hold)",
    "plays": 5,
-   "block": 13,
-   "sig": 43119,
-   "page": 3,
+   "block": 14,
+   "sig": 42573,
+   "page": 1,
    "resident_only": false,
    "read": null
   },
@@ -806,9 +807,9 @@
    "beat": 14,
    "name": "Vexit",
    "plays": 17,
-   "block": 13,
-   "sig": 43119,
-   "page": 3,
+   "block": 15,
+   "sig": 42846,
+   "page": 2,
    "resident_only": false,
    "read": null
   },
@@ -816,9 +817,9 @@
    "beat": 15,
    "name": "(hold)",
    "plays": 12,
-   "block": 14,
-   "sig": 43392,
-   "page": 4,
+   "block": 13,
+   "sig": 43119,
+   "page": 3,
    "resident_only": false,
    "read": null
   },
@@ -826,9 +827,9 @@
    "beat": 16,
    "name": "Pslump",
    "plays": 28,
-   "block": 14,
-   "sig": 43392,
-   "page": 4,
+   "block": 13,
+   "sig": 43119,
+   "page": 3,
    "resident_only": false,
    "read": null
   },
@@ -836,9 +837,9 @@
    "beat": 17,
    "name": "Vstand",
    "plays": 0,
-   "block": 14,
+   "block": 13,
    "sig": 0,
-   "page": 4,
+   "page": 3,
    "resident_only": true,
    "read": null
   }
