@@ -70,7 +70,10 @@ def main():
             # `LDA XCO / SEC / SBC WIDTH` [HIRES.S:1202-1208] -- a mirrored image is laid
             # down that far to the LEFT of the same coordinate, and the engine cannot
             # reproduce a mirrored draw's POSITION without it.
-            awid = SC.get_cel(str(TABLE), idx)["w"]
+            # ★ FROM THE CEL'S OWN TABLE FILE (P3.95), not from a constant. This read
+            # IMG.CHTAB6.A for every cel; the eight `vcast-*` frames live in IMG.CHTAB7,
+            # so the engine's mirror anchor for them was the width of an unrelated stub.
+            awid = SC.get_cel(str(R.table_path(n)), idx)["w"]
             rows.append(dict(cel=n, who=who, idx=idx, fdx=fdx, fdy=fdy,
                              par=R.parity(fchk, face), flag=(fimg >> 7) & 1,
                              fchk=fchk, lab=lab, awid=awid))

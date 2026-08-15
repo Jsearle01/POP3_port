@@ -61,7 +61,9 @@ def main():
         src = OUT / ("%s_src.s" % stem)
         if convert:
             r = subprocess.run([sys.executable, str(ROOT / "harness/tools/sprite_convert.py"),
-                                "--table", str(TABLE), "--index", str(idx),
+                                # the cel's own table file (P3.95) — these are all
+                                # chtable6 today, but the constant was the bug elsewhere
+                                "--table", str(R.table_path(cel)), "--index", str(idx),
                                 "--out", str(src), "--label", "%s_src" % stem,
                                 "--start-col", str(sc), "--quiet"],
                                capture_output=True, text=True)

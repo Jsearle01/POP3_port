@@ -457,9 +457,14 @@ def convert_src(who, cel, mirror, render_col, quiet=True):
     fimg, fdx, fdy, fchk, lab = alt[cel]
     stem = stem_for(who, cel) + ("_m" if mirror else "")
     src = OUT / ("%s_src.s" % stem)
-    cmd = [sys.executable, str(CONVERT), "--table", str(TABLE),
-           "--index", str(fimg & 0x7F), "--out", str(src), "--label", "%s_src" % stem,
-           "--start-col", str(render_col)]
+    # ★ THE TABLE COMES FROM THE FRAME, NOT FROM A CONSTANT (P3.95). This passed the
+    # module-level TABLE for every cel, which is IMG.CHTAB6.A — right for 77 of ALTSET2's
+    # 85 frames and wrong for the eight `vcast-*` ones, which name chtable7. See
+    # cel_parity_rule.table_path for the decode and for what it cost.
+    tab = R.table_path(cel)
+    cmd = [sys.executable, str(CONVERT), "--table", str(tab),
+           "--index", str(R.chartable(cel)[1]), "--out", str(src),
+           "--label", "%s_src" % stem, "--start-col", str(render_col)]
     if mirror:
         cmd.append("--mirror")
     if quiet:
