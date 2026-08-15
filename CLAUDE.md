@@ -219,6 +219,72 @@ remote is `Jsearle01/karateka-coco3` with a **hyphen**; not interchangeable).
 
 ---
 
+## 2H. Look past the first mechanism
+
+A mechanism found in the source is a **hypothesis about the whole mechanism**, not the mechanism. Before
+building on one, run these three checks and **state their results in §3**:
+
+1. **Is there a SECOND mechanism serving a different object class?** POP handles sprites and tiles
+   differently in several places; PA.2 and P3.44 each found one and reported it as the only one. Ask what
+   the *other* kind of object does.
+2. **Name the routine that CALLS it, not only the one that implements it.** The caller carries the scope —
+   how often, under what condition, for which objects. *The enclosing routine is the fact, not the line
+   number.*
+3. **Before citing a prior report's characterisation, grep the reports for the same subsystem.** Six
+   instances now of a description standing in for a fact. **A contradiction between two reports survives
+   indefinitely when each is cited alone, and the later one wins by recency rather than by evidence.**
+
+This is not a mandate to search without bound. It is three bounded checks, and **the third is mechanical.**
+
+**The pattern this exists to break** (Jay, 2026-08-15): *"There's been a pattern of Clyde finding a mechanism
+and then going with it as THE mechanism. We've seen several times in this project that there was a deeper
+truth than what is found initially."* The first mechanism found is usually REAL — it is just not the WHOLE
+mechanism, or not the GOVERNING one:
+
+| | |
+|---|---|
+| **PA.2 vs P3.44** | one read `DRAWALL` as a peel-list restore-and-redraw; the other read the same oracle as block-marking with *"no per-sprite save/restore anywhere."* Both cite readable source. Twenty dispatches apart, and the contradiction survived because each was cited separately. |
+| **`pburn`** | a grep returned line numbers; the enclosing routine was the fact, and reading it as scene setup **inverted a correct earlier measurement** (P3.46b) |
+| **the cadence** | the gate existed and was **applied to the decision instead of the drawing** — the mechanism was found, its scope was not (P3.45) |
+| **the slip** | attributed to a cost, and it was **a grid** — an iteration is a whole number of frames, so 6/8/10 has nothing in between (P3.87) |
+| **the peel-skip** | *"the background under a static character never changes"* — true, **and only while it is the only thing on screen** (P3.32) |
+
+---
+
+## 2I. The mandate is visual fidelity and play feel
+
+**The mandate is that the port LOOKS right and FEELS right to play. It is not that the port works the way
+the oracle works.**
+
+The oracle's mechanisms are **evidence about how to achieve that** — usually the best evidence available,
+because they demonstrably produced the result on comparable hardware. They are not requirements in
+themselves.
+
+**A divergence that preserves visual output and play feel is legitimate and needs no justification beyond
+measurement.** Do not argue for it as a deviation; implement it and report what it costs and what it saves.
+
+Where the oracle's approach is cheaper or safer, prefer it — **it usually is, and the port's most expensive
+mechanisms have not always been the faithful ones.** Where the CoCo3 makes a different approach cheaper at
+equal output, take it.
+
+**This does not license guessing at behaviour.** §2's stack still governs *what the oracle does*, and Jay
+(§2.1) remains the authority on whether the result looks and feels right. **The change is that "the oracle
+does it this way" is no longer, on its own, a reason to do it that way.**
+
+**★ THIS DOES NOT RE-RANK §2 — it clarifies what §2 is FOR.** §2 ranks the trace, the source and the
+disassembly as authorities on **what the oracle does**. This section is about **what the port must
+reproduce.** Those are different questions, and conflating them is what produced P3.88's framing of the
+port's peel as *"a CoCo3-side invention to be reconsidered on fidelity grounds"* — an argument that would
+have been irrelevant even had the premise been true, because the peel's standing depends on what it costs
+and what it produces, not on whether the oracle shares it. (The premise was also false: the oracle peels.)
+
+**★ AND IT DOES NOT LOOSEN §2F.1 OR §4.** "Preserves visual output" means exactly that: §2F.1's migration
+gate stays RENDER-NEUTRAL (framebuffer-diff byte-identical, any pixel change → STOP), and §4's gate is still
+Jay's eye on a running machine. This section licenses a different MECHANISM at equal output; it licenses no
+pixel change and no self-certified "close enough".
+
+---
+
 ## 3. PNG Handling Rules (absolute)
 
 PNG files are diagnostic artifacts for human review:
@@ -308,7 +374,8 @@ Prod <bin> sha1 <…> untouched.
 
 ### 3 — Reasoning
 <addresses the dispatch-named questions; mechanism, not restatement; state which authority tier — trace /
-source / Jay — each conclusion rests on>
+source / Jay — each conclusion rests on; and where a conclusion RELIES on an oracle mechanism, state §2H's
+three checks — second mechanism, calling routine, prior-report grep>
 
 ### 4 — Verification (AC-by-AC)
 - AC1 <text> — <evidence>
