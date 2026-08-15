@@ -147,6 +147,25 @@ blit_cel
                 leax    d,x
                 stx     bc_clip_hi              ; one PAST the last writable byte
 
+* ★★ THE UNCLIPPED ANSWER IS THE SAME FOR EVERY SEGMENT OF THE CEL, SO IT IS DECIDED HERE
+* (P3.85d). bc_trim already had a fast path for this, but it was reached through `lbsr` and
+* still cost the call, five stores and two compares — about 65 cy — on EVERY segment of
+* EVERY cel. Measured over the scene, the step rate held cad_tab's 6 frames only 62% of the
+* time and slipped to 8 or 10 on the rest, mean 7.15; at roughly 450 segments a frame that
+* fast path alone is ~29,000 cy against a 29,859 cy budget.
+*
+* A fast path inside the per-segment routine is still a per-segment cost. bc_lead, bc_keep
+* and bc_width do not change within a cel, so the test belongs where they are established —
+* once — and the segment walk branches on a single byte.
+                clr     bc_noclip
+                lda     bc_lead
+                bne     bc_clipped_cel          ; something is cut off the left
+                lda     bc_keep
+                cmpa    bc_width
+                blo     bc_clipped_cel          ; ...or off the right
+                inc     bc_noclip
+bc_clipped_cel
+
 bc_row
                 ldx     bc_rowbase              ; X walks this row's destination
 
@@ -177,6 +196,14 @@ bc_seg
 * 16-bit AND/OR against memory and no register-to-register logic op (no `ora b`),
 * so a masked byte cannot be done two at a time. P3.19 counted this exact
 * sequence.
+                lda     bc_noclip               ; decided once per cel, not per segment
+                beq     bm_trim
+                lda     bc_count
+                sta     bc_seglen
+                sta     bc_run                  ; the whole segment, nothing to skip
+                clr     bc_pre                  ; ...and bm_post's arithmetic gives 0
+                bra     bm_run
+bm_trim
                 lbsr    bc_trim                 ; -> bc_pre / bc_run (bc_count is set)
                 lda     bc_pre
                 beq     bm_run
@@ -210,7 +237,16 @@ bc_skip
                 lbra    bc_seg
 
 bc_blast
+                lda     bc_noclip               ; decided once per cel, not per segment
+                beq     bb_trim
+                lda     bc_count
+                sta     bc_seglen
+                sta     bc_run                  ; run == seglen takes the untouched path
+                clr     bc_pre
+                bra     bb_test
+bb_trim
                 lbsr    bc_trim
+bb_test
 * ★★★ A TRIMMED BLAST CANNOT SIMPLY TAKE FEWER SOURCE BYTES, and that is the whole of this
 * branch. cel_blit_prep bakes each blast's groups in the order blit_blast CONSUMES them —
 * high destination address first, because `pshs` descends — so WHICH source byte belongs
@@ -630,6 +666,7 @@ bc_pre          rmb     1       ; bc_trim's answer for the segment in hand
 bc_run          rmb     1
 bc_seglen       rmb     1       ; the segment's length, kept while bc_count counts
 bc_segx         rmb     2       ; ...and its start, so the address maths can use subd
+bc_noclip       rmb     1       ; this CEL needs no trimming — set once, read per segment
 bc_peelrow      rmb     2       ; the peel row, advanced by the CEL width not the window
 bc_dstx         rmb     2       ; a clipped blast's real destination, parked while it
 *                               ;   blasts into the scratch row below
