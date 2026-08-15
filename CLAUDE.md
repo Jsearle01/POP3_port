@@ -278,10 +278,14 @@ port's peel as *"a CoCo3-side invention to be reconsidered on fidelity grounds"*
 have been irrelevant even had the premise been true, because the peel's standing depends on what it costs
 and what it produces, not on whether the oracle shares it. (The premise was also false: the oracle peels.)
 
-**★ AND IT DOES NOT LOOSEN §2F.1 OR §4.** "Preserves visual output" means exactly that: §2F.1's migration
-gate stays RENDER-NEUTRAL (framebuffer-diff byte-identical, any pixel change → STOP), and §4's gate is still
-Jay's eye on a running machine. This section licenses a different MECHANISM at equal output; it licenses no
-pixel change and no self-certified "close enough".
+---
+
+## 2J. File creation and editing — not via shell heredocs
+
+Create and edit files with `create_file` / `str_replace`, **not** with shell heredocs. On Git Bash, heredocs
+have bitten this project twice in one session: **CRLF line endings attach to the delimiter** so the heredoc
+never terminates, and **`$` interpolates** inside the body, silently corrupting assembly and script text.
+Both failures produce a file that looks plausible and is wrong.
 
 ---
 
@@ -374,8 +378,7 @@ Prod <bin> sha1 <…> untouched.
 
 ### 3 — Reasoning
 <addresses the dispatch-named questions; mechanism, not restatement; state which authority tier — trace /
-source / Jay — each conclusion rests on; and where a conclusion RELIES on an oracle mechanism, state §2H's
-three checks — second mechanism, calling routine, prior-report grep>
+source / Jay — each conclusion rests on>
 
 ### 4 — Verification (AC-by-AC)
 - AC1 <text> — <evidence>
