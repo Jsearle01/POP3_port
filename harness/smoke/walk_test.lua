@@ -37,6 +37,15 @@ local GAP     = tonumber(os.getenv("P_GAP") or "10")
 -- both suites. Closing that needed BOTH halves: the compositor has to know the object
 -- (verify_room_chars) and a capture has to LAND on it (here).
 local SHOTSG  = tonumber(os.getenv("P_SHOTS_GLASS") or "8")
+-- ★ A THIRD WINDOW, OVER THE EXIT (P3.90). P3.88 closed the hourglass hole and flagged
+-- what it did NOT close: the 8 glass captures cover the beat's START (f4196..f4266) and
+-- stop ~600 frames before the exit beats, which is exactly where P3.87's disputed residue
+-- appeared. A capture window that covers an object's ARRIVAL but not its LIFE is the same
+-- coverage failure one step smaller. Armed on SC_GLASS1, the flag the engine itself raises
+-- when the body swaps state after Vexit [cel_plan beat 15].
+local SHOTSX  = tonumber(os.getenv("P_SHOTS_EXIT") or "8")
+local GAPX    = tonumber(os.getenv("P_GAP_EXIT") or "40")
+local SC_GLASS1 = 0x04
 local SCENERY = tonumber(os.getenv("P_SCENERY") or "0")
 local SCFLOW  = tonumber(os.getenv("P_SCFLOW") or "0")
 local VIZ     = tonumber(os.getenv("P_VIZ") or "0")
@@ -122,6 +131,20 @@ end
 -- Reading the record instead is the mistake this project has now made five ways
 -- (P3.27 for the cel, P3.29 for the position) -- ch_drawn and ch_last are written at
 -- DRAW time, indexed by (character, slot), so they are what reached these pixels.
+-- ── which sand frame is IN each buffer (P3.90) ───────────────────────────────────────
+-- Recorded at the BUFFER SWAP, not at the top of the iteration: sc_flow can still change
+-- inside chars_frame (vm_beat_tick advances it, then scenery_frame draws with the new
+-- value), so a sample taken before that reads the frame the LAST iteration used. At the
+-- moment HAL_gfx_cur_back is rewritten, the buffer just finished is `1 - (new back)` and
+-- sc_flow is exactly what was drawn into it.
+local flow_shown = {}
+if SCFLOW ~= 0 then
+    _G._flowtap = mem:install_write_tap(CUR_BACK, CUR_BACK, "flow", function(o, d)
+        flow_shown[1 - (d % 2)] = mem:read_u8(SCFLOW)
+        return d
+    end)
+end
+
 local pf = io.open(POS, "w")
 local function log_positions(tag)
     if VIZ == 0 or not pf then return end
@@ -150,13 +173,26 @@ local function log_positions(tag)
                            vx, vy, rd8(DRAWN + 0 * 2 + shown),
                            px, py, rd8(DRAWN + 1 * 2 + shown), vf, pf_,
                            SCENERY ~= 0 and rd8(SCENERY) or 0,
-                           SCFLOW ~= 0 and rd8(SCFLOW) or 0))
+    -- ★ THE SAND FRAME OF THE BUFFER BEING SHOWN, NOT THE ENGINE'S CURRENT ONE.
+    --
+    -- sc_flow is the frame the NEXT draw will use; the buffer on screen was drawn an
+    -- iteration ago and may hold the previous one. Reading the live byte made the checker
+    -- composite sand the displayed buffer does not contain, and it reported that as five
+    -- wrong bytes in the port — all of them inside the sand rectangle, all of them a
+    -- neighbouring flow frame's pixels. A checker racing the engine, reported as a
+    -- rendering defect: the same shape as capture 29's flip lag, one object along.
+    --
+    -- flow_shown is recorded per buffer at the top of each drawing iteration, off the
+    -- engine's own flm_idx tick, so what is composited is what was drawn.
+                           flow_shown[shown] or
+                             (SCFLOW ~= 0 and rd8(SCFLOW) or 0)))
     pf:flush()
 end
 
 local state, t0, started, loaded = "boot", nil, nil, nil
 local shot_n, next_shot, first_fn = 0, nil, nil
 local shots_max, glass_fn = SHOTS, nil   -- the budget grows when the hourglass arrives
+local exit_fn, cur_gap = nil, nil        -- ...and again when it swaps state after Vexit
 local occ, prev_cel, last_change, gaps, steps = {}, nil, nil, {}, 0
 local xs = {}
 local bank_bad = 0        -- captures at which the $C000 cel bank was NOT mapped
@@ -404,8 +440,22 @@ local function tick()
         -- about ("the buffer captured was drawn earlier and still holds the previous
         -- state"), and reporting it as a defect would be the checker racing the engine.
         next_shot = fn + GAP
+        cur_gap = GAP
         log(string.format("# hourglass up at frame %d (+%d) — %d more captures from +%d",
                           fn, fn - first_fn, SHOTSG, GAP))
+    end
+
+    -- THE EXIT WINDOW. A WIDER GAP ON PURPOSE: the point is to span the beats the glass
+    -- lives through, not to sample one of them densely, and at 10 frames the eight shots
+    -- would cover 80 frames of a ~600-frame stretch.
+    if SCENERY ~= 0 and exit_fn == nil and glass_fn ~= nil
+       and (rd8(SCENERY) & SC_GLASS1) ~= 0 then
+        exit_fn = fn
+        shots_max = shots_max + SHOTSX
+        next_shot = fn + GAPX
+        cur_gap = GAPX
+        log(string.format("# glass state 1 at frame %d (+%d) — %d more captures every %d",
+                          fn, fn - first_fn, SHOTSX, GAPX))
     end
 
     if fn >= next_shot and shot_n < shots_max then
@@ -433,7 +483,7 @@ local function tick()
         end
         log(string.format("# capture %s at frame %d (+%d): %s",
                           tag, fn, fn - first_fn, ok and "ok" or "WRITE FAILED"))
-        next_shot = fn + GAP
+        next_shot = fn + (cur_gap or GAP)
     elseif shot_n >= shots_max and (RUNTO == 0 or fn - first_fn >= RUNTO) then
         -- ★ THE CAPTURES END LONG BEFORE THE SCENE DOES (P3.78), and stopping with them
         -- would have made every check above blind to fourteen of the eighteen beats. The

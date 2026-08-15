@@ -73,8 +73,24 @@ def _src(who, cel):
 SRC = {c: _src("v", c) for c in range(48, 57)}          # Vwalk / Vstop / Vstand
 SRC.update({c: _src("p", c) for c in range(2, 10)})     # Palert, her eight turn cels
 SRC.update({11: _src("p", 11),                          # Pstand
-            1:  ROOT / "content/cutscene/chars/pslump_src.s",     # Pslump
-            18: ROOT / "content/cutscene/chars/pslump_src.s"})
+            1:  ROOT / "content/cutscene/chars/pslump_src.s"})    # Pslump
+
+# ★★ CEL 18 IS `p18_src.s`, NOT `pslump_src.s` — FOUND P3.90, AND ONLY BECAUSE THE EXIT
+# BEATS WERE FINALLY BEING CHECKED.
+#
+# This entry said `pslump_src.s` and had since before the bake grew p-numbered stems. The
+# two files are NOT the same — 2,699 bytes against 2,755 — so every capture showing her on
+# cel 18 was being compared against the wrong artwork. It never failed because no capture
+# had ever landed on that part of the scene: the walk suite stopped ~1,100 frames short of
+# the hourglass until P3.88 and ~600 frames short of the exit until P3.90.
+#
+# ★ A WRONG ENTRY AND A MISSING ENTRY FAIL DIFFERENTLY, and that is the lesson worth
+# keeping. A missing cel raises "cel N is on screen but has no baked source" and stops the
+# run — which is how P3.88 found v57..v85 in one minute. A WRONG one silently checks real
+# bytes against the wrong expectation and reports a defect in the port. Twenty-seven wrong
+# bytes, stable, in BOTH the shipping build and an experimental one, is what that looks
+# like from outside: exactly like a real rendering bug.
+SRC[18] = _src("p", 18)
 
 # ★★ THE LATE SCENE'S CELS, ADDED P3.88 — and their absence was a coverage hole of the
 # same family as the missing hourglass, found the same way and in the same minute.
