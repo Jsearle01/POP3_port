@@ -139,7 +139,7 @@ have.
 
 ### 4 — Verification (AC-by-AC)
 
-- **AC1 §7's pointer restored** — **MET**, commit `1b0ba1c`… (see §11). Sections unchanged otherwise.
+- **AC1 §7's pointer restored** — **MET**, commit `e33e5bd`. Sections unchanged otherwise.
 - **AC2 the slump's qualification resolved** — **PUT BACK TO JAY** (3B), with what was and was not
   reproducible, and the checker fault reconciled with it: separate findings, one closed, one his.
 - **AC3 `scenery_frame`'s defect established; removal not costed** — **MET** (3A). The every-frame
@@ -218,4 +218,4 @@ None during the task. Jay's *"the three look good"* preceded it and is quoted in
 
 ### 11 — Commit
 
-The pointer restoration, the trace tool, and this report. Pushed to origin/wip.
+`e33e5bd` (the §7 pointer), `cc97ff2` (the trace tool + this report). Pushed to origin/wip.
