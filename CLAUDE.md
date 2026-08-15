@@ -378,7 +378,8 @@ Prod <bin> sha1 <…> untouched.
 
 ### 3 — Reasoning
 <addresses the dispatch-named questions; mechanism, not restatement; state which authority tier — trace /
-source / Jay — each conclusion rests on>
+source / Jay — each conclusion rests on; and where a conclusion RELIES on an oracle mechanism, state §2H's
+three checks — second mechanism, calling routine, prior-report grep>
 
 ### 4 — Verification (AC-by-AC)
 - AC1 <text> — <evidence>
