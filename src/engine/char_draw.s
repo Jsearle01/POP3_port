@@ -550,8 +550,9 @@ sc_g0
 * it, so nothing has to be saved or restored but the four bytes.
                 lda     sc_lit
                 beq     sc_pal_normal
-                clr     sc_lit                  ; one drawn frame per play, so the five
-                ldx     #$FFB0                  ;   strobes stay distinct
+                deca                            ; count the white frames down; the play's
+                sta     sc_lit                  ;   last drawn frame goes back to normal
+                ldx     #$FFB0
                 lda     #PAL_WHITE
                 sta     ,x
                 sta     1,x
@@ -1628,13 +1629,35 @@ sc_peel         fdb     0
 sc_data         fdb     0
 sc_pslot        fdb     0
 sc_prev         fcb     0,0             ; per buffer: is there sand to erase?
-sc_lit          fcb     0               ; this play's strobe is owed a frame
+sc_lit          fcb     0               ; drawn frames of white still owed this play
 sc_wasl         fcb     0               ; ...and the palette is still white from it
-PAL_WHITE       equ     $3F             ; GIME intensity 3, hue 15 [hal gfx.s:262]
-* THE RESTORE VALUES ARE THE HAL'S OWN FOUR, copied rather than re-derived — black,
-* orange, blue, white [src/hal/coco3-dsk/gfx.s:255-262, MAME-verified]. If the 16-colour
-* swap ever lands they move, and this table is the one place that has to follow.
-sc_pal          fcb     $00,$26,$1B,$3F
+PAL_WHITE       equ     $3F             ; RGB R3 G3 B3 [hal gfx.s gfx_pal4 entry 3]
+* ★★ THESE FOUR ARE A COPY OF gfx_pal4 AND THE COPY IS CHECKED, because getting it wrong
+* is not a flash bug — it is a PERMANENT one. Jay, on the P3.85b gate: "it changes the
+* blue color to a light greenish color but doesn't 'flash white at all." This table had
+* $1B for entry 2 where the HAL's table has $19. $1B carries more green, so the first
+* time the flash fired, the RESTORE wrote a greener, lighter blue and left it there for
+* the rest of the scene. The white itself was one frame and invisible; what was visible
+* was the restore, and a restore that writes the wrong value is indistinguishable from
+* an effect that "changed the colour".
+*
+* The value came from an inline `lda #$1B / sta $FFB2` in gfx.s's init path. The table at
+* gfx_pal4 is what the machine actually loads — traced: $FFB2 = $19 — and the two disagree
+* in the HAL itself. Reading the constant back from the artifact rather than from a nearby
+* store is the standing rule and this is what skipping it costs.
+*
+* IT CANNOT BE IMPORTED: gfx_pal4 is not exported, and the bundle is a separate link unit
+* from the room that holds the HAL. So it is duplicated, and harness/tools/palette_check.py
+* fails the build if the duplicate ever drifts from gfx_pal4 again. A copy nothing checks
+* is what this comment is about.
+sc_pal          fcb     $00,$26,$19,$3F
+* WHITE FOR MOST OF THE PLAY, NOT ONE FRAME OF IT. The oracle brackets each play with
+* flashon...flashoff [SUBS.S:857-867], so the screen is white while the play draws and
+* normal only briefly between plays. The room draws on the flame cadence (flm_cad 2,2,3,
+* ~2.3 frames) against a measured 10-frame step [walk suite: "modal gap 10 frames x206 =
+* THE STEP RATE"], so a play is about FOUR drawn frames. Three of them white leaves the
+* gap the oracle has without collapsing five strobes into one long white hold.
+SC_LIT_FRAMES   equ     3
 flow_peel       rmb     FLOW_PEEL*2     ; one slot per buffer, as the torches have
 
 * ---------------------------------------------------------------
@@ -1901,8 +1924,9 @@ vb_tick
                 lda     vm_scenery
                 bita    #SC_FLASH
                 beq     vb_noflash
-                lda     #1                      ; one strobe per PLAY, which is what the
+                lda     #SC_LIT_FRAMES          ; one strobe per PLAY, which is what the
                 sta     sc_lit                  ;   oracle's flashon/flashoff bracket
+                lda     #1
                 sta     sc_wasl
 vb_noflash
                 lda     vm_scenery

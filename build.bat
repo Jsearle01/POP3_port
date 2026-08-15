@@ -216,6 +216,17 @@ REM
 REM This is that sweep made mechanical, so the sixth is found on purpose. It is DEMONSTRATED
 REM to fire: seeding walk_test.lua's CH_CEL back to its pre-16-bit value exits 1.
 python harness/tools/harness_offsets_check.py
+if errorlevel 1 goto :error
+
+REM --- the flash's restore palette must match the HAL's live table (P3.85c) --------
+REM char_draw.s duplicates gfx_pal4 because the flame bundle links separately from the
+REM room that holds the HAL and gfx_pal4 is not exported. The duplicate had $1B for blue
+REM where the table has $19 -- a value taken from an inline store in gfx.s's init path
+REM rather than from the table the machine loads; the two disagree inside the HAL itself.
+REM The flash RESTORES that palette after painting white, so the wrong byte repainted the
+REM scene permanently the first time it fired. It did not look like a flash bug -- Jay:
+REM "it changes the blue color to a light greenish color but doesn't 'flash white at all."
+python harness/tools/palette_check.py
 if errorlevel 1 (
     echo *** BUILD BLOCKED: a harness offset no longer matches the build ***
     exit /b 1
