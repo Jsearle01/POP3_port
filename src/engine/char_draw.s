@@ -2059,19 +2059,28 @@ vb_running
                 ldu     vm_beat
                 leau    PLAN_STRIDE,u           ; the previous step spent it — take the
                 bsr     vb_apply                ;   next beat NOW, before this step draws
-vb_tick
-                lda     vm_bcnt
-                beq     vb_done                 ; terminal beat: 0 plays, holds forever
-                deca
-                sta     vm_bcnt
-                bne     vb_done
-                inc     vm_pend                 ; spent; the NEXT step is the next beat's
+* ★★★ THE SCENERY EVENTS COME FIRST, AND THAT IS THE WHOLE FIX (P3.93).
+*
 * THE SAND ADVANCES ONCE PER PLAY, WHICH IS HERE (P3.85). The oracle cycles psandcount
 * 0,1,2 inside its own frame advance, and the trace shows it stepping once per play in
 * lockstep with the animation — at SPEED 12 the states are ~2.8 frames apart and at
 * SPEED 7 ~6, which is the play rate in both cases and not a rate of its own. So it hangs
 * off the beat tick rather than off the video frame; a free-running sand would drift
 * against the characters and would not slow with them.
+*
+* ★★ AND UNTIL NOW IT DID NOT DO THAT, BECAUSE THIS BLOCK SAT BELOW THE BEAT BOOKKEEPING.
+* `vb_tick` does two jobs on two different clocks: the SCENERY events belong to the play
+* (they are per-play by the comment above and by the oracle), and spending the beat
+* belongs to the beat. They shared one control path, and the bookkeeping's own guard —
+* `bne vb_done`, taken on every play but the last — silently became the scenery's guard
+* too. Traced on the machine at P3.91: the glass appeared at frame 4186 and its flash
+* armed at 4218, four plays and 0.53 s later, because the glass goes up when the beat is
+* APPLIED and the flash fired when the beat was SPENT. One strobe where the oracle has
+* five [P3.85: `lightning` steps 5..0 once per play at 8-frame spacing]; the sand advanced
+* once across a 28-play beat. Jay saw the first of those and reported it.
+*
+* Nothing here is new code. The block MOVED, above two branches that were never about it.
+vb_tick
                 lda     vm_scenery
                 bita    #SC_FLASH
                 beq     vb_noflash
@@ -2082,7 +2091,7 @@ vb_tick
 vb_noflash
                 lda     vm_scenery
                 bita    #SC_FLOW
-                beq     vb_done
+                beq     vb_bcnt
                 lda     sc_flow
                 inca
                 cmpa    #3
@@ -2090,6 +2099,22 @@ vb_noflash
                 clra
 vb_flowok
                 sta     sc_flow
+
+* ★ THE TERMINAL BEAT NOW GETS THEM TOO, AND THAT IS A DECISION RATHER THAN A SIDE EFFECT.
+* It is reached by the `beq` below, so before this move the sand froze for the scene's
+* last 27 plays while `cel_plan` marked that very beat SC_FLOW. There is no oracle fact to
+* match here: the terminal beat is a PORT ARTIFACT — a row with plays = 0 that holds
+* forever because the `Prolog2` handoff is not built — so PlayCut0 has no counterpart to
+* trace. Under §2I the mandate is the picture, and an hourglass whose sand stops while the
+* scene sits parked on it is the wrong picture. So it flows.
+vb_bcnt
+* --- the beat bookkeeping, which really IS once per beat ---
+                lda     vm_bcnt
+                beq     vb_done                 ; terminal beat: 0 plays, holds forever
+                deca
+                sta     vm_bcnt
+                bne     vb_done
+                inc     vm_pend                 ; spent; the NEXT step is the next beat's
 vb_done
                 rts
 
