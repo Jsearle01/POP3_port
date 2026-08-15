@@ -1802,13 +1802,35 @@ PAL_WHITE       equ     $3F             ; RGB R3 G3 B3 [hal gfx.s gfx_pal4 entry
 * fails the build if the duplicate ever drifts from gfx_pal4 again. A copy nothing checks
 * is what this comment is about.
 sc_pal          fcb     $00,$26,$19,$3F
-* WHITE FOR MOST OF THE PLAY, NOT ONE FRAME OF IT. The oracle brackets each play with
-* flashon...flashoff [SUBS.S:857-867], so the screen is white while the play draws and
-* normal only briefly between plays. The room draws on the flame cadence (flm_cad 2,2,3,
-* ~2.3 frames) against a measured 10-frame step [walk suite: "modal gap 10 frames x206 =
-* THE STEP RATE"], so a play is about FOUR drawn frames. Three of them white leaves the
-* gap the oracle has without collapsing five strobes into one long white hold.
-SC_LIT_FRAMES   equ     3
+* ★★★ ONE DRAWN FRAME, BECAUSE THAT IS WHAT THE ORACLE'S BRACKET IS (P3.94).
+*
+* Jay, on the P3.93 gate: "i only see one long strobe." Measured on the palette rather
+* than on the counter — $FFB0 write taps, which is what the eye actually receives — the
+* screen was white for ONE RUN OF 41 VIDEO FRAMES, 0.68 s, with no dark gap anywhere in
+* it. Five arms, one strobe.
+*
+* THIS COMMENT USED TO SAY "WHITE FOR MOST OF THE PLAY, NOT ONE FRAME OF IT", and it was
+* wrong about the oracle's structure. The bracket is not around a PLAY, it is around ONE
+* FRAME'S DRAW [SUBS.S:898-904]:
+*
+*     jsr NextFrame          decide
+*     jsr flashon            white ON
+*     jsr FrameAdv           draw the hidden page
+*     jsr flashoff           white OFF -- and `dec lightning` [SUBS.S:863-867]
+*
+* `lightning` is decremented once per flashoff, so `lda #5 / sta lightning` is FIVE
+* SINGLE-FRAME FLASHES, each switched off at the end of the frame it was switched on for.
+* The oracle never holds white across consecutive frames. Holding it for three was not a
+* magnitude error, it was the wrong shape.
+*
+* ★ AND THE ARITHMETIC THAT PICKED 3 WAS OUT OF SCOPE TWICE OVER: it assumed a ~2.3-frame
+* iteration (flm_cad's TARGET, never achieved — the loop runs ~3.6) and a 10-frame step
+* (now 8). A play is ~2.2 drawn frames, not the four it claimed, so three of them white
+* was longer than the whole play and the strobes ran together — the exact failure the old
+* comment said it was avoiding. A duration counted in drawn frames drifts whenever the
+* loop does; P3.25 had the same bug one object along, and its note still applies: "The
+* table was always in the right unit; the counter was not."
+SC_LIT_FRAMES   equ     1
 flow_peel       rmb     FLOW_PEEL*2     ; one slot per buffer, as the torches have
 
 * ---------------------------------------------------------------
