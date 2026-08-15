@@ -340,4 +340,32 @@ None. No questions were put to Jay during this task; the three items in §5 are 
 
 ### 11 — Commit
 
-See below — pushed to origin/wip before this report.
+`d143bf6` (the instruments), `f8e2f4e` (this report), `a4d1c1e` (§12). Pushed to origin/wip.
+
+### 12 — ★ JAY'S RULING, AFTER THE REPORT WAS FILED
+
+**"leave the pace as is."**
+
+So the pace question is **CLOSED BY DECISION, not by a fix**, and the distinction matters for
+whoever picks this up next. Nothing was reverted to comply — this dispatch shipped no pace
+change, so the tree already was the ruling. What the ruling settles:
+
+- **The walk stays at 8.00 f/play against a table asking 6**, and scene beats 16/17/18 stay at
+  10.00. The 19% is measured, attributed and **accepted**.
+- **The drift-free `vm_due` question is answered NO** — the limp is not wanted. Do not re-raise
+  it as a fix; it was offered as a trade and declined.
+- **The peel's 12.5 cy/byte copy loop is not to be rewritten for the pace.** It may still be
+  worth doing for a different reason, but it no longer has this one, and on its own it does not
+  reach the boundary anyway (§3D).
+- **`cad_tab` stays at 6.** It was never the problem and it is not now a knob.
+
+**★ WHAT THE RULING DOES NOT COVER, stated so it is not silently absorbed into it.** Jay
+reported the pace having watched the vizier's walk. The scene's worst beats are the last three
+— **10.00 f/play, 67% slow, over 54 consecutive steps** — and those come after the hourglass,
+in the part of the scene he has gated once and never re-reported. If "as is" was meant to cover
+the whole scene it covers them too; if he was ruling on what he saw, they are still open. Not
+assumed either way, and not re-litigated — flagged.
+
+**Still open and untouched by this ruling:** the flash is **unaffirmed** (§5); `scenery_frame`'s
+every-frame redraw is load-bearing for a reason not yet established, and that is a live defect
+being masked rather than a performance question (§7).
