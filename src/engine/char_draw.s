@@ -492,6 +492,8 @@ scenery_frame
                 bne     sc_on
                 clr     sc_prev                 ; before the beat, or the scene is over —
                 clr     sc_prev+1               ;   both slots forget what they drew
+                clr     sc_body                 ; ...and which body state it holds (P3.90)
+                clr     sc_body+1
                 rts
 sc_on
 * ★ THE FLAGS GO IN A BYTE, NOT ON THE STACK, and that is not fussiness. blit_cel puts
@@ -523,7 +525,72 @@ sc_slot0
                 ldb     #FLOW_WIDE
                 jsr     blit_erase_full         ; preserves X,Y,U
 sc_noerase
-* --- the body ---
+* --- the body: SCENERY, NOT ANIMATION (P3.90) ---------------------------------------
+*
+* ★★ ONLY THE SAND IS ANIMATION. THE GLASS IS SCENERY. That is Jay's reading of the
+* object and it is what this code now says: the body is a 312-byte segment stream for
+* something opaque that never moves and changes state TWICE in the whole scene
+* [SUBS.S:722 X=0, :745 X=1], so it is drawn when it CHANGES, into each buffer, rather
+* than twenty times a second forever. The sand keeps its per-frame treatment, because the
+* sand is the part that animates. sc_body is to the body what sc_prev is to the sand: one
+* byte per buffer naming what that buffer holds.
+*
+* MEASURED, and worth stating in the units that decide it: iteration cost is a WHOLE
+* number of video frames, because room_present ends every iteration on a VBL wait — so a
+* saving buys nothing at all unless it crosses a frame boundary. The exit beats sat at
+* 129,319 cy against a 4-frame boundary at 119,436: a 9,883 cy gap, and the body is
+* roughly twice that.
+*
+* ★ THE WARM-UP IS NOT BELT-AND-BRACES; IT IS THE ONE CASE THAT BREAKS. A character's
+* erase restores the bytes ITS SAVE captured, and the save runs after scenery_frame — so
+* every save taken once the body is down captures body-over-room, and every erase puts the
+* body back. The save taken on the pass BEFORE the body first appeared did not, and the
+* vizier stands at CharX 135 = byte column 43 when the glass arrives at column 38. His
+* stale erase would punch through it. Redrawing every frame hid that by repairing it a
+* frame later; drawing once would not. So a body-state change owes each buffer SC_WARM
+* further passes, by which time its save is body-inclusive.
+*
+* ★★ AND THE REVERT THAT PRECEDED THIS WAS AN INSTRUMENT FAULT, NOT A RENDERING ONE.
+* P3.87 built this, measured the crossing, then reverted it on a build-to-build
+* framebuffer diff that showed growing "residue". That diff excluded ONE torch where the
+* real predicate has two, and — decisively — write taps on the disputed bytes show the two
+* builds performing the IDENTICAL work: same routines, same counts, same values, same
+* buffer split, differing only in the frame numbers a faster build reaches them at. The
+* walk suite, comparing against an independently composited expected picture rather than
+* against another build, passes both identically. A homemade diff was trusted over the
+* checker; the checker was right.
+                clr     sc_need
+                lda     ch_slot
+                ldx     #sc_body
+                leax    a,x
+                ldb     #1
+                lda     sc_flags
+                bita    #SC_GLASS1
+                beq     sc_g0w
+                ldb     #2
+sc_g0w
+                cmpb    ,x
+                beq     sc_bwarm
+                stb     ,x
+                inc     sc_need
+                ldx     #sc_fresh
+                lda     ch_slot
+                leax    a,x
+                lda     #SC_WARM
+                sta     ,x
+                bra     sc_bgo
+sc_bwarm
+                ldx     #sc_fresh
+                lda     ch_slot
+                leax    a,x
+                lda     ,x
+                beq     sc_bgo
+                deca
+                sta     ,x
+                inc     sc_need
+sc_bgo
+                lda     sc_need
+                lbeq    sc_nobody
                 lda     sc_flags
                 ldu     #glass_cels
                 bita    #SC_GLASS1
@@ -534,6 +601,7 @@ sc_g0
                 ldx     ch_base
                 leax    GLASS_OFF,x
                 jsr     blit_cel_full           ; clobbers A,B,X,Y,U — nothing live
+sc_nobody
 
 * --- the sand, over the body it now sits on ---
 * --- the lightning flash ---
@@ -1629,6 +1697,15 @@ sc_peel         fdb     0
 sc_data         fdb     0
 sc_pslot        fdb     0
 sc_prev         fcb     0,0             ; per buffer: is there sand to erase?
+* ── the body's per-buffer state (P3.90) ──────────────────────────────────────────────
+* sc_body is to the glass body what sc_prev is to the sand: which of the two body states
+* THIS buffer holds, so an opaque object that changes twice in the scene is drawn twice
+* per buffer rather than on every iteration. sc_fresh is the warm-up owed after a change —
+* see the comment at sc_noerase for the stale erase that makes it necessary.
+sc_body         fcb     0,0             ; per buffer: 0 none, 1 state 0, 2 state 1
+sc_fresh        fcb     0,0             ; per buffer: passes still owed after a change
+sc_need         fcb     0               ; does the body go down this pass?
+SC_WARM         equ     2               ; passes, per buffer, after a body-state change
 sc_lit          fcb     0               ; drawn frames of white still owed this play
 sc_wasl         fcb     0               ; ...and the palette is still white from it
 PAL_WHITE       equ     $3F             ; RGB R3 G3 B3 [hal gfx.s gfx_pal4 entry 3]
