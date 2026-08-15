@@ -340,7 +340,7 @@ None. No questions were put to Jay during this task; the three items in §5 are 
 
 ### 11 — Commit
 
-`d143bf6` (the instruments), `f8e2f4e` (this report), `a4d1c1e` (§12). Pushed to origin/wip.
+`d143bf6` (the instruments), `f8e2f4e` (this report), `d42c9da` (§12). Pushed to origin/wip.
 
 ### 12 — ★ JAY'S RULING, AFTER THE REPORT WAS FILED
 
