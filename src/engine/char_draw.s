@@ -494,6 +494,9 @@ scenery_frame
                 clr     sc_prev+1               ;   both slots forget what they drew
                 clr     sc_body                 ; ...and which body state it holds (P3.90)
                 clr     sc_body+1
+                lda     #$FF                    ; ...and which sand frame (P3.92). $FF, not
+                sta     sc_sdrw                 ;   0, because 0 is a real flow frame and
+                sta     sc_sdrw+1               ;   would read as "already drawn"
                 rts
 sc_on
 * ★ THE FLAGS GO IN A BYTE, NOT ON THE STACK, and that is not fussiness. blit_cel puts
@@ -511,11 +514,95 @@ sc_on
 sc_slot0
                 sty     sc_peel
 
-* --- erase THIS buffer's previous sand, before the body goes down ---
                 ldx     #sc_prev
                 lda     ch_slot
                 leax    a,x
                 stx     sc_pslot
+
+* --- DOES THIS BUFFER ALREADY HOLD THIS BODY STATE? (P3.90) --------------------------
+*
+* ★ DECIDED HERE, ABOVE THE ERASE, BECAUSE THE SAND'S DECISION READS IT. Both questions
+* have to be answered before either blit runs: a body redraw forces a sand redraw (below),
+* and the erase must not run for a frame that is going to redraw nothing. The blit itself
+* still happens in its old place, after the erase — only the DECISION moved.
+                clr     sc_need
+                lda     ch_slot
+                ldx     #sc_body
+                leax    a,x
+                ldb     #1
+                lda     sc_flags
+                bita    #SC_GLASS1
+                beq     sc_g0w
+                ldb     #2                      ; state 1, after Vexit [SUBS.S:745]
+sc_g0w
+                cmpb    ,x
+                beq     sc_bwarm                ; this buffer already holds this body
+                stb     ,x
+                inc     sc_need
+                ldx     #sc_fresh
+                lda     ch_slot
+                leax    a,x
+                lda     #SC_WARM
+                sta     ,x
+                bra     sc_bdone
+sc_bwarm
+                ldx     #sc_fresh
+                lda     ch_slot
+                leax    a,x
+                lda     ,x
+                beq     sc_bdone                ; settled: the body is down and stays down
+                deca
+                sta     ,x
+                inc     sc_need
+sc_bdone
+                ldx     sc_pslot                ; X back to sc_prev[slot] for the sand test
+
+* --- DOES THIS BUFFER ALREADY HOLD THIS SAND FRAME? (P3.92) --------------------------
+*
+* ★★ THE SAND IS ANIMATION AND IT STILL DOES NOT CHANGE EVERY FRAME. P3.90 split the
+* glass into scenery (the body, drawn on state change) and animation (the sand, left
+* per-frame). Tracing the animation half [P3.91, port_vbtick_trace.lua] showed it advances
+* ONCE PER BEAT — once across a 28-play beat — while this routine erased, saved and
+* redrew it on every iteration: about fifty-six redraws of an image that changed once.
+* So the same classification applies one level down, and it uses the body's mechanism
+* rather than a second one: sc_sdrw is to the sand what sc_body is to the body, one byte
+* per buffer naming what that buffer holds.
+*
+* ★ KEYED ON THE VALUE, NOT ON A RATE, which is what makes it survive the fix that is
+* coming. The once-per-beat advance is itself a defect — vb_tick's flash and sand blocks
+* sit below a `bne` that is taken on every play but the last, so both fire once per beat
+* where their own comments and the oracle say once per play. When that is fixed the sand
+* will change every step and this test will simply stop skipping as often. It does not
+* bake in the wrong rate; see §7 of the P3.92 report for what it costs once the rate is
+* right.
+*
+* THE BODY FORCES THE SAND. Redrawing the body paints over the sand's rectangle — the
+* body's stream carries SKIP runs, so it does not reliably cover it, and assuming either
+* way is how a smear ships. So a body redraw always brings the sand with it; a sand change
+* alone does not need the body, because the erase below restores flow_peel, which IS
+* body-over-room.
+                clr     sc_sneed
+                lda     sc_flags
+                bita    #SC_FLOW
+                beq     sc_snochk               ; no sand this beat: nothing to decide
+                lda     sc_need
+                bne     sc_sdo                  ; the body is going down: the sand follows
+                lda     ,x                      ; sc_prev[slot]: has this buffer any sand?
+                beq     sc_sdo                  ;   no — first time, draw it
+                ldx     #sc_sdrw
+                lda     ch_slot
+                leax    a,x
+                lda     sc_flow
+                cmpa    ,x
+                beq     sc_snochk               ; this buffer already holds this frame
+sc_sdo
+                inc     sc_sneed
+sc_snochk
+
+* --- erase THIS buffer's previous sand, before the body goes down ---
+                lda     sc_sneed
+                beq     sc_noerase              ; nothing to redraw: leave the pixels alone
+                ldx     sc_pslot
                 lda     ,x
                 beq     sc_noerase
                 ldx     ch_base
@@ -559,36 +646,6 @@ sc_noerase
 * walk suite, comparing against an independently composited expected picture rather than
 * against another build, passes both identically. A homemade diff was trusted over the
 * checker; the checker was right.
-                clr     sc_need
-                lda     ch_slot
-                ldx     #sc_body
-                leax    a,x
-                ldb     #1
-                lda     sc_flags
-                bita    #SC_GLASS1
-                beq     sc_g0w
-                ldb     #2
-sc_g0w
-                cmpb    ,x
-                beq     sc_bwarm
-                stb     ,x
-                inc     sc_need
-                ldx     #sc_fresh
-                lda     ch_slot
-                leax    a,x
-                lda     #SC_WARM
-                sta     ,x
-                bra     sc_bgo
-sc_bwarm
-                ldx     #sc_fresh
-                lda     ch_slot
-                leax    a,x
-                lda     ,x
-                beq     sc_bgo
-                deca
-                sta     ,x
-                inc     sc_need
-sc_bgo
                 lda     sc_need
                 lbeq    sc_nobody
                 lda     sc_flags
@@ -645,8 +702,11 @@ sc_sand
                 lda     sc_flags
                 bita    #SC_FLOW
                 beq     sc_done
-                lda     sc_flow                 ; 0..2, advanced once per PLAY by
-                lsla                            ;   vm_beat_tick, as psandcount is
+                lda     sc_sneed
+                beq     sc_done                 ; this buffer already holds this frame
+                lda     sc_flow                 ; 0..2, advanced by vm_beat_tick — ONCE
+                lsla                            ;   PER BEAT today, which is a defect
+*                                               ;   [P3.91]; once per play when fixed
                 ldu     #flow_cels
                 ldu     a,u
                 stu     sc_data
@@ -663,6 +723,15 @@ sc_sand
                 leax    FLOW_OFF,x
                 ldu     sc_data
                 jsr     blit_cel_full
+* REMEMBER WHAT THIS BUFFER NOW HOLDS, exactly as sc_prev remembers that it holds sand at
+* all. Written after the blit, not before: if the draw did not happen the buffer does not
+* hold it, and a record written on intent rather than on completion is the parallel state
+* P3.22 was shaped to avoid.
+                ldx     #sc_sdrw
+                lda     ch_slot
+                leax    a,x
+                lda     sc_flow
+                sta     ,x
 sc_done
                 rts
 
@@ -1706,6 +1775,11 @@ sc_body         fcb     0,0             ; per buffer: 0 none, 1 state 0, 2 state
 sc_fresh        fcb     0,0             ; per buffer: passes still owed after a change
 sc_need         fcb     0               ; does the body go down this pass?
 SC_WARM         equ     2               ; passes, per buffer, after a body-state change
+* ── and the sand's, the same shape one level down (P3.92) ────────────────────────────
+* $FF rather than 0 for "nothing drawn yet": 0 is flow frame 0, so a zero-initialised
+* record would claim the buffer already holds the first sand frame and skip drawing it.
+sc_sdrw         fcb     $FF,$FF         ; per buffer: which flow frame it holds
+sc_sneed        fcb     0               ; does the sand go down this pass?
 sc_lit          fcb     0               ; drawn frames of white still owed this play
 sc_wasl         fcb     0               ; ...and the palette is still white from it
 PAL_WHITE       equ     $3F             ; RGB R3 G3 B3 [hal gfx.s gfx_pal4 entry 3]
