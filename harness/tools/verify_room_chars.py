@@ -12,7 +12,16 @@ baked cels composited onto it by cel_blit_prep's own byte-by-byte replay, which 
 the same code path that validates the bake -- and diffs the capture against that.
 Every reported byte is then a real defect with a known expected value.
 
-The torch columns are excluded because the flames animate; nothing else is.
+The torch columns and the four window stars are excluded because they animate on their
+own cadence; nothing else is.
+
+★ P3.88: "nothing else is" was true of this code and false of the scene for three
+dispatches. The hourglass landed at P3.85 and was never added here, so every byte of a
+live object went unchecked and P3.87's broken glass change passed this suite while putting
+growing residue on screen. The glass body and its sand are composited now, from the
+engine's own vm_scenery/sc_flow recorded at capture time. The lesson is not "add the
+glass" -- it is that an expected picture which OMITS an object cannot fail on it, so this
+file's coverage has to be re-checked whenever the scene gains something that draws.
 """
 import pathlib
 import sys
@@ -67,6 +76,30 @@ SRC.update({11: _src("p", 11),                          # Pstand
             1:  ROOT / "content/cutscene/chars/pslump_src.s",     # Pslump
             18: ROOT / "content/cutscene/chars/pslump_src.s"})
 
+# ★★ THE LATE SCENE'S CELS, ADDED P3.88 — and their absence was a coverage hole of the
+# same family as the missing hourglass, found the same way and in the same minute.
+#
+# The capture window used to end ~1,100 frames before the glass appeared, so this table
+# never had to name a cel past Palert and nobody noticed it could not. Widening the window
+# to reach the hourglass immediately produced "cel 74 is on screen but has no baked
+# source" -- Vraise, Vexit and Pback have been running unchecked for their whole existence.
+# The bake has written v57..v85 and p12..p17 all along; only this list was short.
+#
+# ★ IT REFUSED RATHER THAN SKIPPING, and that is why this was findable at all. A checker
+# that quietly ignored an unknown cel would have reported the late captures as clean.
+# Keep that behaviour.
+#
+# ⚠ LATENT: this table is keyed by CEL NUMBER ALONE, which assumes the two characters
+# never share one. v18_src.s exists and key 18 resolves to HER slump; nothing currently
+# puts the vizier on 18, so the ambiguity is dormant rather than wrong. `placements` knows
+# which character it is looking at, so keying by (character, cel) would remove the class
+# entirely -- deliberately NOT done here, because it would silently re-resolve 1/11/18 and
+# that is a change to make on its own with its own evidence.
+SRC.update({c: _src("v", c) for c in range(57, 86)
+            if _src("v", c).exists()})                  # Vraise / Vexit / his exit walk
+SRC.update({c: _src("p", c) for c in range(12, 18)
+            if _src("p", c).exists()})                  # Pback, her retreat
+
 
 def mirrored(src):
     """The `_m` bake beside a source, when the machine says the cel was drawn facing right.
@@ -83,6 +116,20 @@ def mirrored(src):
 
 POSFILE = ROOT / "build/room_chars_pos.txt"
 
+# ── the hourglass (P3.88) ────────────────────────────────────────────────────────────
+# EVERY CONSTANT HERE HAS ONE HOME AND IT IS NOT THIS FILE. The flags are char_draw.s's
+# SC_* equates, the geometry is its GLASS_*/FLOW_* equates, and the two PHASES are
+# build.bat's own `--phase` arguments to cel_blit_prep -- the glass is baked at phase 1
+# because 38*4 = 152 and it wants 153, the sand lands byte-aligned at phase 0. Written
+# down rather than imported because this is a Python checker reading an assembler build;
+# if they drift, this file reports the glass in the wrong place and says so loudly, which
+# is the failure mode to prefer over silently checking nothing.
+SC_GLASS0, SC_FLOW, SC_GLASS1 = 0x01, 0x02, 0x04
+GLASS_COL, GLASS_TOP, GLASS_PHASE = 38, 127, 1
+FLOW_COL, FLOW_TOP, FLOW_PHASE = 40, 141, 0
+GLASS_SRC = {n: ROOT / ("content/cutscene/glass/%s/converted.s" % n)
+             for n in ("glass0", "glass1", "flow0", "flow1", "flow2")}
+
 
 def cel_rows(src):
     """The cel's own row count, read from the converted source rather than tabulated."""
@@ -97,11 +144,36 @@ def placements(posfile=None):
     out = []
     for line in pf.read_text().splitlines():
         f = line.split()
-        if len(f) != 9:                  # tag + x,y,cel and facing, per character
-            continue
+        if len(f) not in (9, 11):        # tag + x,y,cel and facing, per character
+            continue                     # ...+ the scenery flags and sand frame (P3.88)
         tag = f[0]
-        vx, vy, vc, px, py, pc, vf, pfc = map(int, f[1:])
+        vx, vy, vc, px, py, pc, vf, pfc = map(int, f[1:9])
+        scenery, scflow = (int(f[9]), int(f[10])) if len(f) == 11 else (0, 0)
         rows = []
+        # ★★ THE HOURGLASS GOES IN FIRST, AND IT WAS MISSING ENTIRELY UNTIL P3.88.
+        #
+        # This checker's docstring said "The torch columns are excluded because the flames
+        # animate; nothing else is" -- which was true of the code and false of the scene
+        # from the moment the glass landed. A live object was simply absent from the
+        # expected picture, so every byte of it was unchecked, and P3.87's broken glass
+        # change passed this suite while putting growing residue on screen. An omission in
+        # an expected picture does not fail; it passes, for the wrong reason.
+        #
+        # ORDER IS THE ENGINE'S: scenery_frame runs BEFORE vm_frameadv, so the body goes
+        # down, then the sand over it, then the characters over both. Compositing them in
+        # any other order would disagree wherever a character overlaps the glass -- which
+        # is exactly where the vizier stands when it appears (CharX 135 -> col 43, against
+        # the glass at 38..44).
+        #
+        # WHICH state and WHICH sand frame come from the engine's own vm_scenery/sc_flow,
+        # recorded at capture time. Deriving them here from the beat would be a second
+        # derivation of "which beat is it", which is the P3.78 failure one level up.
+        if scenery & (SC_GLASS0 | SC_GLASS1):
+            body = "glass1" if scenery & SC_GLASS1 else "glass0"
+            rows.append((body, GLASS_SRC[body], GLASS_PHASE, GLASS_TOP, GLASS_COL))
+        if scenery & SC_FLOW:
+            sand = "flow%d" % scflow
+            rows.append((sand, GLASS_SRC[sand], FLOW_PHASE, FLOW_TOP, FLOW_COL))
         for cel, x, y, face in ((vc, vx, vy, vf), (pc, px, py, pfc)):
             if cel not in SRC:
                 raise SystemExit("  cel %d is on screen but has no baked source" % cel)

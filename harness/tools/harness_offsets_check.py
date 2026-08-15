@@ -84,6 +84,21 @@ def main():
         unchecked += 1
         print("  ??   UNCHECKED: %s" % msg)
 
+    def _cmp(tool, want, writers):
+        """Every writer's field count must be one the reader accepts."""
+        if not writers:
+            unk("%s accepts %s fields; no writer found to compare"
+                % (tool, sorted(want)))
+            return
+        for lua, n in sorted(writers.items()):
+            if n not in want:
+                fail("%s requires len(f) in %s but %s writes %d fields — every line "
+                     "is skipped and the exclusion it guards is DEAD"
+                     % (tool, sorted(want), lua, n))
+            else:
+                ok("%-28s accepts %-9s <- %s writes %d"
+                   % (tool, sorted(want), lua, n))
+
     # ── 1. the slot record, as the engine declares it vs as the harness reads it ───────
     eq = engine_equs(CHAR, ["CH_X", "CH_Y", "CH_FACE", "CH_CEL", "CH_H", "CH_AWID"])
     if "CH_CEL" not in eq:
@@ -155,18 +170,28 @@ def main():
         # scanning it produced a FAIL for the very fix that closed the real one.
         t = "\n".join(re.sub(r"#.*$", "", ln) for ln in
                       p.read_text(errors="replace").splitlines())
+        # TWO FORMS, BECAUSE THERE ARE TWO WRITERS NOW (P3.88). walk_test.lua appends the
+        # scenery flags and the sand frame (11 fields) so the hourglass can be composited;
+        # room_test.lua stays at 9, since its two captures land ~2,000 frames before the
+        # glass exists. Readers therefore accept a SET of widths.
+        #
+        # ★ THE SET FORM HAD TO BE TAUGHT TO THIS CHECK, NOT JUST USED. Rewriting a reader
+        # as `len(f) not in (9, 11)` made it invisible to the `!=` regex — the guard would
+        # have gone on printing OK for the two tools it could still see while the third,
+        # the one actually widened, was no longer checked at all. A guard that silently
+        # stops covering a file is the same defect it is here to catch, one level up.
+        checked = False
         for m in re.finditer(r"len\(f\)\s*!=\s*(\d+)", t):
-            want = int(m.group(1))
-            if not writers:
-                unk("%s requires %d fields; no writer found to compare" % (tool, want))
-                continue
-            for lua, n in writers.items():
-                if n != want:
-                    fail("%s requires len(f) == %d but %s writes %d fields — every line "
-                         "is skipped and the exclusion it guards is DEAD"
-                         % (tool, want, lua, n))
-                else:
-                    ok("%-28s field count %d == %s" % (tool, want, lua))
+            checked = True
+            want = {int(m.group(1))}
+            _cmp(tool, want, writers)
+        for m in re.finditer(r"len\(f\)\s+not\s+in\s*\(([\d,\s]+)\)", t):
+            checked = True
+            want = {int(x) for x in m.group(1).replace(",", " ").split()}
+            _cmp(tool, want, writers)
+        if not checked:
+            unk("%s parses the positions file but no len(f) width test was found — "
+                "it may be accepting rows of any width" % tool)
 
     # ── 4. literal addresses in the harness that duplicate a mapped symbol ────────────
     maps = {}

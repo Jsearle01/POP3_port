@@ -91,6 +91,13 @@ CELVAR=$(sed -n 's/^set CEL_VARBASE=\(0x[0-9A-Fa-f]*\).*/\1/p' build.bat | head 
 [ -n "$CELVAR" ] || { echo "[run_walk_test] CEL_VARBASE not found in build.bat"; exit 1; }
 export P_PGSIG=$(printf '0x%X' $(( CELVAR + 1 )))
 export P_BEAT="0x$(sym "$FMAP" vm_beat)"
+# THE HOURGLASS (P3.88) — the scenery flags and the sand frame, so the checker composites
+# the glass instead of omitting it, and a second capture window lands on it. Both suites
+# passed P3.87's broken glass change; the object was in neither the expected picture nor
+# the capture range.
+export P_SCENERY="0x$(sym "$FMAP" vm_scenery)"
+export P_SCFLOW="0x$(sym "$FMAP" sc_flow)"
+export P_SHOTS_GLASS="${P_SHOTS_GLASS:-8}"
 # The schedule table's own bounds, so beats_visited counts CURSOR VALUES INSIDE IT and
 # not the garbage vm_beat holds before the first tick ($FFFF and $C000 both appear in
 # the boot traces, both non-zero, both were being counted -- which is how the check

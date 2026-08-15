@@ -144,7 +144,12 @@ def main():
             #
             # The count is checked on every build now by harness_offsets_check.py, which
             # compares what the writers emit against what the readers require.
-            if len(f) != 9 or f[0] != a.tag:
+            # NINE OR ELEVEN since P3.88: walk_test.lua appends the scenery flags and the
+            # sand frame so verify_room_chars can composite the hourglass; room_test.lua
+            # still writes nine. This tool needs neither, but it must not SKIP the wider
+            # lines — a reader that silently drops every row is the dead-exclusion failure
+            # the build guard below exists to catch, and it caught exactly this.
+            if len(f) not in (9, 11) or f[0] != a.tag:
                 continue
             vx, vy, vc, px, py, pc = map(int, f[1:7])
             for x, y, cel in ((vx, vy, vc), (px, py, pc)):

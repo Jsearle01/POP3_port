@@ -30,6 +30,15 @@ local POS     = os.getenv("P_POS") or "build/walk_chars_pos.txt"
 local SHOTFMT = os.getenv("P_SHOTFMT") or "build/walk_shot_%s.bin"
 local SHOTS   = tonumber(os.getenv("P_SHOTS") or "16")
 local GAP     = tonumber(os.getenv("P_GAP") or "10")
+-- ★★ A SECOND CAPTURE WINDOW, OVER THE HOURGLASS (P3.88). The first window arms on the
+-- first cel change and covers ~280 frames of the vizier's approach; the glass does not
+-- exist until ~1,100 frames after it ends. So the suite could not have seen the hourglass
+-- however good its expected picture was — which is why P3.87's broken glass change passed
+-- both suites. Closing that needed BOTH halves: the compositor has to know the object
+-- (verify_room_chars) and a capture has to LAND on it (here).
+local SHOTSG  = tonumber(os.getenv("P_SHOTS_GLASS") or "8")
+local SCENERY = tonumber(os.getenv("P_SCENERY") or "0")
+local SCFLOW  = tonumber(os.getenv("P_SCFLOW") or "0")
 local VIZ     = tonumber(os.getenv("P_VIZ") or "0")
 local PRI     = tonumber(os.getenv("P_PRI") or "0")
 local DRAWN   = tonumber(os.getenv("P_DRAWN") or "0")
@@ -131,14 +140,23 @@ local function log_positions(tag)
     end
     local vx, vy, vf = lastxy(0)
     local px, py, pf_ = lastxy(1)
-    pf:write(string.format("%s %d %d %d %d %d %d %d %d\n", tag,
+    -- ELEVEN FIELDS SINCE P3.88, not nine: the scenery flags and the sand frame, so the
+    -- checker can composite the hourglass rather than leaving a live object out of its
+    -- expected picture. Read from the engine's own bytes at capture time, exactly as the
+    -- positions and the facing are — the checker must never decide for itself which beat
+    -- it is looking at. verify_room_chars accepts both widths, so room_test.lua (whose
+    -- two captures land ~2,000 frames before the glass exists) stays at nine.
+    pf:write(string.format("%s %d %d %d %d %d %d %d %d %d %d\n", tag,
                            vx, vy, rd8(DRAWN + 0 * 2 + shown),
-                           px, py, rd8(DRAWN + 1 * 2 + shown), vf, pf_))
+                           px, py, rd8(DRAWN + 1 * 2 + shown), vf, pf_,
+                           SCENERY ~= 0 and rd8(SCENERY) or 0,
+                           SCFLOW ~= 0 and rd8(SCFLOW) or 0))
     pf:flush()
 end
 
 local state, t0, started, loaded = "boot", nil, nil, nil
 local shot_n, next_shot, first_fn = 0, nil, nil
+local shots_max, glass_fn = SHOTS, nil   -- the budget grows when the hourglass arrives
 local occ, prev_cel, last_change, gaps, steps = {}, nil, nil, {}, 0
 local xs = {}
 local bank_bad = 0        -- captures at which the $C000 cel bank was NOT mapped
@@ -370,7 +388,27 @@ local function tick()
         prev_cel, last_change = cel, fn
     end
 
-    if fn >= next_shot and shot_n < SHOTS then
+    -- ARM THE SECOND WINDOW the first frame the scenery flags go non-zero, which is the
+    -- first frame the glass is on screen. Keyed off the engine's own vm_scenery rather
+    -- than a frame number, because a frame number would go stale the moment the pace or
+    -- any hold above it changed — and this arc has already moved every beat boundary once.
+    if SCENERY ~= 0 and glass_fn == nil and rd8(SCENERY) ~= 0 then
+        glass_fn = fn
+        shots_max = shots_max + SHOTSG
+        -- ★ START ONE GAP LATER, NOT ON THE ARMING FRAME. vm_scenery goes non-zero at the
+        -- top of the beat and scenery_frame draws the body into the BACK buffer; the
+        -- capture reads the FRONT. So on this exact frame the flag says "glass" and the
+        -- displayed buffer is still the previous one, without it — measured, as 101 bytes
+        -- of the body's own top rows reading $00 where the checker wanted $3F/$FF, with
+        -- every later capture byte-exact. That is the flip lag this file already warns
+        -- about ("the buffer captured was drawn earlier and still holds the previous
+        -- state"), and reporting it as a defect would be the checker racing the engine.
+        next_shot = fn + GAP
+        log(string.format("# hourglass up at frame %d (+%d) — %d more captures from +%d",
+                          fn, fn - first_fn, SHOTSG, GAP))
+    end
+
+    if fn >= next_shot and shot_n < shots_max then
         shot_n = shot_n + 1
         local tag = string.format("%02d", shot_n)
         -- THE BANK, SAMPLED AT THE CAPTURE FRAME AND AGAIN AFTER THE CAPTURE (P3.71).
@@ -396,7 +434,7 @@ local function tick()
         log(string.format("# capture %s at frame %d (+%d): %s",
                           tag, fn, fn - first_fn, ok and "ok" or "WRITE FAILED"))
         next_shot = fn + GAP
-    elseif shot_n >= SHOTS and (RUNTO == 0 or fn - first_fn >= RUNTO) then
+    elseif shot_n >= shots_max and (RUNTO == 0 or fn - first_fn >= RUNTO) then
         -- ★ THE CAPTURES END LONG BEFORE THE SCENE DOES (P3.78), and stopping with them
         -- would have made every check above blind to fourteen of the eighteen beats. The
         -- 28 pixel captures cover ~280 frames; the scene is ~2,500 and both staged reads
@@ -404,7 +442,7 @@ local function tick()
         -- cursor, and only the framebuffer capturing stops. RUNTO is derived by the
         -- runner from the PLAN's own play counts rather than guessed.
         finish(string.format("%d captures over %d frames, scene ran %d frames past them",
-                             shot_n, GAP * SHOTS, fn - first_fn - GAP * SHOTS))
+                             shot_n, GAP * shot_n, fn - first_fn - GAP * shot_n))
     end
 end
 

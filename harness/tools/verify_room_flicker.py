@@ -71,9 +71,12 @@ def recorded_boxes(posfile):
     boxes = list(BOXES[:6])          # the torches and the stars, unchanged
     for line in pathlib.Path(posfile).read_text().splitlines():
         f = line.split()
-        if len(f) != 9:                  # tag + x,y,cel and facing, per character
+        # NINE OR ELEVEN since P3.88 — see the note in verify_room_flame_pixels.py. The
+        # trailing scenery fields are not needed here; dropping the lines that carry them
+        # would be.
+        if len(f) not in (9, 11):        # tag + x,y,cel and facing, per character
             continue
-        vx, vy, vc, px, py, pc, vf, pfc = map(int, f[1:])
+        vx, vy, vc, px, py, pc, vf, pfc = map(int, f[1:9])
         for x, y, cel, face in ((vx, vy, vc, vf), (px, py, pc, pfc)):
             # SETUPCHAR's expression, not `x + 20` (P3.58): CharX is in two-pixel units
             # and the parity bit is the odd pixel. The half-scale form put the vizier's
