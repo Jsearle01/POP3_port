@@ -138,9 +138,24 @@ Room, both sizes: `checks=8 passed=8 failed=0`, `78 bytes byte-identical`. Walk,
 
 **25.2** N/A — ROM build.
 
-**25.3 PENDING JAY.** The hourglass and its sand are what changed; the body now goes down on state
-change rather than every frame, and the exit runs ~20% faster. Standing: the flash **PASSED**
-(2026-08-15); the hourglass-before-flash, the turn disappearance and the exit pace **open**.
+**25.3 — ★ PASSED (with one item qualified). Jay, live-disk, RGB, 2026-08-15: *"the three look
+good."*** The three offered were the glass (no flicker, tear, or hole punched where the vizier
+walks past it), the sand (still running), and her slump.
+
+**The glass and the sand are affirmed without qualification** — both were on screen throughout the
+observed run, and the glass is the object this dispatch changed: it now goes down twice per buffer
+instead of ~20 times a second, so a stale-buffer fault would have shown exactly there. Jay's eye is
+the only instrument that can judge it, because a suite cannot judge motion.
+
+**★ HER SLUMP IS RECORDED AS QUALIFIED, NOT CLEAN.** The run this report observed closed at ~75
+emulated seconds; the slump begins at **f4538 ≈ 75.6 s** (measured post-split, §3D's beat table).
+So on that run it was not reachable. Jay may have re-run it longer — that is not visible from here,
+and asking is cheaper than assuming. Until answered, the beat with the 1,676 cy margin is
+**observed-unknown**, and *"not re-reported" is not "passed"* cuts the same way when the words are
+positive: an affirmation cannot cover what was not on screen.
+
+Standing: the flash **PASSED** (2026-08-15); the hourglass-before-flash, the turn disappearance and
+the exit pace remain **open** — none of them touched this dispatch.
 
 ### 6 — Reactive deviations and route accounting
 
