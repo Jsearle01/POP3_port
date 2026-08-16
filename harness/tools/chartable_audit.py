@@ -35,6 +35,7 @@ import sys
 ROOT = pathlib.Path("C:/Projects/POP3_port")
 sys.path.insert(0, str(ROOT / "harness/tools"))
 FRAMEDEF = ROOT / "oracle/source/01 POP Source/Source/FRAMEDEF.S"
+IMAGES = ROOT / "oracle/source/01 POP Source/Images"
 
 # The same shape cel_parity_rule.ENTRY matches, but keeping Fsword.
 ENTRY = re.compile(r"^:(\d+)\s+db\s+"
@@ -44,10 +45,13 @@ ENTRY = re.compile(r"^:(\d+)\s+db\s+"
                    r"\$?([0-9a-fA-F]{2})")
 
 # FCharTable -> the file the oracle loads into that slot. Slot = file number - 1.
+# Concrete names, so the comparison below is against a path and not a pattern. The
+# INDEPENDENCE that matters here is the decode arithmetic, which this file implements from
+# CTRLSUBS.S directly; the slot->file mapping is the oracle's own (file number = slot + 1)
+# and is deliberately the same fact in both places, which is what makes disagreement
+# meaningful rather than a naming difference.
 SLOT_FILE = {0: "IMG.CHTAB1", 1: "IMG.CHTAB2", 2: "IMG.CHTAB3",
-             3: "IMG.CHTAB4.*", 4: "IMG.CHTAB5", 5: "IMG.CHTAB6.*",
-             6: "IMG.CHTAB7", 7: "(slot 7 — no file identified)"}
-BAKED_AS = 5          # what bake_scene hard-codes: IMG.CHTAB6.A
+             4: "IMG.CHTAB5", 5: "IMG.CHTAB6.A", 6: "IMG.CHTAB7"}
 
 
 def decodeim(fimage, fsword):
@@ -74,32 +78,54 @@ def section(name):
 
 
 def main():
+    """★ A CHECK, NOT A ONE-OFF DIAGNOSIS.
+
+    This began as the script that found the bug, comparing every frame against the
+    hard-coded IMG.CHTAB6.A. That question is answered, so it now asks the one that stays
+    useful: does the TABLE the bake will open agree with the table `decodeim` names, for
+    every frame, computed two independent ways?
+
+    The bug it guards is invisible to every other check in the project. A cel baked from
+    the wrong table is a well-formed file of a plausible size holding real cel data — so
+    the assembler is happy, the packer is happy, the link map is happy, and the pixel
+    checkers compare the engine's output against the same wrong artifact and agree. It
+    took an eye on a running machine, across three gates, to see it at all.
+    """
+    import cel_parity_rule as R
+
     alt = section("ALTSET2")
-    print("  ALTSET2 (chtable6 alternate set) — %d frames" % len(alt))
-    by_slot = {}
+    print("  ALTSET2 — %d frames; checking the table each one names" % len(alt))
+    by_slot, bad = {}, []
     for n, (fimg, fsw, note) in sorted(alt.items()):
         tab, idx = decodeim(fimg, fsw)
-        by_slot.setdefault(tab, []).append((n, idx, note))
+        by_slot.setdefault(tab, []).append(n)
+        # the bake's own answer, from the shared home, against this file's independent one
+        try:
+            got = R.table_path(n)
+            got_tab, got_idx = R.chartable(n)
+        except KeyError as e:
+            bad.append((n, "table_path refused: %s" % e))
+            continue
+        want = IMAGES / SLOT_FILE.get(tab, "?")
+        if got_tab != tab or got_idx != idx:
+            bad.append((n, "decodeim says table %d image %d; cel_parity_rule says %d/%d"
+                        % (tab, idx, got_tab, got_idx)))
+        elif got.name != want.name:
+            bad.append((n, "table %d should be %s; the bake would open %s"
+                        % (tab, want.name, got.name)))
+        elif not got.exists():
+            bad.append((n, "resolves to %s, which does not exist" % got.name))
 
-    print()
-    print("  frames grouped by the table the ORACLE names:")
     for tab in sorted(by_slot):
-        rows = by_slot[tab]
-        mark = "  <-- baked correctly" if tab == BAKED_AS else "  <-- ** BAKED FROM THE WRONG FILE"
-        print("    FCharTable %d = %-16s  %3d frames%s"
-              % (tab, SLOT_FILE.get(tab, "?"), len(rows), mark))
+        print("    FCharTable %d = %-16s %3d frames"
+              % (tab, SLOT_FILE.get(tab, "?"), len(by_slot[tab])))
 
-    wrong = [(n, i, c) for t, rs in by_slot.items() if t != BAKED_AS for (n, i, c) in rs]
     print()
-    if not wrong:
-        print("  VERDICT: every ALTSET2 frame names the file the bake uses.")
+    if not bad:
+        print("  ok   every ALTSET2 frame's table resolves to the file decodeim names")
         return 0
-    print("  ** %d frames name a file the bake never opens:" % len(wrong))
-    for n, idx, note in sorted(wrong):
-        print("      frame %-4d image %-4d %s" % (n, idx, note))
-    print()
-    print("  Each was converted from IMG.CHTAB6.A at the same index, so it carries")
-    print("  whatever that file holds there — real cel data, wrong cel.")
+    for n, why in bad:
+        print("  FAIL frame %-4d %s" % (n, why))
     return 1
 
 

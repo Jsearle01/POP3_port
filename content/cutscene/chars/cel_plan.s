@@ -59,11 +59,11 @@ cel_plan
                 fdb     $A64D
                 fcb     0,0             ; beat 12 Pback        plays 13  
                 fcb     5,$0E
-                fdb     $A64D
-                fcb     0,9             ; beat 13 (hold)       plays 5     glass0  flash
+                fdb     $0000
+                fcb     0,9             ; beat 13 (hold)       plays 5     pinned-only  glass0  flash
                 fcb     16,$0E
-                fdb     $A64D
-                fcb     0,3             ; beat 14 s_Magic      plays 16    glass0  flow
+                fdb     $0000
+                fcb     0,3             ; beat 14 s_Magic      plays 16    pinned-only  glass0  flow
                 fcb     17,$0F
                 fdb     $A75E
                 fcb     0,6             ; beat 15 Vexit        plays 17    glass1  flow

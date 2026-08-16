@@ -29,8 +29,8 @@ CEL_PAGE_HI     equ     $EC00           ; ending at $FE00 — the last byte the
 
 cel_page_tab
                 fcb     13,$0D             ; page 0, 7,290 B of 7,680
-                fcb     15,$0E             ; page 1, 7,197 B of 7,680
-                fcb     20,$0F             ; page 2, 3,822 B of 7,680
+                fcb     15,$0E             ; page 1, 6,449 B of 7,680
+                fcb     20,$0F             ; page 2, 5,672 B of 7,680
                 fcb     22,$0D             ; page 3, 6,506 B of 7,680
 cel_page_tab_end
 

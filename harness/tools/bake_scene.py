@@ -26,6 +26,7 @@ PHASES AND FACINGS COME FROM THE TRACE, NOT FROM THIS FILE. beat_recost walks th
 plan the way ANIMCHAR does, stepping both characters per `play N`, so what a cel needs is
 derived from where the machine actually puts it.
 """
+import itertools
 import json
 import pathlib
 import re
@@ -551,11 +552,57 @@ def main():
     lo = min(c for _w, c, _f, _p in label_of)
     hi = max(c for _w, c, _f, _p in label_of)
     table_bytes = (hi - lo + 1) * 8 * 2
-    reads_at = [bi for bi, _nm, n, vs in beats if PLAN[bi][0] == "song" and n >= 40]
-    try:
-        p = K.pack(beats, size_of, table_bytes, reads_at)
-    except K.PackError as e:
-        print("\n*** THE SCENE DOES NOT PACK ***\n  %s" % e)
+    # ── THE READ POINTS, AND WHY THIS IS A SEARCH (P3.96) ───────────────────────────
+    #
+    # `read_beats` is two properties in one argument: where the packer may put a page
+    # BOUNDARY, and where it may issue a READ. They cost differently — a boundary is free,
+    # a read is ~2.8 s of frozen torches and can only hide inside a long hold — and
+    # cel_pack does not separate them.
+    #
+    # ★★ AND ITS SEARCH IS NOT MONOTONIC IN THIS SET. Measured at P3.96: the default
+    # [1, 6, 10] fails, [1, 3, 6, 7, 10, 13] succeeds, and offering EVERY beat fails
+    # again. So "it does not pack" from one candidate set is not evidence that no schedule
+    # exists — which is exactly the conclusion P3.95 drew and got wrong, sending three
+    # expensive options to Jay when the scene packs at today's 4 pages and ONE read.
+    #
+    # So: try candidate sets in increasing order and take the first that packs. The safety
+    # property is kept as an ASSERTION on the result rather than as a restriction on the
+    # input — every read that is actually SCHEDULED must land in a hold long enough to
+    # cover it, whatever boundaries the packer used to get there.
+    songs = [bi for bi, _nm, n, vs in beats if PLAN[bi][0] == "song" and n >= 40]
+    holds = [bi for bi, _nm, n, vs in beats if PLAN[bi][0] != "song"]
+    READ_MIN_PLAYS = 40
+
+    # SMALLEST FIRST, and COMBINATIONS rather than a prefix: the working set for the
+    # corrected cels is songs + {13}, which no prefix of `holds` ever produces. A pack
+    # call costs ~5 ms, so searching singles, pairs and triples is a few seconds at worst
+    # and it is deterministic — the same tree always yields the same schedule.
+    def candidates():
+        yield songs
+        for r in (1, 2, 3):
+            for combo in itertools.combinations(holds, r):
+                yield sorted(set(songs) | set(combo))
+
+    p = None
+    for pts in candidates():
+        try:
+            q = K.pack(beats, size_of, table_bytes, pts)
+        except (K.PackError, IndexError):
+            continue
+        bad = [r["at_beat"] for r in q["reads"]
+               if next(n for bi, _nm, n, _v in beats if bi == r["at_beat"]) < READ_MIN_PLAYS]
+        if bad:
+            print("  read points %s: packs, but schedules a read at beat(s) %s, which are "
+                  "too short to hide a transfer — rejected" % (pts, bad))
+            continue
+        p = q
+        if pts != songs:
+            print("  read-point search: the default %s did not pack; %s did, with the "
+                  "read still in a long hold" % (songs, pts))
+        break
+    if p is None:
+        print("\n*** THE SCENE DOES NOT PACK ***\n  no candidate read-point set produces "
+              "a schedule whose reads all land in holds of >= %d plays" % READ_MIN_PLAYS)
         return 1
     print()
     print(K.report(p, size_of))

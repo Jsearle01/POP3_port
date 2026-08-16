@@ -218,6 +218,17 @@ REM to fire: seeding walk_test.lua's CH_CEL back to its pre-16-bit value exits 1
 python harness/tools/harness_offsets_check.py
 if errorlevel 1 goto :error
 
+REM --- a cel number names a TABLE and an image, and the bake must use both (P3.95) ---
+REM decodeim [CTRLSUBS.S:1017-1037] returns FCharTable AND FCharImage. bake_scene computed
+REM the image and hard-coded the table as CHTAB6.A, so eight vcast-* frames were baked from
+REM 13-row stubs where CHTAB7 holds the real 48-to-50-row cels -- the vizier drawn as his
+REM feet and nothing above them, for a frame at his raise and at his turn. NOTHING ELSE CAN
+REM SEE THIS: a wrong-table bake is a well-formed file of a plausible size holding real cel
+REM data, so the assembler, the packer, the link map and the pixel checkers all agree with
+REM it. Three live gates and Jay's eye is what found it.
+python harness/tools/chartable_audit.py
+if errorlevel 1 goto :error
+
 REM --- the flash's restore palette must match the HAL's live table (P3.85c) --------
 REM char_draw.s duplicates gfx_pal4 because the flame bundle links separately from the
 REM room that holds the HAL and gfx_pal4 is not exported. The duplicate had $1B for blue

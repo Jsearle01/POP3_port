@@ -58,6 +58,42 @@
     1
    ],
    "v54_m_p1"
+  ],
+  [
+   [
+    "viz",
+    75,
+    0,
+    3
+   ],
+   "v75_p3"
+  ],
+  [
+   [
+    "viz",
+    76,
+    0,
+    3
+   ],
+   "v76_p3"
+  ],
+  [
+   [
+    "viz",
+    83,
+    0,
+    3
+   ],
+   "v83_p3"
+  ],
+  [
+   [
+    "viz",
+    84,
+    0,
+    3
+   ],
+   "v84_p3"
   ]
  ],
  "pages": [
@@ -221,7 +257,7 @@
    "index": 1,
    "block": 14,
    "sig": 42573,
-   "bytes": 7197,
+   "bytes": 6449,
    "track": 15,
    "tracks": 2,
    "cap": 7680,
@@ -347,42 +383,6 @@
     [
      [
       "viz",
-      75,
-      0,
-      3
-     ],
-     "v75_p3"
-    ],
-    [
-     [
-      "viz",
-      76,
-      0,
-      3
-     ],
-     "v76_p3"
-    ],
-    [
-     [
-      "viz",
-      83,
-      0,
-      3
-     ],
-     "v83_p3"
-    ],
-    [
-     [
-      "viz",
-      84,
-      0,
-      3
-     ],
-     "v84_p3"
-    ],
-    [
-     [
-      "viz",
       85,
       0,
       0
@@ -395,7 +395,7 @@
    "index": 2,
    "block": 15,
    "sig": 42846,
-   "bytes": 3822,
+   "bytes": 5672,
    "track": 20,
    "tracks": 2,
    "cap": 7680,
@@ -636,7 +636,7 @@
  "res_tracks": 2,
  "res_cap": 8192,
  "track_bytes": 4608,
- "res_bytes": 3862,
+ "res_bytes": 5871,
  "reads": [
   {
    "at_beat": 10,
@@ -780,9 +780,9 @@
    "name": "(hold)",
    "plays": 5,
    "block": 14,
-   "sig": 42573,
+   "sig": 0,
    "page": 1,
-   "resident_only": false,
+   "resident_only": true,
    "read": null
   },
   {
@@ -790,9 +790,9 @@
    "name": "s_Magic",
    "plays": 16,
    "block": 14,
-   "sig": 42573,
+   "sig": 0,
    "page": 1,
-   "resident_only": false,
+   "resident_only": true,
    "read": null
   },
   {
