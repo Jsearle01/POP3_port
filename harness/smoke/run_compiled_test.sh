@@ -70,7 +70,12 @@ export P_OUT="$LOG" P_PASS="$PASS" P_FAIL="$FAIL"
 # `mame -listxml coco3`). CLAUDE.md §4 makes RGB the project's gate, so it must be
 # set explicitly or the visual gate silently runs in the wrong mode — which is how
 # the harness palette read yellow instead of orange until Jay spotted it.
-"$MAME" coco3 -rompath "$MAME_ROMS" -cfg_directory dist/mame-cfg/rgb \
+# ★ 128 KB, THE TARGET (CLAUDE.md §2K), THROUGH THE ONE HOME FOR THAT FACT — see the same
+# note in run_cel_test.sh. These two were the pair P3.98's sweep left carrying no -ramsize
+# at all, so every "green" they have ever reported was on the non-target machine.
+. "$(dirname "$0")/ramsize.sh"
+
+"$MAME" coco3 -rompath "$MAME_ROMS" $RAMOPT -cfg_directory dist/mame-cfg/rgb \
     -ext fdc -window -nomaximize \
     -nothrottle -sound none -seconds_to_run 30 \
     -autoboot_script harness/smoke/compiled_test.lua >/dev/null 2>&1
