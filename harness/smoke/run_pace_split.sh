@@ -21,8 +21,8 @@ DSK="build/run_pace_split.dmk"
 cp -f "$SRC_DSK" "$DSK" || exit 1
 mkdir -p build/tmp
 
-RAMOPT=""
-[ -n "${MAME_RAM:-}" ] && RAMOPT="-ramsize $MAME_RAM"
+# ONE HOME for which machine this runs on: 128 KB, the target (CLAUDE.md 2K).
+. "$(dirname "$0")/ramsize.sh"
 
 LUA="${PACE_LUA:-harness/tools/port_pace_split.lua}"
 

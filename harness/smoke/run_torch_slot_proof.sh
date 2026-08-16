@@ -42,8 +42,8 @@ export P_OUT="$LOG"
 echo "[run_torch_slot_proof] fl_slot $P_FLSLOT  cur_back $P_CURBACK  peel_base $P_PEELBASE  PEEL_BYTES $P_PEELSZ"
 [ "$P_PEELSZ" -gt 0 ] || { echo "[run_torch_slot_proof] PEEL_BYTES un-biased to $P_PEELSZ — refusing"; exit 1; }
 
-RAMOPT=""
-[ -n "${MAME_RAM:-}" ] && RAMOPT="-ramsize $MAME_RAM"
+# ONE HOME for which machine this runs on: 128 KB, the target (CLAUDE.md 2K).
+. "$(dirname "$0")/ramsize.sh"
 
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \

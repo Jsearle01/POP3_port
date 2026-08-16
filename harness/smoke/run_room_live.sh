@@ -39,8 +39,8 @@ BIN="build/cutscene_room.bin"
 [ -f "$SRC_DSK" ] || { echo "[run_room_live] missing $SRC_DSK — run build.bat first"; exit 1; }
 cp -f "$SRC_DSK" "$DSK" || exit 1
 
-RAMOPT=""
-[ -n "${MAME_RAM:-}" ] && RAMOPT="-ramsize $MAME_RAM"
+# ONE HOME for which machine this runs on: 128 KB, the target (CLAUDE.md 2K).
+. "$(dirname "$0")/ramsize.sh"
 
 echo "[run_room_live] POP CoCo3 — the princess's room, 4-colour, normal speed, $MONITOR${MAME_RAM:+, $MAME_RAM}"
 echo "[run_room_live] boot, LOADM\"ROOM\", EXEC — then THREE track reads (room, flame bundle,"

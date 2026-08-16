@@ -37,8 +37,8 @@ DSK="build/run_introseq_live.dmk"
 [ -f "$SRC_DSK" ] || { echo "[run_introseq_live] missing $SRC_DSK — run build.bat first"; exit 1; }
 cp -f "$SRC_DSK" "$DSK" || exit 1
 
-RAMOPT=""
-[ -n "${MAME_RAM:-}" ] && RAMOPT="-ramsize $MAME_RAM"
+# ONE HOME for which machine this runs on: 128 KB, the target (CLAUDE.md 2K).
+. "$(dirname "$0")/ramsize.sh"
 
 echo "[run_introseq_live] POP CoCo3 — the static intro, normal speed, $MONITOR${MAME_RAM:+, $MAME_RAM}"
 echo "[run_introseq_live] boot, LOADM\"INTROSEQ\", EXEC — then six beats, every asset off disk:"

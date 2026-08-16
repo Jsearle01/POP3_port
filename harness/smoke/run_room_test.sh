@@ -80,8 +80,8 @@ export P_OUT="$LOG"
 export P_DUMP="$GOT"
 export P_DUMP2="build/room_front2.bin"
 
-RAMOPT=""
-[ -n "${MAME_RAM:-}" ] && RAMOPT="-ramsize $MAME_RAM"
+# ONE HOME for which machine this runs on: 128 KB, the target (CLAUDE.md 2K).
+. "$(dirname "$0")/ramsize.sh"
 
 echo "[run_room_test] POP CoCo3 — the princess's room, 4-colour, LOADM off disk"
 echo "[run_room_test] room_entry $P_ENGINE  cur_back $P_CURBACK  blocks $P_BLK_A/$P_BLK_B"

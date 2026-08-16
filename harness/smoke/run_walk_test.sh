@@ -122,8 +122,8 @@ echo "[run_walk_test] ${P_NBEATS} beats, ${P_NREADS} staged reads, scene runs ~$
 # -seconds_to_run has to cover boot + LOADM + the startup reads + all of that.
 SECS=$(( (P_RUNTO + 3600) / 60 + 30 ))
 
-RAMOPT=""
-[ -n "${MAME_RAM:-}" ] && RAMOPT="-ramsize $MAME_RAM"
+# ONE HOME for which machine this runs on: 128 KB, the target (CLAUDE.md 2K).
+. "$(dirname "$0")/ramsize.sh"
 
 echo "[run_walk_test] viz_slot $P_VIZ  ch_drawn $P_DRAWN  ch_last $P_LAST"
 echo "[run_walk_test] $P_SHOTS captures every $P_GAP frames, live-disk"

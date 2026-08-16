@@ -61,8 +61,8 @@ export P_FAIL="$FAIL"
 # so both sizes work (P3.10): the GIME masks a block number to the RAM actually
 # installed, so on 128 KB every number aliases mod 16, and buffer B at $18 used
 # to land straight on top of the program. Default is MAME 512K.
-RAMOPT=""
-[ -n "${MAME_RAM:-}" ] && RAMOPT="-ramsize $MAME_RAM"
+# ONE HOME for which machine this runs on: 128 KB, the target (CLAUDE.md 2K).
+. "$(dirname "$0")/ramsize.sh"
 
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
