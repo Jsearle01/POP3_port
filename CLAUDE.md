@@ -289,6 +289,27 @@ Both failures produce a file that looks plausible and is wrong.
 
 ---
 
+## 2K. 128 KB is the verification target
+
+**Verify on stock 128 KB first. It is the target machine and it is strictly the harder case:** the GIME
+masks a block number to the RAM actually installed, so the framebuffers alias and the bank occupies the
+top of real RAM. **512 KB can pass while a masking assumption is wrong; the reverse does not happen.**
+
+**512 KB is confirmation, not the primary run, and most dispatches do not need it.** Run it when a change
+touches the MMU, the bank, the framebuffers or the loader — **because a DIVERGENCE between the two is
+itself informative: it means something depends on aliasing.** Report 128 KB first in every case.
+
+**The mechanism, from the HAL rather than from memory** [`src/hal/coco3-dsk/gfx.s:405-417`]: *"The GIME
+masks a block number to the RAM actually installed, so on a 128 KB machine only `$00-$0F` exist and every
+number aliases mod 16."* The framebuffers are `GFX_DB_A_BLOCK $10` and `GFX_DB_B_BLOCK $14`, which alias
+to physical `$00000` and `$08000`; that leaves `$0C-$0F` — 32 KB, exactly one screen — for the cel bank.
+
+**★ AND THERE IS A PRECEDENT, WHICH IS WHY THIS IS A RULE AND NOT A PREFERENCE.** The same note records
+P3.10: buffer B at `$18` was *"fine on 512 KB and fatal on 128 KB: the port loaded, started, and died at
+the first framebuffer access."* A 512-KB-first order would have called that build green.
+
+---
+
 ## 3. PNG Handling Rules (absolute)
 
 PNG files are diagnostic artifacts for human review:
