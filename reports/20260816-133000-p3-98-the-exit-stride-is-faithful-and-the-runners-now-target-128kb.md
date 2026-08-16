@@ -1,3 +1,22 @@
+> ## ★★★ RETRACTION — P3.99 (2026-08-16). THIS REPORT'S HEADLINE CLAIM IS WITHDRAWN.
+>
+> **§3A's conclusion — that the exit stride's lurch is the oracle's own and must not be "fixed" — is
+> wrong.** Jay watched the oracle at real speed and reported: *"the vizier exit skip does not exist
+> visually in the oracle."* The port skips and the oracle does not, so **the difference is ours.**
+>
+> The reasoning here rested on `MLayGen`'s `SBC WIDTH` applying to mirrored draws in general. P3.99
+> traced that on the running machine and it is true — and it says **nothing about the vizier's six
+> walk cels**, which is the only thing the question was about. The trace's own commit message said
+> so and the conclusion was allowed to stand on it anyway.
+>
+> **Also withdrawn: the `+5,+3,+5,+1,+9,−3` figure this report and P3.97 rely on.** It came from
+> `cel_parity_rule.draw_x` — an offline formula that is itself a transcription of the oracle's — not
+> from the engine. It has never been measured. Do not quote it.
+>
+> **What survives:** everything in §3B (the 128 KB runner default) and §5's evidence, which are
+> independent of the stride. See `20260816-130000-p3-99-…` for the full retraction and what would
+> actually settle the stride.
+
 ## Form B Report — P3.98 — the exit stride is the oracle's own; the runners now default to 128 KB
 
 **Class:** build (tooling) + recon. wip. Prod untouched; **no `src/` change**.
