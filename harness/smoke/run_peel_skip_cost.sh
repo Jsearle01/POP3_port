@@ -39,8 +39,14 @@ export P_OUT="$LOG"
 
 echo "[run_peel_skip_cost] room_loop $P_LOOP  hal_vbl_spin $P_SPIN  ch_anymove $P_ANYMOVE"
 
+# 128 KB, the target (CLAUDE.md §2K), through the ONE HOME for that fact — this runner
+# carried no -ramsize at all until P3.101's sweep, so every reading it has ever produced
+# was taken on the 512 KB machine. See harness/smoke/ramsize.sh.
+. "$(dirname "$0")/ramsize.sh"
+
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
+    $RAMOPT \
     -cfg_directory dist/mame-cfg/rgb \
     -ext fdc \
     -flop1 "$DSK" \

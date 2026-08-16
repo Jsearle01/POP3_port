@@ -236,6 +236,26 @@ Stage-1 Fuji cel-data fix.
   fetches bypass them. So the single most important cross-target difference: **on coco3 you
   can read-tap an execution address directly; on apple2e you can't** (use a bp / write-tap /
   watch-the-result there). *Candidate:* `6809-read-taps-work-6502-read-taps-dont`.
+- **`screen.refresh_attoseconds` is a PROPERTY, not a method** (P3.101, cross-cutting — the
+  apple2e side is identical). Written as `scr:refresh_attoseconds()` the script dies at load
+  with `attempt to call a number value (method 'refresh_attoseconds')` and MAME reports only
+  `Fatal error: Error running autoboot script … runtime error`, so the tool looks broken rather
+  than mistyped. Use `local HZ = 1.0e18 / scr.refresh_attoseconds`. **Take the rate from the
+  machine, never a literal 60:** coco3 is **59.922748 Hz** and apple2e is **60.000000 Hz**, so
+  a frame is 16.688 ms on one and 16.667 ms on the other — comparing two machines' frame
+  COUNTS without either machine's frame RATE is the same class of error as comparing a 7 px
+  column against a 4 px one.
+- **A write tap on shared scratch reads whoever wrote it last, not the object you care about**
+  (P3.101). `bc_lead`/`bc_keep` are one clip window reused by every character's every pass, so
+  a tap on them attributed to "the vizier's draw" actually returns whichever draw ran most
+  recently — it came back pinned at 6 while the column ran 43→128 and could not settle the
+  question it was installed for. Where the engine has one scratch and many users, the tap has
+  to be gated on the user (`ch_idx` **and** `ch_cp`), not merely sampled near it.
+- **Sampling order inside a routine matters as much as the address** (P3.101, third instance in
+  three dispatches). `co_setup` stores `ch_dest` and computes the clip window *afterwards*, so
+  a tap on the `ch_dest` write reads the PREVIOUS draw's window. Same family as P3.99's
+  `ch_dest`-at-the-`cad_idx`-tick (stale) and P3.100's tap on `ch_dest` alone (high byte only).
+  **Check where in the routine the value you want is written relative to the one you tapped.**
 - **Tap-GC gotcha (cross-cutting, applies here too):** `install_read_tap`/`install_write_tap`
   and `emu.add_machine_frame_notifier` return an object you **must keep referenced** (`_G._tap
   = …`, `_G._n = …`) or it is garbage-collected and **silently stops firing** (empty log =

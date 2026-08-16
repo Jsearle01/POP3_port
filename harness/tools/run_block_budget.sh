@@ -10,8 +10,14 @@
 # loading so the room never ran at all. room_test.lua's launch is the one that works, and
 # the tap needs nothing from a launcher except that the port be running.
 #
-# Runs at -ramsize 128K deliberately: the whole question is what the GIME aliases away on
-# a stock machine, and at 512 KB nothing aliases and the measurement is vacuous.
+# Runs at 128K deliberately: the whole question is what the GIME aliases away on a stock
+# machine, and at 512 KB nothing aliases and the measurement is vacuous.
+#
+# ★ THE SIZE CAME OUT OF THE COMMAND LINE AT P3.101 AND NOW COMES FROM ramsize.sh. It was
+# already the RIGHT value — `-ramsize 128K`, hardcoded — which is the subtler half of the
+# §2K sweep: a correct second home cannot be found by looking for wrong answers, and it
+# stops following the shared default the moment the target moves. The sweep's check is
+# "does this file source ramsize.sh", not "does this file say 128K".
 set -u
 
 cd "$(dirname "$0")/../.." || exit 1
@@ -67,8 +73,9 @@ export P_BUDGET_OUT="$OUT"
 export P_BANK_OUT="build/bank_proof.log"
 rm -f build/bank_proof.log
 
-echo "[block-budget] coco3 at 128K, port launched by room_test.lua's own sequence"
-"$MAME" coco3 -rompath "$MAME_ROMS" -ramsize 128K \
+. "$(dirname "$0")/../smoke/ramsize.sh"
+echo "[block-budget] coco3 at $MAME_RAM, port launched by room_test.lua's own sequence"
+"$MAME" coco3 -rompath "$MAME_ROMS" $RAMOPT \
     -cfg_directory dist/mame-cfg/rgb -ext fdc -flop1 "$DSK" \
     -window -nomaximize -nothrottle -sound none -seconds_to_run 45 \
     -autoboot_script "$SCRATCH/room_mmu.lua" >/dev/null 2>&1

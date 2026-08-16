@@ -76,7 +76,11 @@ local OUT   = os.getenv("P_OUT") or "build/tmp/oracle_exit_column.log"
 -- exit is deferred), so the report block ran ~200 times and appended 200 copies of itself
 -- to the log. A `reported` guard now closes that; the shorter window is why it showed.
 local AFTER = tonumber(os.getenv("P_AFTER") or "600")
-local SEED  = os.getenv("P_SEED") == "1"
+-- P_SEED=1      — the P3.100 COLUMN control (WIDTH substituted, anchor must move)
+-- P_SEED=speed  — the P3.101 TIMING control (SPEED substituted, step interval must move)
+local SEEDMODE   = os.getenv("P_SEED") or "0"
+local SEED       = (SEEDMODE == "1" or SEEDMODE == "width")
+local SEED_SPEED = (SEEDMODE == "speed") and tonumber(os.getenv("P_SEED_SPEED") or "20") or nil
 local RAWN  = tonumber(os.getenv("P_RAWN") or "30")
 
 local cpu = manager.machine.devices[":maincpu"]
@@ -92,20 +96,51 @@ local SPEED = 0x030C                                  -- MASTER.LST:530
 local PSAND = 0xE14A                                  -- GAMEBG.LST:311
 local MLAYGEN = 0xF35E                                -- HIRES.LST:2083
 local SEED_W = 40                                     -- the forced width, and the anchor step
+-- the machine's own refresh, so both sides of the comparison land in milliseconds.
+-- ⚠ a PROPERTY, not a method — `scr:refresh_attoseconds()` dies at runtime.
+local HZ = 1.0e18 / scr.refresh_attoseconds
 
 -- the vizier's six walk cels, in the ORACLE's numbering, from content/cutscene/cel_table.s
 local IMG_LO, IMG_HI = 74, 79
 local WANT_W = { [74] = 3, [75] = 4, [76] = 5, [77] = 5, [78] = 4, [79] = 4 }
 
-local seenA, seenB, armed_at = false, false, nil
+-- ★★★ P3.101 — TWO MARKERS NOW, BECAUSE THE ENTRY IS THE CONTROL AND IT HAPPENS FIRST.
+--
+-- PlayCut0 sets `lda #7 / sta SPEED` TWICE [SUBS.S:683 and :752], and the two are the two
+-- halves of this dispatch:
+--
+--     the FIRST  — three lines before `lda #Vapproach`, so it opens the ENTRY walk
+--     the SECOND — the line before `lda #Vexit`, so it opens the EXIT walk
+--
+-- and between them sits `lda #12 / sta SPEED` for the hourglass beat. ★ SO THE ORACLE
+-- RUNS THE ENTRY AND THE EXIT AT THE SAME NOMINAL SPEED, 7, AND ANY DIFFERENCE BETWEEN
+-- THEIR ACHIEVED RATES IS THE ORACLE OVERRUNNING ITS OWN FLOOR — `lda SPEED / jsr pause`
+-- is a MINIMUM [SUBS.S:876-881], not a target. That is measurable and it has never been
+-- measured; P3.99 armed on the second marker only and could not see the entry at all.
+--
+-- P3.99's ordered guard (SPEED 12 → psandcount 0 → SPEED 7) still identifies the SECOND
+-- one, and it is still needed: SPEED 7 is written more than once, and the first cut of
+-- that tool armed at f3597 — which is exactly the marker this dispatch wants for the
+-- entry, and was a bug when the exit was the question.
+local seenA, seenB, armed_at, vexit_at = false, false, nil, nil
+local speed_hist, cur_speed = {}, nil
 local lays, cur = {}, nil
 local off_writes = {}
 local seeded, seed_err, mlg_ok, mlg_at = false, nil, false, nil
 local reported = false
 
 _G._tspeed = mem:install_write_tap(SPEED, SPEED, "sp", function(off, data, mask)
+    local fn = scr:frame_number()
+    if SEED_SPEED and armed_at ~= nil then data = SEED_SPEED end
+    if cur_speed ~= data then
+        speed_hist[#speed_hist + 1] = { f = fn, v = data }
+        cur_speed = data
+    end
+    -- the FIRST SPEED 7 opens the entry walk and starts the recording window
+    if data == 7 and armed_at == nil then armed_at = fn end
     if data == 12 then seenA = true end
-    if data == 7 and seenA and seenB and armed_at == nil then armed_at = scr:frame_number() end
+    -- the ordered guard still names the SECOND one: the line before `lda #Vexit`
+    if data == 7 and seenA and seenB and vexit_at == nil then vexit_at = fn end
     return data
 end)
 _G._tsand = mem:install_write_tap(PSAND, PSAND, "ps", function(off, data, mask)
@@ -113,12 +148,23 @@ _G._tsand = mem:install_write_tap(PSAND, PSAND, "ps", function(off, data, mask)
     return data
 end)
 
-local function live() return armed_at ~= nil and scr:frame_number() <= armed_at + AFTER end
+local function live()
+    if armed_at == nil then return false end
+    if vexit_at == nil then return true end          -- the entry half runs until Vexit
+    return scr:frame_number() <= vexit_at + AFTER
+end
 
 -- START OF A LAY — PREPREP's STA XSAVE, the only writer of $F4
 _G._txs = mem:install_write_tap(XSAVE, XSAVE, "xsave", function(off, data, mask)
     if not live() then return data end
-    if cur then lays[#lays + 1] = cur end
+    -- ★ KEPT ONLY IF IT IS ONE OF THE SIX. The window now spans the whole cutscene rather
+    -- than 600 frames after Vexit, and every tile and every torch lays too — storing all
+    -- of them was 27,521 records for a question about six images.
+    if cur and cur.img and cur.img >= IMG_LO and cur.img <= IMG_HI then
+        cur.sp = cur_speed
+        cur.vexit = (vexit_at ~= nil and cur.f >= vexit_at)
+        lays[#lays + 1] = cur
+    end
     cur = { f = scr:frame_number(), xin = data,
             img = mem:read_u8(IMSAVE), off = mem:read_u8(OFFSET), xco = {} }
     return data
@@ -201,12 +247,28 @@ _G._n = emu.add_machine_frame_notifier(function()
         log("#   which wraps to $E0..$FF — a column no legitimate XCO (0..39) can take.")
         return
     end
-    if fn <= armed_at + (SEED and 700 or AFTER) then return end
-    if cur then lays[#lays + 1] = cur; cur = nil end
+    -- ★ THE WINDOW NOW CLOSES ON THE VEXIT MARKER, NOT ON THE ARM. Arming moved to the
+    -- FIRST SPEED 7 (the entry), so `armed_at + N` would have ended the run in the middle
+    -- of the hourglass beat and reported "no exit lays" — the same shape as P3.100's
+    -- first port run, which stopped at frame 4539 and caught five exit steps.
+    if vexit_at == nil then return end
+    if fn <= vexit_at + (SEED and 700 or AFTER) then return end
+    if cur and cur.img and cur.img >= IMG_LO and cur.img <= IMG_HI then
+        cur.sp = cur_speed; cur.vexit = (vexit_at ~= nil and cur.f >= vexit_at)
+        lays[#lays + 1] = cur
+    end
+    cur = nil
     reported = true
 
-    log(string.format("# armed at frame %d (SPEED -> 7, the line before `lda #Vexit`)", armed_at))
-    log(string.format("# %d lays recorded", #lays))
+    log(string.format("# armed at frame %s (the FIRST SPEED 7, three lines before `lda #Vapproach`)",
+                      tostring(armed_at)))
+    log(string.format("# Vexit at frame %s (the SECOND SPEED 7, the line before `lda #Vexit`)",
+                      tostring(vexit_at)))
+    log(string.format("# %d lays of images %d..%d recorded", #lays, IMG_LO, IMG_HI))
+    log(string.format("# screen refresh %.6f Hz, one frame = %.3f ms", HZ, 1000.0 / HZ))
+    local sh = {}
+    for _, s in ipairs(speed_hist) do sh[#sh + 1] = string.format("f%d:SPEED=%d", s.f, s.v) end
+    log("# SPEED, every change, from the machine: " .. table.concat(sh, "  "))
 
     if SEED then
         -- ★ THE CONTROL IS SCOPED TO THE POPULATION THE MEASUREMENT USES. Other objects'
@@ -316,6 +378,81 @@ _G._n = emu.add_machine_frame_notifier(function()
             end
         end
         if n == 0 then log("      (none)") end
+    end
+
+    -- ================= P3.101 — WHEN, not where =====================================
+    --
+    -- ★ A STEP IS THE FIRST LAY OF A NEW IMAGE. The oracle lays each cel more than once
+    -- per step (it draws to both hi-res pages), so counting lays as steps halves every
+    -- interval — the same "wrong width" shape as the port's two-buffer draws.
+    log("")
+    log(string.rep("=", 78))
+    log("# P3.101 — TIMING. The oracle's `lda SPEED / jsr pause` is a MINIMUM, not a target")
+    log("# [SUBS.S:876-881], so the achieved rate is the floor plus whatever the frame cost.")
+    log("# ENTRY and EXIT are both at SPEED 7 by PlayCut0's own writes, listed above — so a")
+    log("# difference between their achieved rates is the ORACLE overrunning, not a policy.")
+
+    for _, half in ipairs({ "ENTRY", "EXIT" }) do
+        log("")
+        log("## " .. half .. " timing — the oracle")
+        local stepf, stepc, prevkey = {}, {}, nil
+        for _, L in ipairs(lays) do
+            local isexit = L.vexit and true or false
+            if isexit == (half == "EXIT") and L.w and L.w > 0 then
+                -- key on (image, frame-run): a new step is a change of image
+                if L.img ~= prevkey then stepf[#stepf + 1] = L.f; stepc[#stepc + 1] = L.img end
+                prevkey = L.img
+            end
+        end
+        if #stepf < 3 then
+            log("      (too few steps to time)")
+        else
+            local gaps, per, hist, gapped = {}, {}, {}, 0
+            for i = 2, #stepf do
+                local d = stepf[i] - stepf[i - 1]
+                if d > 0 and d <= 20 then
+                    gaps[#gaps + 1] = d; hist[d] = (hist[d] or 0) + 1
+                    local c = stepc[i - 1]
+                    per[c] = per[c] or { n = 0, s = 0 }
+                    per[c].n = per[c].n + 1; per[c].s = per[c].s + d
+                else
+                    gapped = gapped + 1
+                end
+            end
+            local sum = 0
+            for _, d in ipairs(gaps) do sum = sum + d end
+            local mean = #gaps > 0 and sum / #gaps or 0
+            log(string.format("      %d steps, %d consecutive intervals (%d burst gaps dropped)",
+                              #stepf, #gaps, gapped))
+            log(string.format("      MEAN %.2f f/cel = %.1f ms/cel", mean, mean * 1000.0 / HZ))
+            local hk = {}
+            for k in pairs(hist) do hk[#hk + 1] = k end
+            table.sort(hk)
+            local hs = {}
+            for _, k in ipairs(hk) do hs[#hs + 1] = string.format("%df x%d", k, hist[k]) end
+            log("      interval histogram: " .. table.concat(hs, ", ") ..
+                (#hk == 1 and "   (perfectly regular)" or "   ★ NOT REGULAR"))
+            local ps = {}
+            for c = IMG_LO, IMG_HI do
+                if per[c] then ps[#ps + 1] = string.format("cel %d %.2f", c - 26, per[c].s / per[c].n) end
+            end
+            log("      per-cel hold: " .. table.concat(ps, "  "))
+            local seq = {}
+            for i = 1, math.min(#gaps, 42) do seq[#seq + 1] = tostring(gaps[i]) end
+            log("      first intervals, in order: " .. table.concat(seq, ","))
+        end
+    end
+
+    if SEED_SPEED then
+        log("")
+        log("# SEEDED TIMING CONTROL — does the measured interval move when SPEED does?")
+        local held = mem:read_u8(SPEED)
+        log(string.format("# SPEED substituted to %d on every write once armed; SPEED reads back %d",
+                          SEED_SPEED, held))
+        if held ~= SEED_SPEED then
+            log("# SEED INEFFECTIVE: SPEED does not hold the substituted value. A verdict on the")
+            log("#   SEED, not on the tap — do not read it as either (P3.100).")
+        end
     end
 
     out:close()

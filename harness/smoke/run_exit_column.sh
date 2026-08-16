@@ -45,7 +45,8 @@ import json
 m = json.load(open('$PACK'))
 steps = sum(s['plays'] for s in m['schedule'])
 print(steps * 7 + len(m['reads']) * 400 + 2600)")}"
-SECS=$(( (P_TO + 3600) / 60 + 30 ))
+secs_for() { echo $(( ($1 + 3600) / 60 + 30 )); }
+SECS=$(secs_for $P_TO)
 echo "[exit_column] scene runs to ~frame $P_TO (${SECS}s emulated)"
 
 . "$(dirname "$0")/ramsize.sh"
@@ -60,7 +61,7 @@ run() {   # $1 = tag, rest = extra env already exported
         -cfg_directory dist/mame-cfg/rgb \
         -ext fdc -flop1 "$DSK" \
         -window -nomaximize -nothrottle -sound none \
-        -seconds_to_run $SECS \
+        -seconds_to_run $(secs_for $P_TO) \
         -autoboot_script harness/tools/port_exit_column.lua \
         >/dev/null 2>&1
     echo "[exit_column] --- $1 : $P_OUT ---"
@@ -70,7 +71,20 @@ run() {   # $1 = tag, rest = extra env already exported
 rc=0
 P_SEED=1 P_SEED_AFTER="${P_SEED_AFTER:-40}" run seeded || rc=1
 if ! grep -q "^# CONTROL PASSED" build/tmp/port_exit_column_seeded.log 2>/dev/null; then
-    echo "[exit_column] SEEDED CONTROL DID NOT PASS — the tap is not an instrument."
+    echo "[exit_column] SEEDED COLUMN CONTROL DID NOT PASS — the tap is not an instrument."
+    rc=1
+fi
+
+# ★ P3.101 — A SECOND CONTROL, FOR THE SECOND QUESTION. The column seed proves the tap
+# reads the right VALUE; it says nothing about whether the FRAME NUMBERS attached to those
+# values mean anything, and this dispatch is entirely about the frame numbers. The timing
+# seed slows cad_tab and requires the measured step interval to move with it.
+# The seeded scene runs at half rate, so it needs a longer window to reach the same
+# number of steps — a control that runs out of scene reports "too few steps either side"
+# and that is a control that could not have passed OR failed.
+P_SEED=time P_TO=$((P_TO + 1200)) run seeded_time || rc=1
+if ! grep -q "^# CONTROL PASSED" build/tmp/port_exit_column_seeded_time.log 2>/dev/null; then
+    echo "[exit_column] SEEDED TIMING CONTROL DID NOT PASS — the timing is not measured."
     rc=1
 fi
 

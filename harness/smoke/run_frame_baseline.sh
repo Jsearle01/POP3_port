@@ -76,8 +76,14 @@ for MODE in ${P_MODES:-full nopeel nochars noflicker neither nodraw nosave noera
     export P_OUT="build/frame_baseline_$MODE.log"
     rm -f "$P_OUT"
     echo "[run_frame_baseline] --- mode $MODE ---"
+# 128 KB, the target (CLAUDE.md §2K), through the ONE HOME for that fact — this runner
+# carried no -ramsize at all until P3.101's sweep, so every reading it has ever produced
+# was taken on the 512 KB machine. See harness/smoke/ramsize.sh.
+. "$(dirname "$0")/ramsize.sh"
+
     "$MAME" coco3 \
         -rompath "$MAME_ROMS" \
+        $RAMOPT \
         -cfg_directory dist/mame-cfg/rgb \
         -ext fdc \
         -flop1 "$DSK" \
