@@ -152,8 +152,13 @@ three gates, shipped at P3.96 and never affirmed); **the five strobes and the fl
 glass/sand split**. And the stride finding, with the choice put to him explicitly: it is faithful,
 so smoothing it would be a deliberate divergence and **his call, not mine**.
 
-Standing: flash, glass, sand and slump **PASSED**; **the feet fix unaffirmed**; the exit stride
-**faithful, open only as a preference**.
+**★ RESULT — Jay, live-disk, RGB, 128 KB, 2026-08-16: *"the feet fix looks good."*** That closes the
+defect he reported across **three** gates (P3.87 *"all of him but his feet"*, P3.94 *"except for his
+feet … at the end of the raise or very beginning of his turn"*), shipped at P3.96 and unaffirmed
+until now. **It is also the first gate result ever recorded on the target machine.**
+
+Standing: flash, glass, sand, slump **and the feet** all **PASSED**; the exit stride is **faithful**
+(P3.99 traced it on the oracle) and open only as a preference.
 
 ### 6 — Reactive deviations and route accounting
 
