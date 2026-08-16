@@ -64,12 +64,36 @@ _G._ts = mem:install_write_tap(F.cad_idx, F.cad_idx, "s", function(o, d)
         -- and the sequence advances anyway — so the two diverge exactly where a frame
         -- goes missing. ch_drawn is written at DRAW time and indexed by (character, slot),
         -- which is why walk_test.lua reads it rather than the record.
+        -- ★ ch_dest IS THE ENGINE'S OWN ANSWER, and P3.97's +9/-3 was NOT. That figure came
+        -- from cel_parity_rule.draw_x offline — my arithmetic, not the machine's. Jay has
+        -- now seen the oracle and reports no skip there, so the difference is real and
+        -- ours; grounding the port side on ch_dest is the first thing that should have
+        -- been done, because a formula agreeing with itself proves nothing.
         rows[#rows + 1] = { f = fn, b = beat,
+                            dest = mem:read_u8(F.ch_dest) * 256 + mem:read_u8(F.ch_dest + 1),
+                            awid = mem:read_u8(F.ch_awid),
                             cel = mem:read_u8(F.viz_slot + CH_CEL),
                             d0 = F.ch_drawn and mem:read_u8(F.ch_drawn) or -1,
                             d1 = F.ch_drawn and mem:read_u8(F.ch_drawn + 1) or -1,
                             x = x,
                             face = mem:read_u8(F.viz_slot + CH_FACE) }
+    end
+    return d
+end)
+
+-- ★ SAMPLED AT THE WRITE, NOT AT THE STEP. ch_dest is computed inside co_setup during the
+-- draw pass, so reading it at the cad_idx tick returns the PREVIOUS frame's value — which
+-- is what the first cut of this did, reporting a constant $A230 and awid 0. A write tap
+-- catches it at the instant the engine decides where the cel goes.
+local dests = {}
+_G._td = mem:install_write_tap(F.ch_dest, F.ch_dest, "d", function(o, d)
+    local fn = scr:frame_number()
+    if fn >= FROM and fn <= TO then
+        dests[#dests + 1] = { f = fn, hi = d,
+                              idx = mem:read_u8(F.ch_idx),
+                              awid = mem:read_u8(F.ch_awid),
+                              face = mem:read_u8(F.ch_face),
+                              cel = mem:read_u8(F.viz_slot + CH_CEL) }
     end
     return d
 end)
@@ -102,10 +126,27 @@ _G._n = emu.add_machine_frame_notifier(function()
         if r.d0 >= 0 and r.d0 ~= r.cel and r.d1 ~= r.cel then
             note = note .. "  ** DRAWN " .. r.d0 .. "/" .. r.d1 .. " NOT " .. r.cel
         end
-        log(string.format("    %-7d %-5d %-5d %-3d %-3d %-6d $%02X   %s",
-                          r.f, r.b, r.cel, r.d0, r.d1, r.x, r.face, note))
+        local col = r.dest and (r.dest % 80) or -1
+        log(string.format("    %-7d %-5d %-5d %-3d %-3d %-6d $%02X  dest=$%04X col=%-3d awid=%-3d %s",
+                          r.f, r.b, r.cel, r.d0, r.d1, r.x, r.face,
+                          r.dest or 0, col, r.awid or -1, note))
         seq[#seq + 1] = r.cel
         prev = r.cel
+    end
+
+    log("")
+    log("# THE ENGINE'S OWN DESTINATION, per draw of the VIZIER (ch_idx 0), during the")
+    log("# walk-out. col = dest low byte within the 80-byte row; awid is the mirror anchor.")
+    log("    frame    cel  awid  face  dest-hi  col   delta")
+    local prevcol = nil
+    for _, d in ipairs(dests) do
+        if d.idx == 0 and d.f > 4500 then
+            local col = d.hi                     -- the HIGH byte is what the tap sees
+            local delta = prevcol and ("%+d"):format(col - prevcol) or ""
+            log(string.format("    %-8d %-4d %-5d $%02X   $%02X      %-5d %s",
+                              d.f, d.cel, d.awid, d.face, d.hi, col, delta))
+            prevcol = col
+        end
     end
 
     log("")
