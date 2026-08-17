@@ -418,6 +418,30 @@ lwlink --decb --script=link/pop_engine.link --entry=room_entry --map=build/obj/r
 if errorlevel 1 goto :error
 call :size build/intro_seq.bin
 
+echo --- Link: the scene, STAGED PAST THE LOADM HANDOVER (P3.106) ---
+REM The same objects, linked at $2500 instead of $2000 and read from a track by the intro
+REM AFTER BASIC has handed over. link/pop_scene.link carries the whole reasoning; the short
+REM form is that the merged image was ~$820 over the MEASURED ceiling $2488..$2535, and the
+REM ceiling binds on what is resident AT THE HANDOVER rather than on what the program holds.
+REM
+REM hal_build.o is present so the scene's HAL_* calls resolve (lwasm object mode makes an
+REM undefined symbol an external automatically); the kernel SEGMENT is then dropped, because
+REM it is already resident at $7900 and re-reading it from a track while it executes the
+REM read would overwrite the routine mid-transfer.
+lwlink --decb --script=link/pop_scene.link --entry=room_entry --map=build/obj/scene.map -o build/scene_prog.bin build/obj/cutscene_room.o build/obj/lz_unpack.o build/obj/hal_build.o
+if errorlevel 1 goto :error
+call :size build/scene_prog.bin
+
+REM ★ THE DROP IS ONLY SAFE IF THE TWO KERNELS ARE THE SAME BYTES AT THE SAME ADDRESS.
+REM They are, by construction — and "by construction" is the exact shape of assumption this
+REM project has been bitten by four times, so it is asserted against the artefacts rather
+REM than trusted from the inputs.
+python harness/tools/kernel_identical_check.py --resident build/intro_seq.bin --staged build/scene_prog.bin
+if errorlevel 1 goto :error
+
+python harness/tools/decb_to_raw.py --bin build/scene_prog.bin --out build/assets/scene_prog.raw --base 0x2500 --span-end 0x7900
+if errorlevel 1 goto :error
+
 echo --- Bootable RS-DOS disk image ---
 REM .dsk is always 18 sectors/track (idiom §3); default geometry is correct.
 REM DMK, interleave 0 (SEQUENTIAL) -- NOT JVC. MAME synthesises a near-pessimal
@@ -491,6 +515,15 @@ if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/princess_room.lz --track 29 --tracks 1 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/flames.lz --track 30 --tracks 2 --reserve --imgtool "%IMGTOOL%"
+REM The scene's program, on track 24. One track holds 9,216 B against the image's ~1,150.
+REM
+REM ★ NOT TRACK 17, AND P3.104's MAP WAS WRONG ABOUT THAT. That map read "tracks 17 and 24
+REM are free" from the ASSET allocation, and 17 carries no asset — because it is the RS-DOS
+REM DIRECTORY track. raw_tracks.py refused it outright ("tracks 17..17 cross the directory
+REM track 17 - that is silent corruption, pick another span"), which is the check doing
+REM exactly its job: free-of-assets and free are different questions, and only one of them
+REM was asked.
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/scene_prog.raw --track 24 --tracks 1 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 echo --- The SPLIT cel image: pinned page + rotating pages (P3.78) ---
 REM Two-pass, and driven from content/cutscene/chars/cel_pack.json rather than from a

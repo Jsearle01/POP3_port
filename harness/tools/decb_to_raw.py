@@ -25,6 +25,19 @@ def main():
     ap.add_argument('--fill', type=lambda s: int(s, 0), default=0)
     ap.add_argument('--allow-gap', action='store_true',
                     help='permit a leading gap between --base and the first segment')
+    # ★ P3.106 — DROP SEGMENTS AT OR ABOVE AN ADDRESS, and say which ones were dropped.
+    #
+    # The scene's disk-resident image (link/pop_scene.link) must be linked WITH
+    # hal_build.o so its HAL calls resolve — lwasm's object mode makes an undefined symbol
+    # an external automatically — but the kernel is already resident at $7900 from the
+    # intro's LOADM, and this tool FILLS GAPS between segments, so without this the raw
+    # image would span $2500..$7D43: 21 KB of mostly padding, and re-reading the kernel
+    # from a track while the kernel is executing the read.
+    #
+    # The drop is printed rather than silent, because a segment vanishing from an image is
+    # exactly the kind of thing that should never be inferred from a size.
+    ap.add_argument('--span-end', type=lambda s: int(s, 0), default=None,
+                    help='drop segments whose load address is >= this (they are reported)')
     a = ap.parse_args()
 
     d = pathlib.Path(a.bin).read_bytes()
@@ -41,6 +54,16 @@ def main():
 
     if not segs:
         sys.exit("no segments found — is this a DECB binary?")
+
+    if a.span_end is not None:
+        keep = [(ad, b) for ad, b in segs if ad < a.span_end]
+        for ad, b in segs:
+            if ad >= a.span_end:
+                print(f"  DROPPED seg ${ad:04X}..${ad + len(b) - 1:04X} "
+                      f"({len(b)} B) — at or above --span-end ${a.span_end:04X}")
+        if not keep:
+            sys.exit(f"--span-end ${a.span_end:04X} dropped every segment")
+        segs = keep
 
     lo = min(ad for ad, _ in segs)
     hi = max(ad + len(b) for ad, b in segs)
