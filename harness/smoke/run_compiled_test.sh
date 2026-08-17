@@ -9,6 +9,10 @@
 #
 # Usage:  harness/smoke/run_compiled_test.sh <cel_dir>
 set -u
+
+. "$(dirname "$0")/retired.sh"
+retired "P1.3 compiled sprites — sprite_compiler.py's emitted 6809 on the real GIME" \
+        "nothing, and nothing needs to: the engine REPLACED compiled sprites with segment streams [src/engine/flame_cels.s:56], so this tested a tool that produces nothing the port ships"
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"; cd "$REPO_ROOT"
 
 CEL_DIR="${1:-content/kid/kid_chtab1_040_large}"

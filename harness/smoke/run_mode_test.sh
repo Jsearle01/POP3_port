@@ -16,6 +16,10 @@
 # default is Composite, in which the same palette byte is a different colour.
 set -u
 
+. "$(dirname "$0")/retired.sh"
+retired "P2.5 mode CYCLING, 16 -> 4 -> 16 -> 4" \
+        "★ PARTIAL: room/introseq/walk verify pixels IN the 4-colour mode, so the mode SETUP is covered — but nothing cycles it. A real gap, over a capability the port does not use: it sets the mode once."
+
 cd "$(dirname "$0")/../.." || exit 1
 
 MAME="${MAME:-/c/mame/mame.exe}"

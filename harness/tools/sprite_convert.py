@@ -337,13 +337,45 @@ def convert_one(table_path, index, out_path, label, start_col=0,
     coco3_bitmap, coco3_width = convert_sprite_to_coco3(
         bitmap, height, apple_width, start_col, parity_flip, mirror)
 
+    # ───────────────────────────────────────────────────────────────────────────────
+    # ★★★ TRAILING BLANK COLUMNS ONLY. THE LEADING ONES MOVE THE SPRITE (P3.103).
+    #
+    # This trimmed BOTH ends and recorded `lead` in a dict that is printed and dropped.
+    # Its own CLI help said what that costs — "trimming shifts the cel origin left by
+    # `lead` bytes - the placement table must compensate" — and nothing ever did. Grep
+    # the tree: the only other `lead` is `bc_lead`, the clip window, a different thing.
+    #
+    # So a cel trimmed with lead=L shipped with byte 0 holding what was byte L, while
+    # the engine went on placing byte 0 at the sprite's true left edge — computed from
+    # the UNTRIMMED Apple width in `cel_table` +4. The two disagreed by exactly 4*L px
+    # and the ink was drawn that far LEFT.
+    #
+    # ★★ TRAILING IS SAFE AND LEADING IS NOT, AND THE ASYMMETRY IS THE WHOLE POINT:
+    # dropping columns off the right end makes the container narrower without moving
+    # anything inside it. Dropping them off the left end moves everything.
+    #
+    # ★★★ WHY IT SURVIVED: it is invisible unless it VARIES. A whole facing trimmed to
+    # the same lead is a character a few pixels off, walking smoothly. Measured across
+    # the vizier's six walk cels [cel_content_offset.py]: NORMAL leads are 0,0,0,0,0,0 —
+    # so the walk IN was never displaced at all — and MIRRORED are 0,1,0,0,0,0. One cel
+    # in six, 4 px back and then forward again, once per cycle, in the walk OUT only.
+    # That is Jay's report ("his walk out still looks like he's skipping not walking")
+    # and it is why the entry looks right and the exit does not.
+    #
+    # Mirroring is what exposed it: it swaps which margin is blank, and two poses have
+    # no reason to have equal margins. P3.52's torches (+1 left, -1 right) are the same
+    # shape one level down.
+    #
+    # `lead` is kept in the returned dict and is now structurally always 0; the guard
+    # below is what makes that a checked fact rather than a comment.
+    # ───────────────────────────────────────────────────────────────────────────────
     original_width = coco3_width
     lead = trail = 0
     if trim and coco3_width > 0:
         has = [any(coco3_bitmap[r * coco3_width + c] != 0 for r in range(height))
                for c in range(coco3_width)]
         if any(has):
-            L = next(i for i in range(coco3_width) if has[i])
+            L = 0                                    # NEVER the leading columns
             R = next(i for i in range(coco3_width - 1, -1, -1) if has[i])
             if R - L + 1 < coco3_width:
                 nb = bytearray()
@@ -351,6 +383,7 @@ def convert_one(table_path, index, out_path, label, start_col=0,
                     nb.extend(coco3_bitmap[r * coco3_width + L: r * coco3_width + R + 1])
                 coco3_bitmap, lead, trail = nb, L, coco3_width - R - 1
                 coco3_width = R - L + 1
+    assert lead == 0, "leading trim reintroduced: it displaces the cel by 4*%d px" % lead
 
     write_s_file(out_path, label, height, coco3_width, coco3_bitmap,
                  os.path.basename(str(table_path)),
@@ -385,9 +418,10 @@ def main():
     ap.add_argument('--mirror', action='store_true',
                     help='Horizontal flip at PIXEL granularity (2-bit indices preserved).')
     ap.add_argument('--no-trim', action='store_true',
-                    help='Keep all-zero leading/trailing byte columns. NOTE: trimming shifts '
-                         'the cel origin left by `lead` bytes - the placement table must '
-                         'compensate (CLAUDE.md 2F: placement in the table, pixels in converted.s).')
+                    help='Keep all-zero TRAILING byte columns. Leading ones are never trimmed '
+                         'either way since P3.103: trimming them shifted the cel origin left by '
+                         '`lead` bytes and nothing compensated, which put one mirrored walk cel '
+                         'in six 4 px behind the other five and read as a skip.')
     ap.add_argument('--content-layout', action='store_true',
                     help='Write <out>/<label>/converted.s (the sprite_tool cel-dir layout).')
     ap.add_argument('--quiet', action='store_true')

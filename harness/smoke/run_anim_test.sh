@@ -16,6 +16,10 @@
 # default is Composite, in which the same palette byte is a different colour.
 set -u
 
+. "$(dirname "$0")/retired.sh"
+retired "P2.6 double-buffered animation — the page flip" \
+        "walk's per-page signature guard and its bank-mapped-at-capture assertion, plus room's displayed-buffer diff; the probes publish cel numbers AFTER the swap, so they describe the buffer the test actually reads"
+
 cd "$(dirname "$0")/../.." || exit 1
 
 MAME="${MAME:-/c/mame/mame.exe}"

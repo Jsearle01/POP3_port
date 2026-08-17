@@ -13,6 +13,10 @@
 # (CLAUDE.md §4). The script reports the palette histogram; it does not judge.
 set -u
 
+. "$(dirname "$0")/retired.sh"
+retired "P1.2 cel colour spot-check — converter output against on-screen palette indices" \
+        "room's flame-pixel check (78 bytes byte-identical against cel 3/8) and walk's verify_room_chars composite diff across 28 captures — the same check over far more cels"
+
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 

@@ -21,6 +21,10 @@
 # Env overrides: MAME (binary), MAME_ROMS (rompath).
 set -u
 
+. "$(dirname "$0")/retired.sh"
+retired "the P1.1 loop probe — that the HAL harness boots and its observables hold" \
+        "room and walk both boot live-disk through the same HAL, so a broken HAL fails them first"
+
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$REPO_ROOT"
 

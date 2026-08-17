@@ -515,7 +515,7 @@
    "index": 3,
    "block": 13,
    "sig": 43119,
-   "bytes": 6506,
+   "bytes": 6524,
    "track": 22,
    "tracks": 2,
    "cap": 7680,
@@ -636,7 +636,7 @@
  "res_tracks": 2,
  "res_cap": 8192,
  "track_bytes": 4608,
- "res_bytes": 5871,
+ "res_bytes": 5891,
  "reads": [
   {
    "at_beat": 10,
