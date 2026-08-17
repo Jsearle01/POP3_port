@@ -17,7 +17,10 @@ a frame is missing"*, and it is why the entry looks right and the exit does not.
 **★★ AND P3.103a's TWO-PATH TEST CLEARS THE MIRRORING ITSELF, in CoCo pixels only:** ink
 extents identical on all six, shift +0 everywhere. **Jay's 7→4 rounding lead closes for
 position** — and the same test found a real **colour** defect it could not have been asked
-about. **25.3 is pending Jay: the walk changed and I cannot gate it.**
+about.
+
+**★★★ GATED. Jay, live-disk, RGB, 128 KB, watching it run: *"the exit walk looks good noe
+gate it."* THAT CLOSES THE SKIP HE REPORTED AT P3.96, seven dispatches ago.** §5.
 
 ### 0 — Receipt / status (C-35 stamp)
 
@@ -46,7 +49,7 @@ origin". **Re-conversion is in-contract.** Flagged rather than assumed.
 | **★ found, not fixed** | the mirrored cels' **chroma** differs (137–165 px on 3 of 6) — the colour model is DO-NOT-EDIT |
 | **★★ consequence stated** | P3.100's exoneration **crossed the suspect format**; what it is evidence for changes |
 | **★★ retired** | five P1/P2 suites, with replacement coverage named and **one real gap flagged** |
-| **★★★ pending Jay** | **the walk changed — 25.3 is not self-certifiable** |
+| **★★★ GATED** | **Jay, live-disk, RGB, 128 KB: *"the exit walk looks good noe gate it."*** |
 
 ### 2 — Files modified
 
@@ -184,8 +187,9 @@ form that does not.
   untouched; no engine change at all. The one change is the converter's trim, attributed by
   measurement before it was made.
 - **AC5 — suites green, 128 KB first; build verified by symbol from a freshly baked image.** §5.
-- **AC6 — Jay gates LIVE if the walk changes.** **The walk changed. 25.3 is `pending Jay`
-  and is not self-certified.** §5.
+- **AC6 — Jay gates LIVE if the walk changes; words verbatim; not self-certified.**
+  **PASSED** — *"the exit walk looks good noe gate it."* §5, with what the gate does and
+  does not cover.
 - **AC7 — route accounting; sync bridge; Karateka; `main`.** §6.
 
 ### 5 — Verdict-time evidence (v0.7 §11)
@@ -227,12 +231,32 @@ was *running* them — five MAME boots a round — and that is what stopped.
 `cel_res.s 5,891 B / cel_pg0 7,292 / cel_pg1 6,451 / cel_pg2 5,674 / cel_pg3 6,526`, all
 placed, `18432 bytes free` on the disk.
 
-**25.3 operator-runtime-smoke: ★★★ PENDING JAY — live-disk, RGB, 128 KB.**
-**The walk-out changed: mirrored cel 49 moves 4 px right, once per cycle, and the turn's
-cels 63/66 move 4 px right.** This is the thing under gate and **a suite cannot see it** —
-`verify_room_chars` composites from the same source cel the machine drew, so it agrees
-whichever position that cel is at. **I am not certifying this.** Standing gates unchanged:
-flash, glass, sand, slump and the feet all PASSED.
+**25.3 operator-runtime-smoke: ★★★ PASSED — Jay, live-disk, RGB, 128 KB, motion observed
+live at real speed.** Verbatim:
+
+> **"the exit walk looks good noe gate it."**
+
+**★★★ THAT CLOSES THE ARC THAT OPENED AT P3.96.** Jay's original report was *"his walk out
+still looks like he's skipping not walking. almost like a frame is missing"*; seven
+dispatches later the cause was one cel in six displaced 4 px by a converter trim, and with
+it fixed he reports the walk-out good. **The skip was never in the engine** — every
+measurement of the engine's positioning (P3.100), order, rate (P3.101) and cost (P3.102)
+was correct, because the engine was faithfully drawing a cel that had been converted wrong.
+
+★ **WHAT THIS GATE COVERS AND WHAT IT DOES NOT**, stated because P3.85's precedent is a
+ruling given on the walk being read as covering the whole scene:
+
+- **COVERED: the walk-out.** Observed live, at real speed, on the target machine.
+- **NOT COVERED: the turn.** `v63`/`v66` moved 4 px by the same fix and Jay did not mention
+  them. Now called out by name in the live runner's banner.
+- **NOT COVERED: the mirrored cels' chroma** (§3C) — unfixed by ruling, and the runner now
+  says so at every gate.
+
+**A suite could not have gated any of this** — `verify_room_chars` composites from the same
+source cel the machine drew, so it agrees whichever position that cel is at. **That is the
+fourth defect in this arc that only an eye caught**, and it is why the gate is Jay's.
+
+Standing gates unchanged: flash, glass, sand, slump and the feet all PASSED.
 
 ### 6 — Reactive deviations and route accounting
 
@@ -259,9 +283,12 @@ Oracle read-only and not run. Karateka untouched. `main` untouched. `hal-sync` O
 
 ### 7 — Uncertainty flags
 
-- **★★★ Whether this closes the skip is JAY'S to say.** The mechanism is attributed and the
-  arithmetic is clean, but the last four dispatches each had a mechanism that measured well
-  and did not close it. **I have not claimed it does.**
+- **★★★ RESOLVED BY THE GATE.** This flag read *"whether this closes the skip is Jay's to
+  say — I have not claimed it does."* He has now said it: **the walk-out is good.** Kept in
+  the record rather than deleted, because the flag was the right thing to write and the
+  answer came from the only authority that could give it.
+- **★ The TURN is not gated.** `v63`/`v66` moved 4 px by the same fix; Jay's words were
+  about the walk. Called out by name in the live runner now.
 - **★★ The mirrored cels' chroma is wrong** (§3C) — 137–165 px on three of six, plus 1–2
   edge pixels of shape on two. Real, measured, unfixed.
 - **★ P3.100's exoneration crossed the suspect format** (§3D). The anchor stays exonerated

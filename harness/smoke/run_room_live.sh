@@ -10,8 +10,11 @@
 # not a poked image and not a rendered framebuffer.
 #
 # SINCE P3.31 THE SCENE HAS A GAIT IN IT, and that changes what this gate is for. The
-# vizier walks left from x=197 at a measured 3.18 video frames per step, against a
-# 2.60-frame floor that the cadence table asks for and the draw overruns. Whether that
+# vizier walks left from x=197 at a measured 8.24 video frames per cel, against a
+# 6-frame floor that the cadence table asks for and the draw overruns. (The 3.18 that
+# stood here was a per-ITERATION figure from before the VM paced off real VBLs; P3.101
+# measured the walk in at 8.24 f/cel and the walk out at 8.14, and P3.102 showed why
+# the achieved rate can only be a whole number of frames.) Whether that
 # is the right PACE is not a thing any byte comparison can answer -- CLAUDE.md §4:
 # motion-bearing gates need a live run, and "density is not motion" (P3.29). This is
 # the runner for it. A rejection is a policy revisit, not a defect.
@@ -154,10 +157,13 @@ echo "[run_room_live]   1. THE FLASH, over the beat where the hourglass appears.
 echo "[run_room_live]      was fixed at P3.85c -- the blue must come back BLUE after each strobe,"
 echo "[run_room_live]      not light green. You have not confirmed it, so it is NOT recorded as"
 echo "[run_room_live]      passed. Please say either way."
-echo "[run_room_live]   2. THE LAST THIRD OF THE SCENE, after the hourglass -- his exit, her slump."
-echo "[run_room_live]      Those beats run 10 frames per play against a table asking 6: 67% slow,"
-echo "[run_room_live]      the worst in the scene, and worse than the walk you reported. Your"
-echo "[run_room_live]      ruling was given watching the WALK; whether it covers this is open."
+echo "[run_room_live]   2. THE TURN, inside Vexit, just before he walks out. Cels 63 and 66"
+echo "[run_room_live]      moved 4 px right at P3.103 -- the same converter trim that displaced"
+echo "[run_room_live]      one walk cel in six. THE WALK-OUT IS GATED ('the exit walk looks"
+echo "[run_room_live]      good', P3.103); the TURN was changed by the same fix and is not."
+echo "[run_room_live]      Also unaffirmed: the mirrored cels' CHROMA is wrong on three of the"
+echo "[run_room_live]      six walk cels (P3.103a). Colour, not position; it needs your ruling"
+echo "[run_room_live]      because the colour model is DO-NOT-EDIT."
 echo "[run_room_live]"
 echo "[run_room_live] NOT IN YET: the 16-colour swap, the Prolog2 handoff, s_StTimer (untraced)."
 echo "[run_room_live] palette is Karateka's 4c starting point: black / orange / blue / white."
