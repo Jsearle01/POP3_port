@@ -104,7 +104,17 @@ export P_SHOTS_GLASS="${P_SHOTS_GLASS:-8}"
 # came to report "19 of 18" and pass for the wrong reason.
 export P_PLAN_LO="0x$(sym "$FMAP" cel_plan)"
 export P_PLAN_HI="0x$(sym "$FMAP" cel_plan_end)"
-export P_RDERR="0x$(sym "$MAP" cel_rd_err)"
+# ★★★ FMAP, NOT MAP (P3.107). cel_rd_err is defined in char_draw.s, which links into the
+# disk-resident FLAMES bundle — it has never been in room.map, so `sym "$MAP" cel_rd_err`
+# returned EMPTY and P_RDERR was the string "0x". The Lua's guard is `if RDERR ~= 0`, and
+# nil ~= 0, so the check RAN and read whatever byte that resolved to. It printed 0 for
+# dispatches — not because no staged read failed, but because the wrong byte happened to be
+# zero — and printed 224 the moment the bundle grew by a few bytes.
+#
+# ★★ FIFTH IN THE STALE-CHECKER FAMILY, and the first to be caught by its own noise rather
+# than by a dispatch looking for it. Every other bundle symbol in this file already uses
+# $FMAP (P_VIZ, P_PRI, P_DRAWN, P_LAST); this one line did not.
+export P_RDERR="0x$(sym "$FMAP" cel_rd_err)"
 export P_LOADS="0x$(sym "$MAP" probe_loads)"
 export P_NBEATS=$(python -c "import json;print(len(json.load(open('$PACK'))['schedule']))")
 export P_NREADS=$(python -c "import json;print(len(json.load(open('$PACK'))['reads']))")

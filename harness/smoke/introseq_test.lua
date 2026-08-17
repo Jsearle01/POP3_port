@@ -353,11 +353,38 @@ local function tick()
                       string.format("$%04X (want $%04X)", magic, SEQ_MAGIC))
                 check("beats_completed", rd8(ADDR_BEAT) == 5,
                       string.format("last beat index %d (want 5 = six beats)", rd8(ADDR_BEAT)))
-                -- THE PROOF: three successful reads (bundle + the screen, twice),
-                -- and a program image far too small to have carried the screen.
-                check("disk_reads_completed", rd8(ENGINE + 8) == 4,
-                      string.format("probe_loads = %d (want 4: bundle + splash ONCE + one per prologue; "
-                                    .. "WD1773 status $%02X", rd8(ENGINE + 8), rd8(ENGINE + 9)))
+                -- THE PROOF: every read the sequence makes, and a program image far too
+                -- small to have carried the screen.
+                --
+                -- ★★ SIX SINCE P3.107, NOT FOUR, AND THE TWO NEW ONES ARE THE INTEGRATION.
+                -- The count is itemised rather than bumped: a number raised until the suite
+                -- goes green is not a check, and this one is the only thing standing between
+                -- "the scene was called" and "the scene was silently skipped".
+                --
+                --   1  the caption bundle, at startup                  tracks 25-26
+                --   2  the splash, first time                           tracks 27-28
+                --   3  prolog1                                          tracks 9-10
+                --   4  ★ the SCENE'S PROGRAM, read to $2500 after beat 4   track 24
+                --   5  ★ the captions AGAIN — the scene's bundle expanded over them at
+                --      $3000, and beat 6 patches BUNDLE_TITLE            tracks 25-26
+                --   6  prolog2                                          tracks 18-19
+                --   7  ★★ the splash AGAIN, for beat 6's reprise         tracks 27-28
+                --
+                -- ★★★ SEVEN, AND THE SEVENTH IS A 128 KB FACT. The splash used to be read
+                -- ONCE and served from the bank thereafter. The bank is BANK_BLOCK $3C, four
+                -- blocks $3C-$3F — and the GIME masks a block number to installed RAM, so on
+                -- a stock 128 KB machine those ARE $0C-$0F, which is exactly the scene's cel
+                -- bank ($0C pinned, $0D/$0E/$0F rotating). The scene overwrites the cached
+                -- splash, so run_scene clears bank_valid and beat 6 re-reads it.
+                --
+                -- ★ At 512 KB the two do not collide and the sixth read would be enough —
+                -- which is why this suite runs at 128 KB first (CLAUDE.md §2K).
+                check("disk_reads_completed", rd8(ENGINE + 8) == 7,
+                      string.format("probe_loads = %d (want 7: bundle + splash + prolog1 "
+                                    .. "+ the scene's program + the captions again + prolog2 "
+                                    .. "+ the splash again, the bank having been overwritten "
+                                    .. "by the scene; WD1773 status $%02X",
+                                    rd8(ENGINE + 8), rd8(ENGINE + 9)))
                 check("image_cannot_contain_screen", BIN_BYTES < 30720,
                       string.format("INTROSEQ.BIN is %d B; the framebuffer it put on "
                                     .. "screen is 30,720 B", BIN_BYTES))

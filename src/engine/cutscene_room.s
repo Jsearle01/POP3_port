@@ -129,6 +129,12 @@ cel_res_block   equ     CEL_VARBASE+4   ; the PINNED page's block. PUBLISHED BY 
 *                                       ;   table moved out of this file with the loader,
 *                                       ;   so the room learns the number instead of
 *                                       ;   keeping a second copy of it.
+* ★ cel_scene_done — SET BY THE BUNDLE'S terminal beat, READ BY room_loop (P3.107). The two
+* live in different link units, so the address cannot be imported; both derive it from the
+* SAME -DCEL_VARBASE build.bat passes to both assemblies, which is the one home. Only the
+* `+5` is written twice, and bundle_offsets_check.py is the existing check for exactly that
+* class of duplication — see the assertion added there.
+cel_scene_done  equ     CEL_VARBASE+5   ; non-zero once the terminal beat is reached
 
 * WHERE THE PACKED BLOB LIVES, and it is main RAM rather than the draw window.
 *
@@ -197,22 +203,68 @@ SAM_SLOW        equ     $FFD8           ; the FDC needs normal speed (§2G disk 
 SAM_FAST        equ     $FFD9
 DSKREG          equ     $FF40
 
-room_entry      jmp     room_start      ; $0200 — EXEC address
+room_entry      jmp     room_start      ; +0   EXEC address (standalone: sets its own stack)
 
-probe_status    fcb     0               ; $0203  0=boot 1=mode set 2=room up 3=holding
-probe_loads     fcb     0               ; $0204  successful disk reads
-probe_dskerr    fcb     0               ; $0205  WD1773 status of the first failure
-probe_magic     fdb     0               ; $0206  set once the room is on screen
-probe_frames    fcb     0               ; $0208  frames of flicker completed
-probe_cel0      fcb     0               ; $0209  cel each torch is showing —
-probe_cel1      fcb     0               ; $020A  the pixel check composites these
+probe_status    fcb     0               ; +3   0=boot 1=mode set 2=room up 3=holding
+probe_loads     fcb     0               ; +4   successful disk reads
+probe_dskerr    fcb     0               ; +5   WD1773 status of the first failure
+probe_magic     fdb     0               ; +6   set once the room is on screen
+probe_frames    fcb     0               ; +8   frames of flicker completed
+probe_cel0      fcb     0               ; +9   cel each torch is showing —
+probe_cel1      fcb     0               ; +A   the pixel check composites these
+
+* ---------------------------------------------------------------
+* ★★★ room_call — THE INTEGRATED ENTRY (P3.107), AND IT EXISTS BECAUSE OF THE STACK.
+*
+* room_start opens `lds #STACK_TOP` and STACK_TOP is $7F00 — and intro_seq.s sets its
+* stack to the very same $7F00 [intro_seq.s:104,233]. So a `jsr` from the intro into
+* room_start would reset S on top of the caller's own frames and then push over them: the
+* return address would be gone before the first subroutine call, and the symptom would be
+* a wild `rts` many milliseconds later.
+*
+* ★★ THAT IS WHY THE ENTRY IS SEPARATE RATHER THAN A FLAG. The two paths want genuinely
+* different stack behaviour — the standalone one MUST take the stack away from DECB (whose
+* own stack sits near $7F2B with its string space above it), and the called one must NOT
+* take it away from the intro. One entry with a mode byte would be one routine pretending
+* to be two.
+*
+* IT SITS AFTER THE PROBE BLOCK ON PURPOSE. Every harness reads the probe bytes as offsets
+* from `room_entry` (walk_test.lua's `rd8(ENGINE + 6)` is the magic), so a new entry ahead
+* of them would move all seven and re-point five files to save three bytes.
+* ---------------------------------------------------------------
+room_call       jmp     room_called     ; +B   called entry — keeps the caller's stack
+
+* ★ AND THE OFFSET IS ASSERTED, NOT DOCUMENTED. intro_seq.s calls SCENE_BASE+SCENE_CALL_OFF
+* and cannot see this label — the two are separate link units and the intro is assembled
+* before the scene is linked. Both take SCENE_CALL_OFF from the same -D, so the duplicated
+* fact is one number, and this turns a drift in it into a build error instead of a jsr into
+* the middle of probe_magic.
+                ifndef  SCENE_CALL_OFF
+SCENE_CALL_OFF  equ     11
+                endc
+                ifne    room_call-room_entry-SCENE_CALL_OFF
+                fail    "room_call moved: intro_seq.s's SCENE_CALL_OFF no longer points at it"
+                endc
 
 ROOM_MAGIC      equ     $4B00
 
 
+* room_called — entered by `jsr` from the intro. Keeps the caller's stack and remembers it,
+* so the exit can put S back exactly where the `jsr` left it and `rts` to the beat loop.
+* ★ `sts` runs AFTER the jsr has pushed the return address, so rs_saved_s captures a stack
+* whose top IS that address — which is the whole of what makes the return work.
+room_called
+                sts     rs_saved_s
+                lda     #1
+                sta     rs_called       ; the exit path is chosen here, not guessed later
+                bra     room_common
+
 room_start
+                clr     rs_called       ; standalone: nothing to return to
                 orcc    #$50            ; mask while the machine comes up
                 lds     #STACK_TOP
+room_common
+                orcc    #$50            ; mask while the machine comes up
                 clra
                 tfr     a,dp
 
@@ -458,6 +510,18 @@ room_hold
 * draw-only, which P3.21 measured as fitting in one frame.
 FLM_LEN         equ     3
 room_loop
+* ★★★ THE EXIT, AND IT IS AT THE TOP FOR A REASON (P3.107). room_loop has TWO arms and
+* both used to end `bra room_loop` — the idle path at rl_idle and the draw path at the foot
+* of rl_draw. A terminal test bolted onto one of them would leave the scene returning only
+* when the torch happened to be due, which is a 1-in-3 chance per pass and would have read
+* as an intermittent hang. One test, above the branch that separates them, cannot do that.
+*
+* ★★ AND S IS A REAL STACK HERE. blit_core uses S as the blast destination and returns by
+* a software return precisely because `jsr` would push onto it — so an exit taken from
+* inside the blitter could not `rts` at all. This point is above every draw call: the only
+* thing on the stack is what the caller pushed.
+                lda     cel_scene_done          ; published by the terminal beat
+                lbne    room_return
                 jsr     HAL_time_frame_count    ; D = 16-bit frame count (race-safe)
                 std     rl_now
                 subd    flm_due
@@ -534,6 +598,75 @@ rl_fwrap
                 sta     probe_cel1
                 inc     probe_frames
                 bra     room_loop
+
+* ---------------------------------------------------------------
+* ★★★ room_return — TERMINATE, RESTORE, RETURN (P3.107).
+*
+* THE RESTORE IS ENUMERATED HERE RATHER THAN DISCOVERED LATER, and each item says whether
+* it is DONE here or ESTABLISHED as self-correcting, with the evidence:
+*
+*   $FFA6/$FFA7  the cel bank's window. RESTORED BY set_mode, and NOT by hand — see the
+*                note at the store below for what happened when this list said otherwise.
+*   ★★★ video mode  RESTORED, and the first version of this list said it did not need to be.
+*                THAT WAS WRONG ON A FACT THIS FILE ALREADY STATED. Forty lines above,
+*                the mode swap's own comment reads "the intro's 16-colour is the newer
+*                one" — and the restore list said "that is the HAL's OTHER mode, which the
+*                intro does not use." I read the sentence and wrote down its opposite.
+*
+*                The two modes are not cosmetic variants:
+*                  GFX_MODE_320x192x4   $FF99=$15   80 B/row   15,360 B   4 palette regs
+*                  GFX_MODE_320x192x16  $FF99=$1E  160 B/row   30,720 B  16 palette regs
+*                Different STRIDE. Returning in 4-colour leaves the intro drawing 16-colour
+*                screens through an 80-byte row, so every row after the first lands in the
+*                wrong place — which is exactly what introseq's reprise check reported:
+*                "19717 bytes differ; first at row 0 col 10".
+*
+*                ★ Jay caught it by eye before the suite's message was diagnosed: "it looks
+*                like you are not properly switching back to DHRes after the vizier scene
+*                completes."
+*
+*                THE ORACLE HAS THE SAME SEAM. MASTER.S runs PrincessScene, then
+*                SetupDHires, then Prolog2 — the mode swap sits between the scene and the
+*                next picture there too. ★ This is NOT that routine and does not claim to
+*                be: SetupDHires establishes the game's display and is still absent. This
+*                only puts back what the scene borrowed.
+*   ★★ palette   NOT restored here, and NOT self-correcting — this list said it was and was
+*                wrong a second time. It cited intro_seq.s's palette comment as though it
+*                described load_screen; it describes the STARTUP path, which installs the
+*                sixteen registers ONCE. load_screen never touches them. So the scene's two
+*                set_mode calls leave the diagnostic palette behind and every later beat is
+*                drawn in the wrong colours. ★ Jay: "you need to restore the DHRes palette."
+*                THE CALLER DOES IT, and it has to: the palette's source is BUNDLE_PAL at
+*                $3000, which the scene overwrote and which only the caller can reload.
+*                intro_seq.s's run_scene calls set_dhr_palette after the caption read.
+*   DP           NOT restored: both set it to 0 and never move it [intro_seq.s:235,
+*                room_common above].
+*   S            restored from rs_saved_s — see room_called.
+*   interrupts   the scene runs with VBL IRQs enabled (andcc #$EF at entry) and the intro
+*                wants the same; left as they are.
+* ---------------------------------------------------------------
+room_return
+                lda     rs_called
+                beq     room_dead               ; standalone: nothing to return to, hold
+* THE MODE, BACK TO THE INTRO'S. set_mode clears both buffers and re-maps the window, so it
+* is done FIRST and the window fix-up below is what survives it.
+                lda     #GFX_MODE_320x192x16
+                jsr     HAL_gfx_set_mode
+* ★★★ AND THE WINDOW NEEDS NOTHING FURTHER — THE FIRST VERSION OF THIS PUT IT BACK BY HAND
+* AND THAT WAS THE DEFECT. It wrote $3E/$3F into $FFA6/$FFA7 after set_mode, on the
+* reasoning that "set_mode owns $FFA4/$FFA5". It owns ALL FOUR: the 16-colour buffer is
+* 30,720 B — four 8 KB blocks — so $FFA4-$FFA7 together ARE the framebuffer.
+*
+* Overwriting the top two put the boot map back under $C000-$FFFF, so everything the intro
+* then drew above row ~115 went somewhere else. introseq caught it precisely:
+* "9_prolog2 == its own converted picture: 12260 bytes differ; first at row 102 col 64".
+* 12,260 of 30,720 is the top 40% of the screen, which is exactly the two blocks.
+*
+* ★ So the restore for the window is set_mode itself, and the correct action here is none.
+* Recorded rather than deleted because the wrong version looked more careful than the right
+* one — it named registers and cited an owner, and the owner was wrong.
+                lds     rs_saved_s              ; the caller's stack, with its return on top
+                rts
 
 room_failed
                 lda     dr_status
@@ -1084,6 +1217,11 @@ flm_cad         fcb     2,2,3
 flm_idx         fcb     0
 flm_due         fdb     0
 rl_now          fdb     0               ; the frame count this iteration read
+* P3.107 — the called-entry state. rs_called picks the exit path at ENTRY rather than
+* letting room_return infer it, because "was I called?" is knowable once and guessable
+* thereafter.
+rs_called       fcb     0               ; 1 = entered through room_call
+rs_saved_s      fdb     0               ; the caller's S, captured after its jsr
 
 * ---------------------------------------------------------------
 * Torch data and state

@@ -158,6 +158,40 @@ BUNDLE_PRESENTS equ     BUNDLE+$040
 BUNDLE_BYLINE   equ     BUNDLE+$400
 BUNDLE_TITLE    equ     BUNDLE+$800
 SAVE_BUF        equ     $5400           ; clear of the bundle's end at $52FF
+
+* ---------------------------------------------------------------
+* ★★★ THE PRINCESS SCENE (P3.107) — a CALL BETWEEN BEATS, not a seventh beat.
+*
+* The oracle's own order [MASTER.S:695-709] is Prolog1, PrincessScene, SetupDHires,
+* Prolog2, SilentTitle — so the scene sits between beat 4 (prolog1) and beat 5 (prolog2).
+* It is not expressed as a beat because a beat's fields are track / wipe / patch / pre /
+* hold / song, and the scene is none of those; MASTER.S calls PrincessScene as a peer of
+* Prolog1 rather than a variant of it.
+*
+* ★★ THE SCENE OVERWRITES THE CAPTIONS AND THEY ARE RELOADED, WHICH IS THE ORACLE'S OWN
+* MODEL. CUTPRINCESS calls LoadStage2, whose comment says it DISPLACES bgtab1-2 and
+* chtab4. The scene's bundle expands to $3000..$4883, straight over BUNDLE_PRESENTS
+* ($3040), BUNDLE_BYLINE ($3400) and BUNDLE_TITLE ($3800) — and beat 6 patches
+* BUNDLE_TITLE, so they must come back. There is nowhere to hide them: P3.105 measured the
+* GIME bank and all four free blocks at 128 KB are the scene's ($0C pinned, $0D/$0E/$0F
+* rotating). Reload is not a preference, it is the only shape available.
+*
+* ★★★ AND THE $5400 OVERLAP IS SAFE ONLY BECAUSE BEATS 4 AND 5 CARRY NO PATCH.
+* patch_blit saves what it overwrites into SAVE_BUF, and the TITLE caption's save is 5,361
+* B — $5400..$68F1 — which runs straight through the scene's packed-bundle landing zone at
+* $5800..$69FF [harness/tools/intro_patch_extent.py]. Nothing is live in SAVE_BUF across
+* this call because beat 4 and beat 5 both have BEAT_PATCH 0. ★ That is a CONDITION, not a
+* property, and beat_patch_check.py asserts it at build time rather than trusting this
+* comment — a comment describing an unenforced discipline has failed here twice.
+SCENE_AFTER_BEAT equ    3               ; 0-based: beat 4, prolog1
+DISK_SCENE_TRK  equ     24              ; ★ NOT 17 — that is the RS-DOS DIRECTORY track,
+*                                       ;   which carries no asset and is not free (P3.106)
+                ifndef  SCENE_BASE
+SCENE_BASE      equ     $2500
+                endc
+                ifndef  SCENE_CALL_OFF
+SCENE_CALL_OFF  equ     11
+                endc
 SAVE_MAX        equ     6144            ; the TITLE patch is 5,361 pixel bytes --
 *                                       ; 7x the captions', and this buffer has to
 *                                       ; hold the largest of them, not the last.
@@ -264,16 +298,7 @@ seq_start
 * palette the art was drawn against. MASKED (idioms §22): sixteen consecutive
 * hardware writes are one logical update. AFTER the mode registers, never before
 * (HAL_gfx_init Constraint B / idiom §9).
-                pshs    cc
-                orcc    #$50
-                ldx     #BUNDLE_PAL
-                ldu     #$FFB0
-                ldb     #16
-sq_pal          lda     ,x+
-                sta     ,u+
-                decb
-                bne     sq_pal
-                puls    cc
+                jsr     set_dhr_palette
 
                 jsr     seq_run
 * DONE is BEAT_COUNT+2, not a literal. probe_status carries beat+2, so with three
@@ -491,12 +516,110 @@ sq_nopatch
 
 sq_beat_end
                 puls    b
+* ★ THE SCENE GOES HERE — after beat 4 has finished and before the loop takes beat 5.
+                cmpb    #SCENE_AFTER_BEAT
+                bne     sq_no_scene
+                pshs    b
+                bsr     run_scene
+                puls    b
+sq_no_scene
                 ldx     seq_beat
                 leax    BEAT_SIZE,x
                 incb
                 cmpb    #BEAT_COUNT
                 lblo    sq_beat         ; LONG branch: the base-only path pushed the
 *                                       ; loop body past the 8-bit range
+                rts
+
+* ---------------------------------------------------------------
+* set_dhr_palette — the sixteen registers the artwork was drawn against.
+*
+* ★★★ ONE HOME SINCE P3.107, AND IT WAS INLINE AND CALLED ONCE BEFORE THAT. set_mode
+* installs a DIAGNOSTIC palette (P2.5), so anything that changes the video mode leaves the
+* wrong sixteen colours behind — and the scene changes the mode twice, on the way in and on
+* the way out. `load_screen` does NOT re-apply it: the startup path did, once, and that was
+* enough while nothing else ever called set_mode.
+*
+* ★ Jay caught the consequence by eye — "you need to restore the DHRes palette" — after the
+* mode restore was already in. The restore list in cutscene_room.s had called the palette
+* self-correcting and cited this file's startup comment as though it described the
+* per-screen path. It does not; it describes the one call there used to be.
+*
+* MASKED (idioms §22): sixteen consecutive hardware writes are one logical update. AFTER
+* the mode registers, never before (HAL_gfx_init Constraint B / idiom §9).
+* ★ It reads BUNDLE_PAL, so the CAPTIONS MUST BE BACK before this is called — the scene
+* expands its bundle over $3000 and BUNDLE_PAL is at $3000+$000.
+* Clobbers: A, B, X, U, CC
+* ---------------------------------------------------------------
+set_dhr_palette
+                pshs    cc
+                orcc    #$50
+                ldx     #BUNDLE_PAL
+                ldu     #$FFB0
+                ldb     #16
+sq_pal          lda     ,x+
+                sta     ,u+
+                decb
+                bne     sq_pal
+                puls    cc
+                rts
+
+* ---------------------------------------------------------------
+* run_scene — read the scene's program, call it, put the captions back.
+*
+* ★★ NEITHER READ CAN LAND ON A PICTURE BEING BUILT, and that is the read-before-reveal
+* discipline rather than a coincidence. It has regressed twice (P3.72f, then P3.78c — Jay
+* caught the second live: "the initial disk load is occurring with the static screen
+* shown"), so the destinations are stated: $2500 is the scene's program region and $3000
+* is the caption bundle. NEITHER IS A FRAMEBUFFER. What is on screen throughout is the
+* scene's own finished last frame, which is a completed picture and not a partial one —
+* the same relationship the intro's own beats already have, where load_screen reads into
+* the BACK buffer while the previous beat's picture is displayed.
+*
+* The scene's program is re-read on every pass rather than kept: it is 1,196 B and the
+* intro reaches this point exactly once, so caching it would be state to get wrong for no
+* gain.
+* ---------------------------------------------------------------
+run_scene
+                ldx     #SCENE_BASE
+                lda     #DISK_SCENE_TRK
+                ldb     #SECS_PER_TRACK
+                jsr     load_tracks
+                bne     rs_out          ; a failed read leaves the intro running
+                jsr     SCENE_BASE+SCENE_CALL_OFF
+* ---------------------------------------------------------------
+* ★★★ THE SPLASH CACHE IS GONE, AND IT IS A 128 KB FACT.
+*
+* BANK_BLOCK is $3C and the bank is four blocks — $3C,$3D,$3E,$3F. The GIME masks a block
+* number to the RAM actually installed [gfx.s:406], so on a STOCK 128 KB machine those are
+* $0C,$0D,$0E,$0F — and those are precisely the scene's cel bank: CEL_RES_BLOCK $0C pinned
+* plus $0D/$0E/$0F rotating (P3.105 §3B measured that all four free blocks are the
+* scene's). The scene overwrites every one of them.
+*
+* So beat 6, which re-establishes the splash, must NOT take it from the bank: bank_valid
+* is cleared and the read goes to disk. One extra read, and the alternative is beat 6
+* copying cel data onto the screen.
+*
+* ★★ 512 KB WOULD NOT HAVE CAUGHT THIS. There, $3C-$3F and $0C-$0F are different physical
+* blocks and the cache survives. CLAUDE.md §2K: "512 KB can pass while a masking assumption
+* is wrong; the reverse does not happen." introseq's reprise check found it at 128 KB —
+* "19717 bytes differ; first at row 0 col 10" — which is the whole reason the suites run
+* on the target machine first.
+* ---------------------------------------------------------------
+                clr     bank_valid      ; the scene used the bank's blocks as its cel bank
+* THE CAPTIONS, BACK. The scene expanded its bundle over all three of them.
+                ldx     #BUNDLE
+                lda     #DISK_BUNDLE_TRK
+                ldb     #DISK_BUNDLE_SEC
+                jsr     load_tracks
+                bne     rs_out
+* ★★★ AND THE PALETTE, WHICH MUST COME AFTER THAT READ. The scene's exit calls set_mode to
+* put the 16-colour mode back, and set_mode installs the DIAGNOSTIC palette — so the
+* artwork's sixteen colours have to be re-installed or every beat after this one is drawn
+* in the wrong ones. BUNDLE_PAL lives at $3000+$000, inside the bundle the line above has
+* just restored: doing this first would install whatever the scene left there.
+                jsr     set_dhr_palette
+rs_out
                 rts
 
 * ---------------------------------------------------------------

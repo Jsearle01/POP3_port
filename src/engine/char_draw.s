@@ -226,6 +226,17 @@ cel_pg_sig      equ     CEL_VARBASE+1   ; 2 B — the signature it must answer w
 cel_rd_req      equ     CEL_VARBASE+3   ; page+1 to read into it during this beat; 0 = none
 cel_res_block   equ     CEL_VARBASE+4   ; the PINNED page's block, published for the
 *                                       ;   room's re-map after every buffer flip
+* ★★★ cel_scene_done — THE SCENE'S TERMINAL FLAG, AND IT IS PUBLISHED RATHER THAN RETURNED
+* (P3.107). room_loop lives in a different link unit from this one, so it cannot see
+* `vm_bcnt`; CEL_VARBASE is the established channel between the two (cel_res_block above is
+* the same pattern, published for the room's re-map) and it sits in the $FE00-$FEFF
+* constant-RAM window, so it survives every MMU remap the schedule makes.
+*
+* WHAT SETS IT: the terminal beat, which is a row with plays = 0 that vb_bcnt already
+* recognises and already treats as "holds forever". ★ The condition is therefore not new —
+* only the publishing is. Until P3.107 nothing needed to know, because LOADM+EXEC had
+* nowhere to return to.
+cel_scene_done  equ     CEL_VARBASE+5   ; non-zero once the terminal beat is reached
 
 * ---------------------------------------------------------------
 * PIECE D — THE CHARACTER DRAW, and the seed of the VM's character slots.
@@ -2132,7 +2143,17 @@ vb_flowok
 vb_bcnt
 * --- the beat bookkeeping, which really IS once per beat ---
                 lda     vm_bcnt
-                beq     vb_done                 ; terminal beat: 0 plays, holds forever
+                bne     vb_spend
+* ★★★ THE TERMINAL BEAT — 0 plays. It used to fall straight to vb_done and hold forever,
+* which is correct for a program that owns the machine and wrong for one with a caller.
+* The hold is unchanged; what is new is that it now SAYS SO, so room_loop can leave.
+* ★ `inca` ON A KNOWN ZERO, NOT `inc` ON THE BYTE. This runs on EVERY step once the
+* terminal beat is reached, and an `inc` would wrap to 0 after 256 of them — a flag that
+* un-sets itself if anything ever delays the exit. A is vm_bcnt and vm_bcnt is 0 here.
+                inca
+                sta     cel_scene_done
+                bra     vb_done
+vb_spend
                 deca
                 sta     vm_bcnt
                 bne     vb_done
@@ -2558,6 +2579,10 @@ cel_load_startup
                 clr     cel_rd_req
                 clr     cel_pg_sig              ; nothing is owed until the first beat
                 clr     cel_pg_sig+1            ;   tick publishes the schedule's answer
+* ★ AND THE TERMINAL FLAG, FOR THE SAME REASON THE THREE ABOVE ARE CLEARED HERE: these
+* bytes are in constant RAM, are not part of any loaded image, and nothing else
+* initialises them. A garbage cel_scene_done would end the scene on its first pass.
+                clr     cel_scene_done
                 lda     #CEL_RES_BLOCK
                 sta     cel_res_block           ; published for the room's re-map
                 sta     CEL_MMU                 ; $FFA6 -> the pinned page

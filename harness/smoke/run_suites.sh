@@ -21,7 +21,11 @@ cd "$(dirname "$0")/../.." || exit 1
 # ── THE SUITES ───────────────────────────────────────────────────────────────────────
 # The three that describe the SCENE. Each boots live-disk (CLAUDE.md §4) and compares real
 # framebuffer bytes against what the content says they should be.
-SUITES="introseq room walk"
+# ★ `integ` IS THE ONLY ONE THAT LOOKS AT WHAT SHIPS (P3.107). introseq/room/walk each
+# boot a STANDALONE image with its own LOADM; the integrated scene is reached by a jsr from
+# the intro's beat loop, runs from $2500 and returns. It is listed LAST because the other
+# three are faster and a failure in them explains a failure in it.
+SUITES="introseq room walk integ"
 
 # ── RETIRED at P3.103, with what covers their ground now ─────────────────────────────
 #   probe     P1.1 loop probe        -> room/walk boot through the same HAL

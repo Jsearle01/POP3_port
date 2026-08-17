@@ -130,6 +130,14 @@ REM $FE02 is in the constant page, which MC3=1 pins through every MMU remap -- t
 REM property this variable needs, since the thing it describes IS the remap. disk_read.s
 REM owns $FE00/$FE01 and documents $FE02-$FE1F as free.
 set CEL_VARBASE=0xFE02
+
+REM SCENE_BASE / SCENE_CALL_OFF — where the scene's program is read to after the LOADM
+REM handover, and the offset of its CALLED entry (P3.107). Both assemblies take them from
+REM here so there is one home; cutscene_room.s asserts that room_call really is at
+REM SCENE_BASE+SCENE_CALL_OFF and fails the build otherwise, because intro_seq.s calls that
+REM address and cannot see the label.
+set SCENE_BASE=0x2500
+set SCENE_CALL_OFF=11
 REM The window the bundle is expanded inside: FLAME_BASE up to (not into) the disk
 REM driver's parameter block. Loading through DR_VARBASE while the driver is using it
 REM is what hung the room in P3.30, and it hung silently -- a read that lands on a live
@@ -173,7 +181,7 @@ if errorlevel 1 goto :error
 call :size build/obj/intro_splash.o
 
 echo --- Assemble: P3.3 intro sequencer (both credits, one mechanism) ---
-lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -I . -o build/obj/intro_seq.o src/engine/intro_seq.s
+lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DSCENE_BASE=%SCENE_BASE% -DSCENE_CALL_OFF=%SCENE_CALL_OFF% -I . -o build/obj/intro_seq.o src/engine/intro_seq.s
 
 if errorlevel 1 goto :error
 
@@ -349,7 +357,7 @@ REM ======================================================================
 
 echo --- Assemble: P3.17 princess room (4-colour, static) ---
 
-lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DFLAME_BASE=%FLAME_BASE% -DCEL_VARBASE=%CEL_VARBASE% -I . -o build/obj/cutscene_room.o src/engine/cutscene_room.s
+lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DFLAME_BASE=%FLAME_BASE% -DCEL_VARBASE=%CEL_VARBASE% -DSCENE_CALL_OFF=%SCENE_CALL_OFF% -I . -o build/obj/cutscene_room.o src/engine/cutscene_room.s
 if errorlevel 1 goto :error
 call :size build/obj/intro_seq.o
 
@@ -439,7 +447,14 @@ REM than trusted from the inputs.
 python harness/tools/kernel_identical_check.py --resident build/intro_seq.bin --staged build/scene_prog.bin
 if errorlevel 1 goto :error
 
-python harness/tools/decb_to_raw.py --bin build/scene_prog.bin --out build/assets/scene_prog.raw --base 0x2500 --span-end 0x7900
+REM ★ THE $5400 CONDITION, ASSERTED. The TITLE caption's save runs $5400..$68F1 and the
+REM scene's packed bundle lands $5800..$69FF — they overlap, and only the absence of a patch
+REM on beats 4 and 5 makes the call safe. A comment describing an unenforced discipline has
+REM failed here twice, so it is a check.
+python harness/tools/beat_patch_check.py
+if errorlevel 1 goto :error
+
+python harness/tools/decb_to_raw.py --bin build/scene_prog.bin --out build/assets/scene_prog.raw --base %SCENE_BASE% --span-end 0x7900
 if errorlevel 1 goto :error
 
 echo --- Bootable RS-DOS disk image ---
