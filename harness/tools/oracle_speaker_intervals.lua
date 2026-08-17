@@ -47,6 +47,7 @@ local SONG  = os.getenv("P_SONG") or "s_Princess (title set, id 7)"
 local AFTER = tonumber(os.getenv("P_AFTER") or "400")     -- frames to record once armed
 local MAXEV = tonumber(os.getenv("P_MAXEV") or "60000")
 local RAWN  = tonumber(os.getenv("P_RAWN") or "40")
+local PAIRS = os.getenv("P_PAIRS") or "build/tmp/oracle_speaker_pairs.txt"
 
 local cpu = manager.machine.devices[":maincpu"]
 local mem = cpu.spaces["program"]
@@ -204,6 +205,24 @@ _G._n = emu.add_machine_frame_notifier(function()
                               1.0e6 / edges[i + 1], edges[i] > 0 and 1.0e6 / edges[i] or 0))
         end
     end
+    -- ---- P4.5: the machine-readable stream, for the port to replay ----------------
+    -- ★ THE SLICE IS DRIVEN BY THE MEASUREMENT, NOT BY A DECODE. `MUSIC.SET*` has still
+    -- never been decoded (open since P4.1), and it does not have to be for a vertical
+    -- slice: what the port must reproduce is what the SPEAKER did, and that is exactly
+    -- what these pairs are. Emitting (pulse, rest) per segment lets the player replay the
+    -- measured performance with no inference in between.
+    local pf = io.open(PAIRS, "w")
+    if pf then
+        pf:write("# P4.5 — measured segment stream: pulse_us rest_us, one segment per line\n")
+        pf:write(string.format("# song: %s ; armed frame %d ; %d frames\n", SONG, armed_at, AFTER))
+        for i = 1, #ev - 1, 2 do
+            pf:write(string.format("%.3f %.3f\n", ev[i], ev[i + 1]))
+        end
+        pf:close()
+        log("")
+        log(string.format("# wrote %d segment pairs to %s", math.floor((#ev) / 2), PAIRS))
+    end
+
     out:close()
     manager.machine:exit()
 end)

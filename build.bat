@@ -384,6 +384,17 @@ REM square wave costs, in the two architectures the sound design forks on. It sh
 REM probe disk like the other harness probes and is not reached by anything the port runs.
 lwasm --obj -DOBJTARGET -I . -o build/obj/tone_probe.o src/harness/tone_probe.s
 if errorlevel 1 goto :error
+
+REM P4.5 -- the SONG SLICE. It plays a table MEASURED off the running oracle's own speaker
+REM (harness/tools/oracle_speaker_intervals.lua), packed here. Nothing is decoded from
+REM MUSIC.SET*. Like tone_probe it is a harness probe and is NOT written to the shipping
+REM disk -- run_song_slice.sh puts it on a copy, because P4.2's instrument on probe.dmk
+REM took granules over a reserved cel-page track and broke the walk suite.
+if not exist build\gen mkdir build\gen
+python harness/tools/pack_song.py --pairs build/tmp/speaker_pairs.txt --out build/gen/song_princess.s --label song_princess
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -I . -o build/obj/song_probe.o src/harness/song_probe.s
+if errorlevel 1 goto :error
 call :size build/obj/anim_probe.o
 
 echo --- Link: mode-cycling probe + HAL kernel ---
@@ -413,6 +424,11 @@ REM program corrupts the program. $2000 clears all three.
 lwlink --decb --script=link/pop_engine.link --entry=probe_entry --map=build/obj/tone.map ^
        -o build/tone_probe.bin build/obj/tone_probe.o build/obj/hal_build.o
 if errorlevel 1 goto :error
+
+lwlink --decb --script=link/pop_engine.link --entry=probe_entry --map=build/obj/song.map ^
+       -o build/song_probe.bin build/obj/song_probe.o build/obj/hal_build.o
+if errorlevel 1 goto :error
+call :size build/song_probe.bin
 call :size build/anim_probe.bin
 
 echo --- Link: intro splash + HAL kernel ---
