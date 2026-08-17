@@ -16,6 +16,10 @@
 # not a poked image.
 set -u
 
+. "$(dirname "$0")/retired.sh"
+retired "P3.31 — the vizier's walk, byte-exact across 28 captures, booted STANDALONE" \
+        "the integrated sequence: the walk-out was gated inside the intro at P3.107 and the exit-walk skip it was built to catch was closed at P3.103. Jay's ruling, P4.2: 'walk and room should be deprecated anyway. they have been gated in the intro sequence.' ★ LOST with it: the per-page signature guard, the bank-mapped-at-capture assertion, the phase-occupancy census and the two-run stability check. Named because they were this suite's real value and integ replaces none of them."
+
 cd "$(dirname "$0")/../.." || exit 1
 
 MAME="${MAME:-/c/mame/mame.exe}"

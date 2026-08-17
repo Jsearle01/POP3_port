@@ -15,6 +15,10 @@
 # stale framebuffer block number.
 set -u
 
+. "$(dirname "$0")/retired.sh"
+retired "P3.17 — the princess's room, byte-exact, booted STANDALONE with LOADM\"ROOM\"" \
+        "the integrated sequence: the scene now runs inside the intro and Jay gated it there (P3.107, 'look good. mint it.'). Jay's ruling, P4.2: 'walk and room should be deprecated anyway. they have been gated in the intro sequence.' ★ What is LOST is the byte-exact pixel comparison — integ checks reach/return/read-ordering, not pixels. That is a real reduction in coverage and it is a decision, not an accident."
+
 cd "$(dirname "$0")/../.." || exit 1
 
 MAME="${MAME:-/c/mame/mame.exe}"

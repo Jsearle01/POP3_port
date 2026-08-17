@@ -378,6 +378,12 @@ call :size build/hal_link_proof.bin
 echo --- Assemble: P2.6 double-buffered animation probe (object) ---
 lwasm --obj -DOBJTARGET -I . -o build/obj/anim_probe.o src/harness/anim_probe.s
 if errorlevel 1 goto :error
+
+REM P4.2 — the tone-cost INSTRUMENT. Not a sound system: it measures how much of a frame a
+REM square wave costs, in the two architectures the sound design forks on. It ships on the
+REM probe disk like the other harness probes and is not reached by anything the port runs.
+lwasm --obj -DOBJTARGET -I . -o build/obj/tone_probe.o src/harness/tone_probe.s
+if errorlevel 1 goto :error
 call :size build/obj/anim_probe.o
 
 echo --- Link: mode-cycling probe + HAL kernel ---
@@ -394,6 +400,18 @@ REM Proves the double-buffer ABI resolves: HAL_gfx_swap plus the published
 REM draw base and swap counters all come from the kernel object.
 lwlink --decb --script=link/pop.link --entry=anim_entry --map=build/obj/anim.map ^
        -o build/anim_probe.bin build/obj/anim_probe.o build/obj/hal_build.o
+if errorlevel 1 goto :error
+call :size build/anim_probe.bin
+
+REM ★★★ pop_engine.link, NOT pop.link. The P1.x probes link at $0200 under a HARNESS
+REM CONTRACT (their verifier gates the LOADM on the bytes at $0200), and this instrument
+REM has no such contract — so at $0200 its 1,354 bytes run $0200..$074A, straight through
+REM all three regions pop_engine.link names: the line-input buffer at $02DC where typing
+REM EXEC lands, the text screen at $0400 where DECB prints "OK", and DBUF0/DBUF1 at $0600.
+REM P3.5 caught that on the bus ($02DD <- 'E', $02DE <- 'X'): the command that starts the
+REM program corrupts the program. $2000 clears all three.
+lwlink --decb --script=link/pop_engine.link --entry=probe_entry --map=build/obj/tone.map ^
+       -o build/tone_probe.bin build/obj/tone_probe.o build/obj/hal_build.o
 if errorlevel 1 goto :error
 call :size build/anim_probe.bin
 
@@ -487,6 +505,12 @@ call :size build/probe.dmk
 "%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\mode_probe.bin MODE.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
 "%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\anim_probe.bin ANIM.BIN --ftype=binary --ascii=binary
+REM ★★★ P4.2's tone-cost instrument is NOT put on this disk, and that is the point.
+REM It was, for one build, and it broke run_walk_test: DECB allocated its granules over a
+REM reserved cel-page track, the engine's own bank guard fired, and the walk suite reported
+REM "0 of 19 beats". The instrument is not part of the port and the shipping disk has no
+REM room to spare (13,824 B free), so run_tone_cost.sh adds TONE.BIN to its OWN COPY at run
+REM time. An instrument that perturbs its neighbours is not an instrument.
 if errorlevel 1 goto :error
 "%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\intro_splash.bin INTRO.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error

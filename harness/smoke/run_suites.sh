@@ -21,11 +21,17 @@ cd "$(dirname "$0")/../.." || exit 1
 # ── THE SUITES ───────────────────────────────────────────────────────────────────────
 # The three that describe the SCENE. Each boots live-disk (CLAUDE.md §4) and compares real
 # framebuffer bytes against what the content says they should be.
-# ★ `integ` IS THE ONLY ONE THAT LOOKS AT WHAT SHIPS (P3.107). introseq/room/walk each
-# boot a STANDALONE image with its own LOADM; the integrated scene is reached by a jsr from
-# the intro's beat loop, runs from $2500 and returns. It is listed LAST because the other
-# three are faster and a failure in them explains a failure in it.
-SUITES="introseq room walk integ"
+# ★★★ TWO SUITES SINCE P4.2, and the pair that went is the pair that mattered most.
+# `room` and `walk` booted the STANDALONE ROOM.BIN — P3.107 recorded them as a coverage gap
+# for exactly that reason, and Jay closed it by ruling rather than by re-pointing:
+# "walk and room should be deprecated anyway. they have been gated in the intro sequence."
+#
+# ★★ WHAT WENT WITH THEM IS NAMED IN retired.sh AND IT IS NOT SMALL: the byte-exact pixel
+# comparison, the per-page signature guard, the bank-mapped-at-capture assertion, the
+# phase-occupancy census and the two-run stability check. `integ` replaces NONE of those —
+# it checks that the scene is reached, returns, and that no read is revealed half-built.
+# The scene's PIXELS are now gated by Jay's eye alone. That is the decision, stated.
+SUITES="introseq integ"
 
 # ── RETIRED at P3.103, with what covers their ground now ─────────────────────────────
 #   probe     P1.1 loop probe        -> room/walk boot through the same HAL
@@ -33,12 +39,16 @@ SUITES="introseq room walk integ"
 #   compiled  P1.3 compiled sprites  -> nothing; the engine replaced them with streams
 #   mode      P2.5 mode cycling      -> ★ PARTIAL: setup covered, cycling not (unused)
 #   anim      P2.6 double buffer     -> walk's page-signature guard + room's displayed diff
+#                                        ★ which is ITSELF retired now (P4.2) — so the
+#                                        page-signature guard is covered by nothing.
+#   room      P3.17 the room          -> the integrated gate (P3.107); pixels by Jay's eye
+#   walk      P3.31 the vizier's walk -> as above; the skip it caught was closed at P3.103
 #
 # ★ THE GENERATION STAYS. build.bat still assembles PROBE/MODE/ANIM and writes them to
 # build/probe.dmk, and that is deliberate: the live suites boot from that same disk, and
 # the cel pages are placed at explicit tracks after those files. Removing them moves the
 # tracks. What was costing time was RUNNING them, and that is what stopped.
-RETIRED="probe cel compiled mode anim"
+RETIRED="probe cel compiled mode anim room walk"
 
 echo "[suites] running: $SUITES"
 echo "[suites] retired at P3.103 (see harness/smoke/retired.sh): $RETIRED"
