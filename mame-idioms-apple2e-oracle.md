@@ -28,6 +28,65 @@ exactly what the past-scene-4 discipline requires.
 
 ---
 
+## 0. POP ORACLE MOUNT — **VERIFIED FOR POP, 2026-07-25** (the one section the banner does NOT cover)
+
+Everything else in this file remains inherited-unverified for POP (see the banner). **This section is
+POP-verified against POP's own oracle**, on a live run Jay gated "looks good" (2026-07-25).
+
+**The working command** (operator live-watch; Jay's 25.3 gate):
+```bash
+mame apple2e -sl7 cffa202 -hard1 <abs-path>/PrinceOfPersia_3.5.hdv -window -nomax -prescale 3
+```
+Confirmed clean: exit 0, 99.89% speed over a 190 s operator run. The image hashed
+`c4f0b13e49b77dd0fbc5063e27e53a24` (the Phase 0 Linux reference) at run time.
+
+- **`a2cffa02.zip` in the rompath is a HARD PREREQUISITE.** The CFFA2 card carries its own device
+  firmware (`cffa20ee02.bin`). Without it MAME dies before boot with
+  `cffa20ee02.bin NOT FOUND (tried in a2cffa02 apple2e)` / `Fatal error: Required files are missing`.
+  Verify with `mame -verifyroms a2cffa02` → `romset a2cffa02 is good`. A stock MAME install does **not**
+  ship it.
+- **⚠ `hard1` does NOT exist on a bare `apple2e`.** `mame -listmedia apple2e` alone reports only
+  `flop1`/`flop2`/`cass` — the hard-disk instance materializes **only once a CFFA2 card occupies a slot**.
+  Enumerate with the card inserted or the conclusion is wrong:
+  `mame apple2e -sl7 cffa202 -listmedia` → `harddisk1 (hard1) .chd .hd .hdv .2mg .hdi`.
+- **Slot choice:** `sl7` (the conventional Apple II hard-disk slot) leaves `sl6`'s `diskiing` Disk II
+  intact. `sl2` also yields `hard1`; slots are `sl1`–`sl7`.
+- **`cffa202` (6502 firmware), not `cffa2`** (65C02, needs an enhanced //e or better) — confirmed by
+  the slot-option descriptions.
+- **NOT `-flop1`.** Karateka's `-flop1 <dsk>` mount is the wrong media class for POP; the oracle is an
+  800K 3.5" ProDOS volume on `hard1`. `.hdv` is natively accepted — no conversion, no CHD.
+- **Every other `apple2e` storage card was ROM-blocked in this install** (checked exhaustively per §2A.4,
+  via `-listslots` + a run-test on each): `cffa2`→`cffa20eec02.bin`, `a2sd`→`appleiisd.bin`,
+  `corvus`→`a4.7.u10`, `focusdrive`→`focusrom.bin`, `zipdrive`→`zip drive - rom.bin`; `booti` exposes no
+  `hard1` at all. So `cffa202` + `a2cffa02.zip` is not merely the preferred path, it was the only one.
+- **Fallback that needs no extra ROM:** the same build's 5.25" pair boots on the built-in Disk II —
+  `mame apple2e -flop1 PrinceOfPersia_5.25_SideA.nib -flop2 PrinceOfPersia_5.25_SideB.nib`. Useful when
+  the CFFA2 firmware is unavailable, but note those two `.nib` images are the artifacts that **mismatch**
+  the Phase 0 reference md5s (the `.hdv` matches) — so they are not the graded oracle.
+
+**Idiom worth reusing beyond this target: validate a mount headlessly before handing an operator a window.**
+```bash
+mame apple2e -sl7 cffa202 -hard1 <hdv> -video none -sound none -nothrottle -seconds_to_run 5
+```
+Exit 0 ⇒ the mount is good. This costs seconds and is what turned "a dead window Jay stares at" into a
+precise missing-ROM diagnosis. A missing device ROM is a *fatal-before-boot* error, so it is invisible to
+any check that only inspects the media path.
+
+- **A windowed run did NOT write the .hdv back** (measured 2026-07-28): a 137 s operator run at
+  100.00% speed left the image `c4f0b13e49b77dd0fbc5063e27e53a24` — byte-identical to the Phase 0
+  reference. So the CFFA2 `.hdv` mount does **not** behave like the coco3 side's JVC `.dsk`, which MAME
+  saves back unbidden (coco3 idiom 24). Note the limit of this evidence: one run through the intro did
+  not write. It is not proof the image is never written — a run that reached a point where the game
+  writes could still do so — so a scratch copy remains cheap insurance rather than dead weight, and the
+  reference hash is worth checking after any run that matters.
+- **Validate the mount headlessly before opening a window**, every time (the idiom below). Re-confirmed
+  2026-07-28: 5 s, exit 0, seconds of cost.
+
+*Established:* POP P1.1 oracle build + the 2026-07-25 operator run (Jay gate: "looks good");
+write-back and re-validation measured 2026-07-28.
+
+---
+
 ## 1. The load-bearing one: **6502 opcode-fetch bypasses read-taps**
 
 **A scripted read-tap on an execution address silently never fires.** The 6502's opcode
@@ -48,6 +107,60 @@ ran" when it actually ran fine. **This is a hazard, not a finding. Empty ≠ abs
 *Established:* scene-6 full-fight (LCG `$59`/`$29` control model); reinforced in the `$6540`
 attribution retrieval. **Contrast:** on coco3/6809 **read-taps DO work** — this hazard is
 Apple-only (see the coco3 file §10).
+
+---
+
+## 1a. Soft switches toggle on **READS** — a write-only tap reports "no mode switching" (VERIFIED FOR POP, 2026-07-25)
+
+**§1's opcode-fetch false-0 does NOT extend to I/O data reads.** A `install_read_tap` over
+`$C000-$C0FF` fires correctly and abundantly (247,989 hits across a 120 s POP title run). §1's hazard
+is scoped to **read-taps on CODE addresses** used to detect execution; a soft-switch access is a
+**data** access and taps fine. Do not skip a read-tap here on the strength of §1.
+
+**This matters because Apple II soft switches flip on ANY access, and POP uses reads for the
+mode-critical ones:**
+```
+UNPACK.S SETDHIRES     bit HIRESon / bit DHIRESon / bit DHIRESoff …   <- BIT = read
+SUBS.S   PAGEFLIP      lda $c05e / lda $c05f                          <- LDA = read
+MISC.S / SUBS.S        lda $c057 / lda $c050 / lda $c055              <- LDA = read
+```
+A **write-only** tap on `$C05E/$C05F` therefore logs **nothing** and reads as "POP never switches
+graphics mode" — which is the exact opposite of the truth. Tap **read AND write**:
+```lua
+_G._rtap = mem:install_read_tap (0xC000,0xC0FF,"ss_r",function(o,d) log("R",o) return d end)
+_G._wtap = mem:install_write_tap(0xC000,0xC0FF,"ss_w",function(o,d) log("W",o) return d end)
+```
+(Keep both in `_G` — §2 GC gotcha.) **Always carry a self-test**: the title sequence certainly touches
+`TEXT`/`HIRES`/`PAGE2`, so a zero hit-count means the METHOD failed, not that the game is static.
+Log a running hit counter from a frame notifier and check it before trusting any null.
+
+**Noise filter:** `$C000`/`$C001` **reads** are the keyboard, not 80STORE — drop reads of those two or
+the log is swamped. `$C002-$C005` (RAMRD/RAMWRT) fire tens of thousands of times per minute from the
+aux-memory blitter and drown everything; filter them out unless paging is the question.
+
+**Mapping a PC to a source line:** the P1.1 build leaves `oracle/source/obj/*.LST` listings with
+`ADDR: bytes  line  source` — `grep -iE '^ *<addr>' obj/*.LST` resolves any traced PC to its exact
+vendored-source line. This is what makes source↔trace reconciliation byte-exact rather than inferred.
+
+*Established:* PA.1 title-mode recon (2026-07-25) — trace PCs `$ECCC-$ECE1` matched UNPACK.S:644-653
+instruction-for-instruction.
+
+---
+
+## 1b. `-verifyroms` / `rompath` are **cwd-relative** — a wrong cwd reads as "ROM missing"
+
+`rompath` defaults to the relative `roms`, resolved from **MAME's working directory**. Running
+`/c/mame/mame -verifyroms a2cffa02` from a project directory reports:
+```
+romset "a2cffa02" not found!
+```
+while the identical command run from `/c/mame` reports `romset a2cffa02 is good`. **The ROM was
+present the whole time.** This nearly caused a dispatch to declare its oracle half blocked on a
+missing environment prerequisite. Always `cd` to the MAME install (or pass an absolute `-rompath`)
+before concluding a ROM is absent — the same cwd-sensitivity §11 records for `-script`/
+`-autoboot_script` paths applies to ROM lookup.
+
+*Established:* PA.1 §0(a).3 (2026-07-25).
 
 ---
 

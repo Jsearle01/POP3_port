@@ -1,0 +1,178 @@
+#!/usr/bin/env python3
+r"""gen_cel_table.py — emit the VM's cel-id table from the oracle's own frame data.
+
+PIECE C's lookup. The sequence streams in SEQTABLE.S hold CEL NUMBERS; the drawer needs
+an image, a position offset and a colour parity. This resolves the chain the oracle
+resolves, once, at build time:
+
+    cel number  --getfindex-->  (n-1)*5 into ALTSET2      [CTRLSUBS.S:941]
+    ALTSET2 entry               Fimage, Fsword, Fdx, Fdy, Fcheck
+    Fimage & $7F                1-based index into IMG.CHTAB6.A
+    bit7(Fcheck) vs bit7(CharFace)   ->  parity           [CTRLSUBS.S:805-838]
+
+`getaltframe2` is the right table: "Princess & Vizier use alt set 2" [CTRLSUBS.S:927].
+Bit 7 of Fimage is a FLAG, not part of the index (P3.18).
+
+WHY PARITY IS A COLUMN AND NOT A PER-CHARACTER CONSTANT. P3.24 measured that Fcheck
+varies between cels of the SAME character: Vwalk runs ODD,ODD,ODD,EVEN,EVEN,ODD, and
+Vexit/Vraise/Palert are also internally mixed. A pipeline that converts a character's
+set at one parity is wrong for a third of the vizier's walk frames. So parity travels
+with the cel.
+
+WHAT THIS TABLE DELIBERATELY DOES NOT DO. It does not bake facing. Parity depends on
+bit7(CharFace) as well as bit7(Fcheck), and both cutscene characters hold CharFace=-1
+throughout, so a static table is correct HERE. It is a property of this scene, not a
+general one — a character that turns changes the parity of every cel it draws. The table
+records the facing it was generated for, so the assumption is visible rather than
+implicit.
+"""
+import argparse
+import pathlib
+import sys
+
+ROOT = pathlib.Path("C:/Projects/POP3_port")
+sys.path.insert(0, str(ROOT / "harness/tools"))
+import cel_parity_rule as R                                      # noqa: E402
+import sprite_convert as SC                                      # noqa: E402
+
+# The same image table bake_scene.py converts from — the Apple sprite widths must come
+# from the artefact the cels are actually built out of, not from a second list.
+TABLE = ROOT / "oracle/source/01 POP Source/Images/IMG.CHTAB6.A"
+
+# The PlayCut0 cel set (P3.18 §3A), with the CharX each character stands at.
+CUTSCENE = [("vizier", 197, [48, 49, 50, 51, 52, 53,            # Vwalk
+                             54, 55, 56,                         # Vstand / Vstop
+                             57, 58, 59, 60, 61, 62, 63, 64, 65, 66,   # Vexit
+                             67, 68, 69, 70, 71, 72, 73, 74, 75, 76,   # Vraise
+                             77, 78, 79, 80, 81, 82, 83, 84, 85]),
+            ("princess", 120, [1, 2, 3, 4, 5, 6, 7, 8, 9, 11, 18])]
+
+
+def main():
+    ap = argparse.ArgumentParser(description="emit the VM cel-id table")
+    ap.add_argument("--out", default=None, help="write the .s here")
+    ap.add_argument("--face", default="left", choices=("left", "right"))
+    a = ap.parse_args()
+
+    face = R.FACE_LEFT if a.face == "left" else R.FACE_RIGHT
+    alt = R.altset2()
+
+    rows, missing = [], []
+    for who, charx, cels in CUTSCENE:
+        for n in sorted(cels):
+            if n not in alt:
+                missing.append(n)
+                continue
+            fimg, fdx, fdy, fchk, lab = alt[n]
+            idx = fimg & 0x7F
+            # THE APPLE SPRITE'S WIDTH IN BYTES (P3.72g), read from the image table
+            # itself rather than tabulated. It is the WIDTH in MLayGen's
+            # `LDA XCO / SEC / SBC WIDTH` [HIRES.S:1202-1208] -- a mirrored image is laid
+            # down that far to the LEFT of the same coordinate, and the engine cannot
+            # reproduce a mirrored draw's POSITION without it.
+            # ★ FROM THE CEL'S OWN TABLE FILE (P3.95), not from a constant. This read
+            # IMG.CHTAB6.A for every cel; the eight `vcast-*` frames live in IMG.CHTAB7,
+            # so the engine's mirror anchor for them was the width of an unrelated stub.
+            awid = SC.get_cel(str(R.table_path(n)), idx)["w"]
+            rows.append(dict(cel=n, who=who, idx=idx, fdx=fdx, fdy=fdy,
+                             par=R.parity(fchk, face), flag=(fimg >> 7) & 1,
+                             fchk=fchk, lab=lab, awid=awid))
+
+    lo = min(r["cel"] for r in rows)
+    hi = max(r["cel"] for r in rows)
+    print("=== VM cel-id table: %d cels, numbers %d..%d, CharFace=%s ==="
+          % (len(rows), lo, hi, a.face))
+    if missing:
+        print("  NO ALTSET2 ENTRY for cels: %s" % missing)
+    odd = sum(1 for r in rows if r["par"])
+    print("  parity split: %d ODD, %d EVEN   (per-cel, not per-character)"
+          % (odd, len(rows) - odd))
+    fdxs = sorted({r["fdx"] for r in rows})
+    print("  Fdx values present: %s  -> %s"
+          % (fdxs, "must be applied at draw time" if fdxs != [0] else "all zero"))
+    flags = sorted({r["flag"] for r in rows})
+    print("  Fimage bit7 values: %s  (a flag, NOT part of the index)" % flags)
+
+    if not a.out:
+        print("\n  %-5s %-9s %-5s %-4s %-4s %-6s %s"
+              % ("cel", "who", "imgidx", "Fdx", "Fdy", "parity", "label"))
+        for r in rows:
+            print("  %-5d %-9s %-6d %-4d %-4d %-6s %s"
+                  % (r["cel"], r["who"], r["idx"], r["fdx"], r["fdy"],
+                     "ODD" if r["par"] else "EVEN", r["lab"][:24]))
+        return 0
+
+    # Dense table indexed by cel number so the VM indexes rather than searches:
+    # four bytes per entry, cel numbers lo..hi.
+    L = ["* cel_table.s — the VM's cel-id table (P3.24 piece C).",
+         "* GENERATED by harness/tools/gen_cel_table.py — do not hand-edit.",
+         "*",
+         "* cel number -> (image index, Fdx, Fdy, Fcheck), resolved from ALTSET2 the way",
+         "* getfindex/getaltframe2 do [CTRLSUBS.S:927,941].",
+         "*",
+         "* ★ +3 IS RAW Fcheck NOW, NOT A PRE-COMPUTED PARITY (P3.65, piece G).",
+         "*",
+         "* It used to be parity, resolved here at GENERATE time against one CharFace —",
+         "* and this file said so: \"a character that TURNS invalidates this column\". That",
+         "* came due. Palert ends `aboutface,chx,9` and Vexit ends `aboutface,chx,16`, so",
+         "* both characters turn inside the scene and spend part of it at the OTHER parity.",
+         "* A column baked for one facing cannot describe them.",
+         "*",
+         "* The rule is one instruction, so the engine now applies it: parity is 1 when",
+         "* bit7(Fcheck) == bit7(CharFace), which vm_resolve computes as",
+         "* `eora CH_FACE` + `bmi` [CTRLSUBS.S:805-838 SETUPCHAR]. The table carries the",
+         "* FACT (Fcheck) and the engine carries the RULE, which is why this generator no",
+         "* longer takes a facing to bake in.",
+         "*",
+         "*   +0  image index (1-based) into the cel's OWN table file — CHTAB6.A for",
+         "*       most, CHTAB7 for the eight vcast-* frames. `decodeim` gives a frame a",
+         "*       TABLE and an image and the index alone does not identify a cel (P3.95).",
+         "*   +1  Fdx   (signed)",
+         "*   +2  Fdy   (signed)",
+         "*   +3  Fcheck — bit7 vs bit7(CharFace) gives parity AT RUN TIME",
+         "*   +4  Apple sprite WIDTH in bytes (7 px each) — the mirror anchor",
+         "*",
+         "* ★ +4 IS THE MIRROR ANCHOR (P3.72g), and it is a POSITION fact, not a size.",
+         "*",
+         "* The oracle lays a mirrored image down on the OTHER EDGE:",
+         "*",
+         "*     MLayGen:  LDA XCO / SEC / SBC WIDTH / STA XCO   [HIRES.S:1202-1208]",
+         "*",
+         "* so `aboutface,chx,N` in a sequence is a REGISTRATION correction, not a move --",
+         "* the chx cancels the anchor flip and the character stays where she is. The port",
+         "* baked the mirror but drew it at the same left edge, so the chx became visible",
+         "* motion: Jay, watching both live, 'the port has her moving forward during the",
+         "* turn. she doesn't move in the oracle.' Measured on the oracle across her turn,",
+         "* only 21 px of columns differ, where an 18 px shift would have spanned ~58.",
+         "*",
+         "* Cel 11 is 3 Apple bytes = 21 px against chx,9 = 18 px, so the net is -3 px:",
+         "* sub-byte, i.e. no movement. The engine cannot derive that from anything it",
+         "* already holds, so the width comes down here with the rest of the cel's facts.",
+         "CEL_LO          equ     %d" % lo,
+         "CEL_HI          equ     %d" % hi,
+         "CEL_ENTSZ       equ     5",
+         "",
+         "cel_table"]
+    by_cel = {r["cel"]: r for r in rows}
+    for n in range(lo, hi + 1):
+        r = by_cel.get(n)
+        if r is None:
+            L.append("                fcb     0,0,0,0,0       ; cel %d — unused here" % n)
+        else:
+            body = "%d,%d,%d,$%02X,%d" % (r["idx"], r["fdx"] & 0xFF, r["fdy"] & 0xFF,
+                                          r["fchk"], r["awid"])
+            L.append("                fcb     %s%s; cel %-3d %s"
+                     % (body, " " * max(1, 10 - len(body)), n, r["lab"][:22]))
+    p = pathlib.Path(a.out)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    # ENCODING STATED, not left to the platform default (P3.65). On Windows this
+    # defaulted to cp1252 and died on the first non-Latin-1 character in a comment,
+    # after the whole table had been computed. The .s files in this tree already carry
+    # UTF-8 punctuation, so this matches what everything else emits and reads.
+    p.write_text("\n".join(L) + "\n", newline="\n", encoding="utf-8")
+    print("\n  -> %s  (%d entries, %d bytes)" % (p, hi - lo + 1, (hi - lo + 1) * 4))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

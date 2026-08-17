@@ -186,7 +186,8 @@ extremes ($00 black / $3F white) survive; indices 1/2 (orange, blue/cyan) come o
 absent. **Symptom:** a four-band palette test shows only 2 bands; Brøderbund logos render
 without orange/blue.
 
-**The required order** (addresses confirmed present in `src/`):
+**The required order** (addresses confirmed present in *Karateka's* `src/` — **POP: confirm each GIME address
+against POP's own display-init code on first use; POP's `src/` does not yet contain these**):
 1. **`$FF90`** (CoCo3 mode) **first** — the `$8000+` framebuffer needs CoCo3 mode for CPU
    access.
 2. clear buffers.
@@ -199,8 +200,10 @@ values are written"), **not** Sockmaster-documented. Cost of not knowing it: the
 display-init arc burned multiple followups (followup-2 NOT CONFIRMED, chasing palette
 *values* when the cause was *ordering*) before the reorder fixed it. *Candidate:*
 `gime-palette-writes-must-follow-video-mode-set`. *Established:* P2.3a.6 followup-3 (the
-reorder). Tool: `harness/tools/palette_derive.py` (index derivation),
-`harness/tools/decode_framebuffer.py` (framebuffer verify).
+reorder). Tool (Karateka's — **POP `harness/tools/` is an empty skeleton; these do not exist in POP yet**):
+`harness/tools/palette_derive.py` (index derivation), `harness/tools/decode_framebuffer.py` (framebuffer
+verify). The GIME write-order constraint itself is CoCo3 hardware behaviour and transfers to POP unchanged; it
+is only the tooling and the confirmed-addresses that are Karateka-specific.
 
 ---
 
@@ -233,6 +236,26 @@ Stage-1 Fuji cel-data fix.
   fetches bypass them. So the single most important cross-target difference: **on coco3 you
   can read-tap an execution address directly; on apple2e you can't** (use a bp / write-tap /
   watch-the-result there). *Candidate:* `6809-read-taps-work-6502-read-taps-dont`.
+- **`screen.refresh_attoseconds` is a PROPERTY, not a method** (P3.101, cross-cutting — the
+  apple2e side is identical). Written as `scr:refresh_attoseconds()` the script dies at load
+  with `attempt to call a number value (method 'refresh_attoseconds')` and MAME reports only
+  `Fatal error: Error running autoboot script … runtime error`, so the tool looks broken rather
+  than mistyped. Use `local HZ = 1.0e18 / scr.refresh_attoseconds`. **Take the rate from the
+  machine, never a literal 60:** coco3 is **59.922748 Hz** and apple2e is **60.000000 Hz**, so
+  a frame is 16.688 ms on one and 16.667 ms on the other — comparing two machines' frame
+  COUNTS without either machine's frame RATE is the same class of error as comparing a 7 px
+  column against a 4 px one.
+- **A write tap on shared scratch reads whoever wrote it last, not the object you care about**
+  (P3.101). `bc_lead`/`bc_keep` are one clip window reused by every character's every pass, so
+  a tap on them attributed to "the vizier's draw" actually returns whichever draw ran most
+  recently — it came back pinned at 6 while the column ran 43→128 and could not settle the
+  question it was installed for. Where the engine has one scratch and many users, the tap has
+  to be gated on the user (`ch_idx` **and** `ch_cp`), not merely sampled near it.
+- **Sampling order inside a routine matters as much as the address** (P3.101, third instance in
+  three dispatches). `co_setup` stores `ch_dest` and computes the clip window *afterwards*, so
+  a tap on the `ch_dest` write reads the PREVIOUS draw's window. Same family as P3.99's
+  `ch_dest`-at-the-`cad_idx`-tick (stale) and P3.100's tap on `ch_dest` alone (high byte only).
+  **Check where in the routine the value you want is written relative to the one you tapped.**
 - **Tap-GC gotcha (cross-cutting, applies here too):** `install_read_tap`/`install_write_tap`
   and `emu.add_machine_frame_notifier` return an object you **must keep referenced** (`_G._tap
   = …`, `_G._n = …`) or it is garbage-collected and **silently stops firing** (empty log =
@@ -255,6 +278,33 @@ Stage-1 Fuji cel-data fix.
 *Established:* cross-target instrumentation note + the M1 `$010C` watchpoint + the shared
 debugger toolkit from the `$6540` pass (commit `634e0c3`).
 
+### 10a. A read-tap hit is **NOT** proof of execution — compare **PC against the tapped address**
+§10 says 6809 read-taps fire on opcode fetch, and they do. What it does not say is that they
+fire on **data and dummy reads of the same address too**, so *counting tap hits is not counting
+calls.* Measured on `blit_cel` (P3.43): with its only caller NOPped out, the tap still logged
+**0.23 hits/iteration** — which reads as "the routine still runs" and is wrong.
+- **The discriminator is the PC at the moment of the hit** (`cpu.state["PC"].value`, wrap in
+  `pcall` — the accessor is not guaranteed across builds):
+  - **`PC == addr`** → the byte was read but **not executed as an opcode** (data/dummy read).
+  - **`PC == addr + 1`** → the opcode was fetched and the PC advanced: **a real execution.**
+  Both were observed on the *same* address in the *same* session, which is what makes this a
+  discriminator rather than a theory: ablated run → `PC=$391B`, live run → `PC=$391C`.
+- **⚠ The inflation is not uniform, so a ratio will not save you.** In the same run `blit_save`
+  tapped at exactly `2.00`/iteration (true) while `blit_erase` tapped at `4.01` for **two** real
+  calls — one primitive doubled, its neighbour did not. There is no constant to divide out.
+- **So: gate an ablation on the ENTRY COUNT of the routine you ablated, not on a downstream
+  primitive.** Entry taps on `chars_frame` / `flicker` came out as clean `1.00` / `0.00` per
+  iteration and were unambiguous; the primitive counts were not. Keying on a shared primitive
+  additionally forces an argument about *which caller* reaches it — the character path and the
+  flame path both reach `blit_cel` — and that argument is an assumption, not evidence.
+- **Corollary for cost work:** a difference between two runs is only a component cost if the
+  ablation is independently confirmed. Report it as UNCONFIRMED otherwise — a subtraction
+  between two runs that did the same work is noise with a plausible magnitude.
+Tools: `harness/tools/frame_baseline.lua` (the PC diagnostic + entry-count gates),
+`harness/tools/frame_baseline_report.py` (refuses to print an unconfirmed component).
+*Established:* P3.43 frame re-baseline. *Candidate:*
+`a-tap-hit-is-not-an-execution-check-the-pc`.
+
 ---
 
 ## 11. Visual authority is **Jay's live MAME**, never a Clyde snapshot
@@ -267,8 +317,11 @@ A `wpset` PC-confirm shows *code ran*, not *what it looks like*.
 **Pixel-colour provenance (addendum D — applies to any capture file):** filename labels
 ("TRUE"/"reference"/"ground truth") establish nothing; **content + creation method +
 timestamp** do. MAME's rendered palette ≠ the conversion tool's constants (MAME blue ≈
-`(25,144,255)` vs tool `(0,0,255)`, the latter confirmed in `harness/tools/palette_derive.py`)
-— a "ground truth" file with `(0,0,255)` is a tool render. **Automated-check tautology:**
+`(25,144,255)` vs tool `(0,0,255)`). **These specific constants and the `palette_derive.py` they were
+confirmed in are Karateka-measured — POP must re-measure MAME's palette against POP's own tooling before
+relying on the exact values; POP's `harness/tools/` is empty.** The *principle* — a "ground truth" file whose
+pixels carry the tool constant rather than MAME's rendered colour is a tool render, not a capture — transfers
+to POP unchanged and reinforces CLAUDE.md §3 (visual authority is Jay's; never interpret PNG pixels). **Automated-check tautology:**
 "N/N pixels match the rule" is tautological if the rule generated the predictions — validate
 against independently-grounded pixels. *Candidates:*
 `tool-render-is-not-a-mame-capture-verify-by-pixel-colour`,
@@ -704,3 +757,1237 @@ across variants prove the index frame is untouched (palette is a pure index→RG
 the palette compose orthogonally). *Candidate:*
 `two-palette-sets-one-build-selection-byte-at-boot-never-monitor-detect-one-entry-diff`.
 *Established:* RGB palette landing 2026-07-18 (`scene6_climb_crawl_driver.s`).
+
+---
+
+## 14. Disk-boot + natkeyboard: the five things that make DECB `LOADM` actually work
+*(Filed by Clyde under §2A.3 during P1.1 — the build→test loop stand-up, POP3_port.
+**PROVISIONAL, flagged for Jay's confirmation**: the §2A.3 authorship ruling is still open.
+Every item below was measured in this repo, not inferred.)*
+
+Getting a build from `imgtool` onto a running CoCo3 under automation failed five distinct
+ways before it worked. Each has a one-line fix. Tool: `POP3_port/harness/smoke/probe_test.lua`.
+
+- **14a. `-ext fdc` is MANDATORY.** A bare `mame coco3 -flop1 x.dsk` has **no disk
+  controller** — it boots to Extended Color BASIC, `LOADM` does nothing, and the program
+  silently never runs (observed: `status=0`, `PC=$CFFD`). §12's quick-command line omits
+  it; `karateka docs/project/disk-boot-decb-overlap.md:67` has the correct form. With the
+  FDC attached, DECB's prompt poll sits at `PC=$A7D7`/`$D7D5`. `disk11.rom` ships inside
+  `coco3.zip` — and note `mame coco3 -verifyroms` reporting **"bad" is benign**: the only
+  missing files are three *alternate* DOS ROMs (`rgbdos_mess`, `hdbdw3bck`, `hdbdw3bc3`).
+- **14b. `natkeyboard.in_use` defaults to FALSE, and arming it in the same frame as the
+  first post SCRAMBLES that post.** `PRINT 7*6` arrived as `PREPRINT` → `?SN ERROR`. Set
+  `manager.machine.natkeyboard.in_use = true` **at script load**, frames before any key.
+- **14c. Posting is ASYNCHRONOUS and slow — gate on `nk.empty`, never on a frame gap.** A
+  12-character `LOADM"PROBE"` took **~130 frames** to drain. A fixed gap races it and the
+  next post lands mid-string. Both `"\n"` and `"\r"` work as ENTER on this target.
+- **14d. `LOADM` itself takes ~400 frames (drive spin-up + seek) — POLL for the image,
+  don't settle-and-hope.** Watch the load address until the expected opcode appears, then
+  proceed. This also converts a load failure into a *reported load failure* rather than a
+  mystery crash downstream.
+- **14e. A DECB-`LOADM`'d binary MUST NOT contain a `$0100` segment** — this is §5's
+  overlap hit from the other direction, and it is the subtle one. karateka's scripted
+  drivers open with an 18-byte vector block at `$0100-$0111`; **do not copy that into
+  anything DECB loads.** Those drivers are *poked in* by Lua with the CPU already halted,
+  so nothing of DECB's is live. Under `LOADM`, `$010C` is DECB's **live IRQ dispatch
+  vector**: the load succeeds and the image is byte-correct (`$0200 = 7E 02 08` verified),
+  but DECB is left executing its own destroyed vector — `PC` observed wandering
+  `$010D → $FEF9 → $FE0B → $C60B`, never returning to the prompt. Omit the block; if the
+  program masks `CC.I/F` for its whole run it needs no vectors at all.
+
+*Candidates:* `ext-fdc-is-mandatory-a-bare-coco3-has-no-disk-controller`,
+`natkeyboard-in-use-must-be-armed-frames-before-the-first-post`,
+`gate-natkeyboard-posts-on-empty-not-on-a-frame-gap`,
+`poll-for-the-loaded-image-dont-settle-and-hope`,
+`never-ship-a-0100-vector-block-in-a-DECB-LOADM-binary`.
+*Established:* P1.1 build→test loop stand-up 2026-07-25 (POP3_port).
+
+### 14f. Scrape the DECB text screen at `$0400` to see what the guest ACTUALLY received
+The fastest way to debug a natkeyboard problem is to read the 32×16 VDG text screen
+directly instead of guessing from behaviour. **Screen codes are not ASCII:** space is
+**`$60`**, and ASCII `$20-$3F` (punctuation, including `"` → **`$62`**) is stored as
+**ASCII+`$40`**; ASCII `$40-$5F` (uppercase) is stored as-is. Decoding it wrongly makes a
+*correctly* typed command look mangled — `LOADM"PROBE"` reads as `LOADM.PROBE` under a
+naive ASCII map, which sends you hunting a quote-key bug that isn't there.
+```lua
+for row = 0, 15 do
+  local t = {}
+  for col = 0, 31 do
+    local b = mem:read_u8(0x0400 + row*32 + col)
+    t[#t+1] = (b == 0x60) and " "
+           or (b >= 0x40 and b <= 0x5F) and string.char(b)          -- uppercase, as-is
+           or (b >= 0x60 and b <= 0x7F) and string.char(b - 0x40)   -- punctuation, -$40
+           or "?"
+  end
+  log("|" .. table.concat(t) .. "|")
+end
+```
+*Candidate:* `scrape-the-vdg-text-screen-to-see-what-the-guest-received-screen-codes-are-not-ascii`.
+*Established:* P1.1 2026-07-25.
+
+### 14g. `.bat` files MUST be CRLF (build-side, not MAME — but it breaks the build contract)
+`cmd.exe` cannot parse an LF-only batch file: it mangles the whole file into truncated
+command names (`'wasm' is not recognized`, `'bat' is not recognized`) and "fails" in a way
+that looks like a missing toolchain rather than a line-ending problem. `build.bat` is the
+`CLAUDE.md §1` build contract, so this is load-bearing. Pin it in `.gitattributes`
+(`*.bat text eol=crlf`) rather than relying on any developer's `core.autocrlf`. Repair with
+`read_bytes`/`write_bytes` — **never** Python `write_text`, which silently rewrites every
+line ending in the file (the P1.2 `.gitignore` corruption).
+*Candidate:* `pin-bat-crlf-in-gitattributes-cmd-cannot-parse-lf-only-batch`.
+*Established:* P1.1 2026-07-25.
+
+
+---
+
+## 15. Build/tooling gotchas from the sprite-tooling port (P1.2)
+*(Filed by Clyde under §2A.3. Same class as §14g: not MAME itself, but each one
+breaks the build/verify loop and each cost real time here. **PROVISIONAL** — the
+§2A.3 authorship ruling is still open.)*
+
+- **15a. `lwasm` resolves `include` relative to the SOURCE FILE's directory, not
+  the CWD.** `include "build/cel_include.s"` inside `src/harness/cel_probe.s`
+  resolves to `src/harness/build/cel_include.s` and fails with
+  *"Cannot open include file"*. Pass **`-I .`** (or the needed root) so
+  repo-relative includes work. This is the same root cause as karateka
+  `build.bat`'s standing note that source args must use forward slashes — lwasm
+  derives the include base by splitting the source path. *Candidate:*
+  `lwasm-include-base-is-the-source-dir-not-the-cwd-pass-dash-I`.
+
+- **15b. Python `read_text()`/`write_text()` on Windows silently round-trips
+  UTF-8 through cp1252.** Copying a UTF-8 source file and rewriting it with the
+  default encoding turns every `—` (`â`) into a lone ``: the
+  file is no longer valid UTF-8, and nothing raises. Detected here only because a
+  `str.replace` on a line containing an em-dash silently found no anchor. **Use
+  `read_bytes().decode('utf-8')` / `write_bytes(t.encode('utf-8'))`**, and assert
+  every replace anchor was found. This is the *same failure class* as the P1.2
+  `.gitignore` LF→CRLF corruption — Python text I/O on Windows rewrites what it
+  round-trips. *Candidate:*
+  `python-text-io-on-windows-silently-transcodes-use-bytes-with-explicit-encoding`.
+
+- **15c. POP and karateka cel headers are BYTE-SWAPPED.** karateka:
+  `byte0 = HEIGHT, byte1 = WIDTH`. POP: `byte0 = WIDTH(bytes), byte1 = HEIGHT`
+  [ref: `HIRES.S:180-186`]. Reading POP cels with karateka's order produces a
+  transposed sprite that still "converts" without raising — a silent-garbage
+  failure, not a crash. Any tool ported between the two must have this checked,
+  not assumed. *Candidate:* `pop-and-karateka-cel-headers-are-byte-swapped`.
+
+- **15d. A decimal `fcb` header parsed as hex is a silent, sample-maskable bug.**
+  `converted.s` headers are DECIMAL (`fcb 24,2`). PA.9's throwaway POC reader
+  used `re.findall(r'\$?([0-9A-Fa-f]{1,2})')` + `int(v, 16)`, reading `24` as
+  `0x24` = 36. It never fired in PA.9 because all four karateka cels sampled
+  there have every header digit < 10, where hex and decimal coincide — so PA.9's
+  published numbers are unaffected. It fires immediately on POP cels (24-41 rows).
+  **Use `sprite_tool/celio.Cel`, the canonical reader, rather than a second
+  ad-hoc parser.** *Candidate:*
+  `a-validation-sample-that-doesnt-span-the-input-space-can-certify-a-broken-tool`.
+
+*Established:* P1.2 sprite-tooling port 2026-07-25 (POP3_port).
+
+
+---
+
+## 16. Cel ROW ORDER: POP stores bottom-first, karateka top-first (P1.2-fix)
+*(Filed by Clyde under 2A.3. **PROVISIONAL** pending the standing authorship ruling.)*
+
+**POP cel data is stored BOTTOM-ROW-FIRST.** Three code sites in `HIRES.S` establish
+it — code, not comments:
+1. **PREPREP**: `IMAGE += 2` past the `[width][height]` header, so `IMAGE` points at
+   **data row 0** when drawing begins.
+2. **CROP**: `TOPEDGE = YCO - HEIGHT`, with `YCO` the *"Y-coord of lowest visible line
+   of image"* — `YCO` is the **BOTTOM** scanline.
+3. **draw loop** (`*  Next line up`): `IMAGE += WIDTH` advances the source **FORWARD**
+   while `DEC YCO` walks the destination **UP**, terminating at `TOPEDGE`.
+
+=> data row 0 is drawn at the BOTTOM scanline; data row h-1 at the TOP.
+
+**The `HIRES.S:187` comment says the opposite** — *"image bytes read left-right,
+top-bottom"*. Read as visual orientation it contradicts all three code sites, and
+taken at face value it makes the original game render upside down, which it does not.
+It describes sequential storage. `CLAUDE.md` 2 ranks comments **lowest**; the
+mechanism wins. **This comment is a live trap for anyone porting POP art.**
+
+**karateka is the other way round** (cel row 0 = visual top), so a converter ported
+from karateka must **reverse the row order** on ingest. The colour model needs no
+change — it is per-row — but the row loop does. Symptom: every cel, and every
+compiled sprite built from one, renders vertically flipped.
+
+*Candidates:* `pop-cel-rows-are-stored-bottom-first-the-source-comment-says-otherwise`,
+`porting-a-converter-between-two-apple-ii-games-check-row-order-not-just-colour`.
+*Established:* P1.2-fix 2026-07-25 (POP3_port), after Jay caught the flip by eye.
+
+### 16a. A self-consistent check cannot see an orientation error — anchor to the SOURCE
+P1.2's colour spot-check compared the CoCo3 framebuffer against the converter's
+output and passed **1152/1152 pixels on cels that were upside down**. It could not
+have failed: both sides are downstream of the same converter, so a consistent flip
+round-trips perfectly. The guard that closes it (`harness/tools/verify_orientation.py`)
+compares against the **original cel binary** in `oracle/source/.../IMG.CHTAB*` plus the
+blitter's documented row-order semantics — an input the converter cannot influence.
+Demonstrated failing on the real pre-fix data recovered from git.
+**Rule: for any property with a ground truth (orientation, scale, handedness, colour),
+at least one check must be anchored OUTSIDE the pipeline under test.**
+*Candidate:* `at-least-one-check-must-be-anchored-outside-the-pipeline-under-test`.
+*Established:* P1.2-fix 2026-07-25.
+
+
+---
+
+## 17. `PSHU D,X,Y` byte order, and the codegen-simulator trap (P1.3)
+*(Filed by Clyde under 2A.3. **PROVISIONAL** pending the standing authorship ruling.)*
+
+**Measured on the real 6809 under MAME** (`src/harness/pshu_probe.s`: load D/X/Y with
+distinguishable constants, one `PSHU`, dump memory with canaries either side):
+
+    LDD #$A1A2 / LDX #$B1B2 / LDY #$C1C2 / PSHU D,X,Y
+    ascending from the final U:   A1 A2 B1 B2 C1 C2
+
+So for a compiled-sprite burst: **run[0:2] -> D, run[2:4] -> X, run[4:6] -> Y.**
+(PSHU pushes Y first, so Y lands at the HIGHEST addresses.) The PA.9 POC had this
+inverted and it shipped through two dispatches undetected.
+
+**17a. Why it went undetected — the trap worth remembering.** The POC's soundness
+simulator handled PSHU as `for v in reversed(chunk): mem[u]=v` — it replayed the
+`chunk` list the emitter had handed it and **never modelled A/B/X/Y**. The register
+assignment is the *only* decision the emitter makes there, and it sat outside the
+checker's model, so the check validated the tokenizer and the addressing arithmetic
+while being blind to the encoding. It reported ALL PASS on every cel.
+**Rule: a codegen simulator must consume ONLY the emitted instruction stream and
+execute the target's registers.** If it takes anything else the emitter computed, it
+is replaying intent, not testing the lowering.
+
+**17b. `PSHU` is not always the cheapest store.** 6 bytes = 11 cy (1.83/byte), 4 = 9
+(2.25), but 2 = 7 — worse than `STD d,U` at 6 cy, which also leaves U alone (no
+`LEAU` to reposition). Glen's own file mixes 46 `PSHU` with 14 `STD` / 16 `STX` /
+18 `STA` for this reason. Cost both forms per run; do not burst greedily.
+
+**17c. Burst optimizations are worthless without long homogeneous runs.** On POP's
+cels (thin limbed figures, ~60% of drawn bytes "mixed" at 2bpp) only **7% of opaque
+bytes sit in runs of 4+**, `PSHU` fires in 0.4% of cycles, and all four of Glen's
+optimizations together buy ~3%. The predictor is cheap and needs only the input:
+**measure the run-length distribution before building the optimizer.**
+
+*Candidates:* `pshu-dxy-byte-order-d-first-y-last-verify-on-hardware`,
+`a-codegen-simulator-must-execute-registers-not-replay-the-emitters-chunk-list`,
+`measure-run-length-distribution-before-building-a-burst-optimizer`.
+*Established:* P1.3 production sprite compiler 2026-07-26 (POP3_port).
+
+
+---
+
+## 18. MAME's coco3 Monitor Type defaults to COMPOSITE — set it or the colour gate lies (P1.3-fix)
+*(Filed by Clyde under 2A.3. **PROVISIONAL** pending the standing authorship ruling.)*
+
+`mame -listxml coco3` (the 2A.4 enumeration surface):
+```
+<configuration name="Monitor Type" tag="screen_config" mask="1">
+    <confsetting name="Composite" value="0" default="yes"/>   <-- MAME's DEFAULT
+    <confsetting name="RGB"       value="1"/>
+</configuration>
+```
+**`CLAUDE.md` §4 makes RGB the project's monitor gate, but MAME's own default is
+Composite.** Every harness run that does not set it is rendering in the wrong mode,
+and nothing in a byte-level check can tell — the framebuffer holds palette INDICES;
+the monitor type only changes how `$FFB0-$FFB3` are DECODED. Set it explicitly:
+```bash
+mame coco3 -cfg_directory dist/mame-cfg/rgb ...   # ships a coco3.cfg with value="1"
+```
+(MAME rewrites that cfg on exit, adding mixer/video/image blocks — harmless; the file
+is a template, not a constant. Confirm the mode took by re-reading `value=` after.)
+
+**18a. The palette registers mean DIFFERENT THINGS in the two modes.**
+[ref: `docs/ground-truth/SockmasterGime.md`] — *"The color set when using composite
+monitors is different than above (which applies to RGB monitors). On composite
+displays, Bits 5-4 control 4 levels of intensity, and bits 3-0 control 16 hues."*
+So the same byte is two different colours:
+
+| byte | RGB decode (R1G1B1 R0G0B0) | Composite decode (intensity, hue) |
+|------|----------------------------|------------------------------------|
+| `$26` | R=3 G=1 B=0 — **orange** | intensity 2, hue 6 — **orange** (both, luckily) |
+| `$19` | R=0 G=2 B=3 — **blue** | intensity 1, hue 9 |
+| `$2D` | R=2 G=3 B=1 | intensity 2, hue 13 — **blue** |
+| `$24` | R=3 G=0 B=0 — red | intensity 2, hue 4 — **yellow** |
+
+karateka's MAME-verified sets: **RGB `$00,$26,$19,$3F`**, **composite `$00,$26,$2D,$3F`**
+(they differ only at index 2 — see §11q).
+
+**How this was caught, and the lesson.** P1.3's harness picked `$24`/`$12` by
+hand-computing the RGB bit-pack, then ran without setting the monitor type — so the
+values were decoded as composite and `$24` rendered as **hue 4, yellow**. Every
+automated check passed: the framebuffer byte-diff was green (1968/1968 px), because
+palette indices were correct and only the DECODE was wrong. **Jay spotted it in a
+screenshot.** Byte-level verification is structurally blind to palette-register
+semantics, exactly as it was blind to orientation in P1.2-fix. Same rule: for a
+property with a ground truth outside the pipeline, a byte-diff is not the check.
+
+*Candidates:* `mame-coco3-monitor-type-defaults-to-composite-set-it-explicitly`,
+`palette-registers-decode-differently-per-monitor-type-a-byte-diff-cannot-see-it`.
+*Established:* P1.3 palette/monitor-mode fix 2026-07-26 (POP3_port), after Jay
+reported orange rendering yellow.
+
+
+## 19. The object/linked build model (P2.1–P2.6, filed retrospectively)
+
+**Why "retrospectively".** §2A.3 rule 3 says a discovered idiom goes in the applicable
+file. That was honoured through P1.3-fix — seven commits touch this file — and then
+LAPSED: P2.1–P2.5 recorded their findings in source comments and reports instead, while a
+report counter tracked "§2A.3 authorship deferrals" up to twenty-one. There was no ruling
+to wait for; see §19h. These are the lapsed entries, filed now.
+
+### 19a. FOUR directive classes are object-target-only, not three
+`lwasm --decb` (absolute) rejects `export`, `import`, `section`/`endsection`, **and
+`setdp`**. P2.3-recon enumerated the first three from toy probes; `setdp` only surfaced on
+real HAL code, because a toy probe has no direct-page usage to declare:
+```
+SETDP not permitted for object target
+```
+One source serves both build models by guarding all four behind `ifdef OBJTARGET`; the
+absolute output is then byte-identical to a source that never had them. Verified:
+karateka's production binary `88eba89b…` unchanged across the whole conversion.
+*Established:* P2.4 (POP3_port).
+
+### 19b. `lwlink --section-base` is SILENTLY IGNORED — only a script places sections
+No error, no warning, exit 0, and the section still lands at the default address. A
+conversion that used the flag and checked only the exit code would place everything wrong
+and look healthy. A linker script works:
+```
+section prog load 0200
+section code load 3000
+entry probe_entry
+```
+*Established:* P2.3-recon D4; used in `link/pop.link` from P2.4.
+
+### 19c. `lwlink` only errors on a REFERENCED undefined symbol
+An `import` that nothing calls links clean. The ABI is therefore enforced at the point of
+USE, not of declaration — so "the contract's imports resolve" is only a real claim for
+symbols something actually calls. Measured both ways:
+```
+import never_defined_symbol, NOT called -> lwlink exit 0
+import never_defined_symbol, JSR'd      -> External symbol ... not found, exit 1
+```
+Consequence worth having: a deliberately-dormant entry point that is declared but not
+exported becomes a link error naming the symbol, rather than a jump into whatever occupies
+the address.
+*Established:* P2.4.
+
+### 19d. A linked DECB binary has MULTIPLE segments — gate on the LAST one
+`lwlink --decb` emits one record per section. The program segment lands FIRST, so a
+harness that polls the entry address and posts `EXEC` on sight types into a still-running
+`LOADM`: the program never runs, and it presents as a code fault rather than a race.
+Verify every segment's first AND last byte before proceeding. Gating on the last segment
+instead of the first holds for any segment count, so adding sections later cannot silently
+re-break it.
+*Established:* P2.4, after P1.1's single-segment gate broke on the first linked build.
+
+### 19e. GIME 16-colour: `$FF99 = $1E`, 160 B/row, 30,720 B
+CONFIRMED from two independent sources, not derived:
+
+| mode | bpp | B/row | HRES | CRES | `$FF99` (192 lines) | bytes |
+|------|-----|-------|------|------|---------------------|-------|
+| 320×192×4  | 2 | 80  | 101 | 01 | `$15` | 15,360 |
+| 320×192×16 | 4 | 160 | 111 | 10 | `$1E` | 30,720 |
+
+GIME-RM §10's Video Mode Reference gives `$1E` directly; SockmasterGime.md:108-136's bit
+layout reconstructs the same byte (`%0 00 111 10`). Palette is `$FFB0-$FFBF`, 16 registers.
+A wrong stride does not fail loudly — it skews the image into a diagonal — so the mode
+service PUBLISHES the stride rather than letting each caller assume it.
+*Established:* P2.5.
+
+### 19f. Mode-set ordering DIVERGES from GIME-RM §14, deliberately
+The manual's example loads the palette at step 4, before the mode registers, and writes
+`$FF90` late. This codebase does neither:
+- **`$FF90` FIRST** — framebuffers at `$8000+` are ROM territory until the CoCo3 all-RAM
+  map exists, so nothing can be cleared before it.
+- **Palette LAST** — palette writes do not latch until `$FF98`/`$FF99` hold their final
+  values; indices render black otherwise.
+
+Per CLAUDE.md §2, observed behaviour outranks documentation: the trace wins on fact, the
+manual wins on intent.
+*Established:* karateka `HAL_gfx_init` constraints A/B; carried into `HAL_gfx_set_mode` P2.5.
+
+### 19g. Double-buffering lives in PHYSICAL RAM — there is no 64 KB wall
+P2.5 recorded a worry that 16-colour double-buffering would need 60 KB of the 64 KB CPU
+window. **That was wrong**, and the error was reasoning about the CPU's view instead of the
+machine's. Framebuffers are addressed by the GIME's VOFFSET (`physical / 8`); the CPU sees
+only an MMU-mapped window onto part of it. 512 KB is MAME's coco3 default — confirmed, not
+assumed:
+```
+mame coco3 -listxml  ->  <ramoption name="512K" default="yes">524288</ramoption>
+```
+Place buffers AWAY from the default-mapped top 64 KB (`$70000-$7FFFF`): the CoCo3 boots
+with CPU `$0000-$FFFF` mapped there, so a buffer placed in it overlaps the running program
+(a program at CPU `$0200` is physical `$70200`). Map the BACK buffer at CPU `$6000` via
+`$FFA3-$FFA6`; basing the window at `$6000` rather than `$8000` avoids `$FFA7` (CPU
+`$E000-$FFFF`) and so never remaps the block the stack and vectors live in.
+*Established:* P2.6.
+
+### 19h. §2A.3 needed no ruling — idioms files are REFERENCE, not §2D authored docs
+§2D reserves Orchestrator authorship for "decision records, post-mortems, behavioral
+models." An idioms file is none of those: §2A.3 rule 3 explicitly instructs Clyde to add to
+it, and this file's own history is seven Clyde commits (P1.0 → P1.3-fix). The "authorship
+ruling" tracked as open from P1.1 was a phantom — the rule was already unambiguous. What
+was real was the P2.1–P2.5 filing lapse. The counter is retired here; discovered idioms go
+in this file, in the dispatch that finds them.
+*Established:* P2.6 §2A.3 reconciliation.
+
+---
+
+## 20. Interrupt discipline for VBL-synced animation (P2.6)
+
+### 20a. `HAL_sys_init` is step 0, and skipping it is an INTERRUPT STORM
+The PIAs assert IRQ **independently of the GIME's `IRQENR`**. PIA0 `$FF01`/`$FF03` and PIA1
+`$FF21`/`$FF23` bits 0-1 enable CA1/CA2/CB1/CB2 interrupts, and PIA0 fires on **horizontal
+sync at ~15.7 kHz**. A handler that acknowledges only by reading `$FF92` never clears them,
+so the CPU re-enters the handler immediately after every `rti` and the main program makes
+essentially no progress.
+
+**What it looks like, and why it costs hours:** the VBL path appears *healthy*. The frame
+counter advances 1:1 with real frames. What fails is everything else. Measured — a graphics
+clear loop that should take ~6 frames never finished, with **42% of sampled PCs in the ROM →
+`$010C` dispatch path**. It reads as a hung graphics routine.
+
+`HAL_sys_init` clears those bits (mask `$FC`) while IRQ is still masked, which is why it is
+step 0 of the documented init order. karateka root-caused the identical failure in its
+R-boot work: *"infinite interrupt loop at `$0226`, 833,172 times per 30 seconds in MAME."*
+*Established:* P2.6, by skipping it and reproducing karateka's R-boot bug exactly.
+
+### 20b. `HAL_time_vbl_wait` does NOT wait when `CC.I` is set
+It takes a documented fallback (Q001 N3=β), synthesises a frame-counter increment and
+returns immediately. A caller that leaves interrupts masked gets a swap loop running flat
+out, flipping VOFFSET at arbitrary raster positions. **It compiles, it runs, the counters
+advance, and it tears.** `HAL_time_init` deliberately does not clear `CC.I` (the E1.c
+invariant: HAL init never changes the caller's mask state), so the caller must:
+```asm
+        jsr   HAL_sys_init      ; step 0 -- silence the PIAs (20a)
+        jsr   HAL_time_init     ; install $010C handler, enable VBORD only
+        andcc #$EF              ; CLEAR CC.I -- nothing else will do this
+```
+*Established:* P2.6.
+
+### 20c. Polling `$FF92` requires ARMING VBORD first
+`$FF92` latches VBORD only when the source is enabled (`$FF92 = $08`) and `IEN` is set in
+`$FF90`. Polling without arming spins forever. This is the mirror image of 20a: one is a
+source that fires and is never acknowledged, the other a source that never fires at all.
+*Established:* P2.5 (the mode probe hung after stage 1), fixed by arming per checkpoint.
+
+### 20d. MAME `natkeyboard` mis-delivers the SHIFTED double quote — INTERMITTENTLY
+`nk:post('LOADM"ANIM"')` arrived at the DECB prompt as:
+```
+LOADMBANIMB
+?SN ERROR
+```
+Each `"` came through as the letter **B**. Confirmed by dumping the text screen at `$0400`,
+so it is keystroke DELIVERY — not the disk and not the filename (`ANIM.BIN` was present, and
+the identical string loaded successfully in other runs **in the same session**).
+Intermittent is worse than broken: it passes the automated run and fails the one with a
+human waiting.
+
+**For a LIVE visual gate, direct-load instead** — poke the DECB segments in and set PC. The
+disk path proves nothing a human is judging, and removing the keyboard removes an
+intermittent failure from the run that costs someone's attention. Keep `LOADM` in the
+automated test, where a retry is free.
+*Established:* P2.6, after two dead live runs Jay sat through before reporting the error.
+
+### 20e. 6809 accumulator-offset indexing is SIGNED (not MAME, but it bites here)
+In `leax a,x` the offset is two's-complement **−128..+127**. A 16-colour stride of 160 is
+therefore **−96**, and the draw pointer walks BACKWARD out of the framebuffer and through
+whatever precedes it. Measured: a probe completed one swap, then executed at `$6001` — it
+had overwritten itself. Use `clra / ldb <value> / leax d,x` for a genuine 0..255
+displacement, since `D` is 16-bit and the high byte is zero.
+*Established:* P2.6.
+
+
+---
+
+## 21. The canonical BOOT CONTRACT — machine-config first, always (P2.8)
+
+Three consecutive dispatches lost time to the same shape: **a probe hand-rolled its machine
+bring-up and got the ordering wrong.** P2.5 hung (polled `$FF92` without arming VBORD), P2.6
+stormed (skipped `HAL_sys_init`, so the PIAs interrupted at 15.7 kHz unacknowledged), P2.7
+froze. They are one family, and the family has a cure.
+
+### 21a. Every program runs the HAL's canonical boot, verbatim, FIRST
+`hal.inc`'s INIT ORDER is the authoritative list, and it is seven steps:
+```
+0. HAL_sys_init         bare-metal: mask, $FF90, MMU, PIA IRQ disable
+1. HAL_mem_size_detect  memory probe (stub today)
+2. HAL_time_init        frame counter + $010C VBL handler + VBORD enable
+3. HAL_gfx_init  /  HAL_gfx_set_mode(mode)
+4. HAL_input_init       (stub)
+5. HAL_sound_init       (stub)
+6. HAL_file_init        (stub)
+```
+Do not hand-roll bring-up and do not reorder. `src/engine/boot.s` in karateka is the
+reference implementation.
+
+### 21b. Boot is LAYERED, which is why "boot differs per resolution" is a non-problem
+- **Steps 0-2 are machine-establishment and RESOLUTION-INDEPENDENT.** Identical for every
+  program that will ever run on this machine. Mandatory, first, before ANY memory, graphics
+  or data access.
+- **Step 3 is the only resolution-DEPENDENT step**, and it is already parameterised —
+  `HAL_gfx_set_mode(mode)` takes the mode as an argument.
+- **Steps 4-6 are peripherals**, invariant, after graphics.
+
+So there is no ambiguity about "which boot": the part that must be identical everywhere is
+identical everywhere, and the part that varies is one parameterised call that happens later.
+
+### 21c. This is the proto-KERNEL BOOT CONTRACT
+Read it as an OS boundary and it stops being a probe convention: **the kernel establishes
+machine configuration — guaranteed, in a fixed order — before any program runs; programs
+then REQUEST modes rather than configuring hardware.** Steps 0-2 are what a kernel does
+before handing control to userland; step 3 is a syscall. That framing is worth carrying into
+the single-source extraction, because it says which side of the boundary each step lives on.
+
+### 21d. `sys.s`'s `$FF90=$4C` "unmaps ROM" comment — FLAGGED, NOT TRUSTED
+`sys.s` states the postcondition *"$FF90=$4C ... ROM unmapped from $8000-$FEFF"*. Both
+references disagree that `$FF90` does this:
+
+| MC1 | MC0 | ROM mapping |
+|-----|-----|-------------|
+| 0 | x | 16K internal, 16K external |
+| 1 | 0 | 32K internal |
+| 1 | 1 | 32K external (except vectors) |
+
+[ref: GIME_Reference_Manual.pdf §3 INIT0; SockmasterGime.md:24-38 — identical tables]
+
+`$4C` = `0100_1100` → MC1=0, MC0=0 → *"16K internal, 16K external"*. There is **no all-RAM
+setting in MC1:MC0 at all**; the CoCo3's upper-memory RAM/ROM choice is the SAM's
+`$FFDE`/`$FFDF` pair, which `HAL_sys_init` does not write (`HAL_gfx_init` and
+`HAL_gfx_set_mode` write `$FFDF` as their last step).
+
+**Measured, and it complicates the picture rather than settling it:** a write/read-back
+survey found `$0200`, `$3000`, `$6000`, `$7F00`, `$8000`, `$9000`, `$A000`, `$C000`, `$D000`
+and `$D7FF` ALL writable RAM at the DECB prompt, *before* `LOADM`, *before* `HAL_sys_init`
+ran at all. So on this target the `$8000-$FEFF` window is RAM-backed regardless, and nothing
+observed depends on the comment being true.
+
+The comment is **not corrected here**: it is a factual claim in the shared kernel about
+machine behaviour, and the correct disposition is Jay's. Flagged with the evidence.
+
+### 21e. A speed change is a schedule change — treat it as one
+P2.7's freeze was bisected to an unrolled draw loop. P2.8 bisected further: replacing the
+unroll's 16-bit stores with unrolled BYTE stores **still fails**, while the original rolled
+byte loop **passes**.
+
+| variant | speed | result |
+|---|---|---|
+| rolled byte loop | slow | PASS |
+| unrolled `sta ,x+` x16 | fast | FAIL |
+| unrolled `std ,x++` x8 | fast | FAIL |
+
+The instruction form is irrelevant; the SPEED is the variable. An optimisation that changes
+no observable output can still change *when* things happen relative to interrupts, the
+raster, and any hardware with its own clock — and a latent race that was previously masked
+by slowness becomes reachable. When a provably output-equivalent speedup breaks something,
+stop looking for a coding error and start looking for the race it uncovered.
+*Established:* P2.8. **RESOLVED P2.9** — the race was the MMU remap; see §22.
+
+
+---
+
+## 22. A multi-register hardware update is a CRITICAL SECTION (P2.9)
+
+**The MMU remap must be atomic with respect to interrupts.** Writing the four MMU
+registers that cover the draw window is a multi-step change to the CPU's memory map.
+Between the first write and the last, the window is half one buffer and half the other —
+a map that never legitimately exists. An interrupt taken in that gap runs against it.
+
+```asm
+gfx_map_blocks:
+        pshs    cc                      ; save caller's mask state
+        orcc    #$50                    ; mask IRQ+FIRQ -- remap is atomic now
+        ldx     #GFX_DB_MMU
+        ldb     #GFX_DB_BLOCKS
+gfx_map_lp:
+        sta     ,x+
+        inca
+        decb
+        bne     gfx_map_lp
+        puls    cc                      ; restore caller's CC exactly
+        rts
+```
+
+**How it was found, because the path matters.** Three theories died before this one:
+stack-clobber (P2.7, disproven — the stack was intact and already relocated),
+ROM-residency (P2.8, disproven — every address measured writable RAM before the probe
+ran), and then the bisection that reframed everything: unrolled BYTE stores failed as
+badly as unrolled word stores while the rolled loop passed, so **the variable was SPEED,
+not the instruction** (§21e). Speed-dependence means an asynchronous interaction, and the
+only asynchronous thing present was the VBL interrupt. One decisive test — mask IRQ across
+the draw — turned 22/23 into 27/27; a second, narrower test — mask ONLY the four MMU
+writes — did the same, localising it exactly.
+
+**THE DISCIPLINE ALREADY EXISTED IN THE CODEBASE.** `HAL_time_frame_count` masks IRQ
+around its two-byte read of the interrupt-updated frame counter and is labelled a race
+fix. Same rule, different resource: **the 6809 gives no atomicity across multiple
+accesses, so anything the interrupt context can observe part-way through must be made
+atomic by masking.** The counter needed it for a 16-bit READ; the MMU needs it for a
+four-register WRITE.
+
+**Always `pshs cc` / `puls cc`, never `orcc` / `andcc`.** Restoring the caller's condition
+codes exactly preserves their mask state — a caller that had interrupts masked stays
+masked. Hard-coding `andcc` to unmask silently enables interrupts in callers that
+deliberately disabled them.
+
+**Generalises beyond the MMU.** Any hardware state written across several instructions and
+observable from interrupt context is the same shape: VOFFSET pairs, palette runs, MMU task
+switches. If an interrupt can see it half-written, mask it.
+*Established:* P2.9, after three disproven theories. Fixed in `gfx.s gfx_map_blocks`;
+karateka unaffected (binary byte-identical, service gated off).
+
+---
+
+## 23. `LOADM` at `$0200` dies as soon as it needs a SECOND granule (P3.3)
+
+**DECB's own storage lives at `$0600`, and a program loading at `$0200` runs straight
+through it.** Disk BASIC zeroes `$0600-$0989` at init and keeps `DBUF0=$0600`,
+`DBUF1=$0700`, the **FAT RAM at `$0800`** and the **FCBs at `$094A`** there.
+[`karateka_coco3 docs/project/decb-loadm-boot-gates.md`, from *Disk Basic Unravelled II*]
+A granule is 2,304 bytes, so a load at `$0200` fills `$0200-$0AFF` on its FIRST granule —
+taking out all four while `LOADM` is still using them. DECB then cannot follow the chain
+to granule 2 and raises **`?FS ERROR`**, having loaded nothing usable.
+
+**Measured, not inferred** (three cases, one conclusion):
+
+| file | load address | granules | result |
+|---|---|---|---|
+| `PROBE`/`MODE`/`ANIM` (798–980 B) | `$0200` | 1 | **loads** |
+| 6,912 B synthetic | `$0200` | 3 | `?FS ERROR` |
+| the SAME 6,912 B file | `$4000` | 3 | **loads** |
+
+So it is **not a size limit and not a `.dsk` capacity problem** — same file, same disk,
+same granule count, different destination. The single-granule programs work only because
+they stop below `$0600`.
+
+**The consequence for POP:** every engine screen is far past one granule (`INTRO.BIN`
+27,674 B, `INTROSEQ.BIN` 29,495 B), so **no engine program can be `LOADM`ed today.** Both
+were run by parsing the DECB segment table in Lua, poking the bytes in and setting PC —
+`build/introrun.lua` (P3.2) and `harness/smoke/introseq_test.lua` (P3.3). **A capability
+gated by Jay's eye on a poked image says nothing about the disk path.**
+
+**The fix is Karateka's and is already written.** `karateka_coco3 src/boot/bootloader.s`
+runs from framebuffer space (`$8000+`, boot-dead), masks IRQ+FIRQ first, takes its own
+stack at `$7F00`, replicates the MMU setup, raw-reads whole tracks into low RAM through
+`disk_read.s`, and `jmp`s the game entry — never returning to BASIC, which is what makes
+the clobbered `$01xx` vectors inert. Entered by **`LOADM"BOOT":EXEC`**: `LOADM` does
+`STD EXECJP`, and bare `EXEC` jumps through it, so a single-granule stub is all DECB has
+to survive. **Porting it is a POP task in its own right** (§2G copy-and-adapt), and is the
+gate on any disk-resident engine screen.
+
+*Established:* P3.3, after bisecting sizes/granules/addresses — the answer was in
+Karateka's already-written gate doc, and Jay named it.
+
+---
+
+## 24. MAME writes `.dsk` images back — mount a COPY, never the built artifact (P3.3)
+
+**MAME opens a floppy READ-WRITE and JVC saves back** (§3 already says the format is
+writable; this is what that costs). A guest that touches the disk, or an exit taken
+mid-FDC-operation, **rewrites the file the build produced.** In P3.3 a run of diagnostic
+sessions against `build/probe.dsk` left it reporting **`Corrupt image`** to `imgtool`, and
+`run_probe_test.sh`, `run_mode_test.sh` and `run_anim_test.sh` all failed at once — with
+nothing wrong in any of them, and nothing wrong in the code they test. A rebuild "fixed"
+it, which is exactly the shape that reads as flakiness.
+
+**The rule was already standing** — §3: *".dsk fixtures are gitignored / throwaway —
+generate per-task, don't share."* The fix is to enforce it in the runner instead of
+remembering it: every `run_*_test.sh` now does
+
+```bash
+SRC_DSK="build/probe.dsk"          # the built artifact — never mounted
+DSK="build/run_<test>.dsk"         # the scratch copy MAME may do as it likes with
+cp -f "$SRC_DSK" "$DSK" || exit 1
+```
+
+and `/build/` is gitignored, so the scratch images cost nothing. **Verified:** the suite's
+`md5` of `build/probe.dsk` is now identical before and after a full run.
+
+**The tell to recognise next time:** several unrelated disk-loading tests failing
+*together*, and a rebuild clearing it. That is the fixture, not the code.
+
+*Established:* P3.3.
+
+---
+
+## 25. `lwasm -D` takes a C literal — `-DSYM=$1F00` silently defines SYM as ZERO (P3.4)
+
+**No warning, no error, exit 0.** lwasm's `--define` parses a C-style literal, so a
+`$`-prefixed hex value is accepted and evaluates to **0**. Measured three ways on the
+same source:
+
+```
+-DDR_VARBASE=$1F00   ->  dr_status equ 0004     WRONG (base = 0)
+-DDR_VARBASE=0x1F00  ->  dr_status equ 1F04     right
+-DDR_VARBASE=7936    ->  dr_status equ 1F04     right
+```
+
+`$` is correct **inside** the source and wrong **on the command line** — which is
+exactly the kind of inconsistency that survives review, because every other hex
+number in the project is written `$`.
+
+**What it cost:** POP passes one `-DDR_VARBASE` to both the kernel and the engine so
+caller and primitive agree on where the disk primitive's parameter block lives. With
+the value silently 0, *both* agreed on `$0000` — inside the HAL's DP scratch band
+(`$00-$07`). The first disk read after any HAL call therefore read a track number
+some other routine had overwritten, and failed with **RNF** — a completely plausible
+disk error pointing nowhere near the actual fault.
+
+**Check it, do not trust it:** `lwasm --list=x.lst` and read the `equ` back. A
+symbol that should be `$1F00` and lists as `0000` is this bug.
+
+*Established:* P3.4.
+
+---
+
+## 26. RELEASE THE DRIVE after every transfer — the primitive does not (P3.4)
+
+`disk_read.s` disarms HALT at the end of each track but leaves the **drive selected
+and the motor running**. That is harmless for the caller it was written for —
+karateka's `bootloader.s` loads the game and `jmp`s into it, so nothing of the
+loader's ever executes again — and **fatal for a caller that returns**. POP's intro
+returns to a normal VBL loop with interrupts enabled; several seconds later the CPU
+derailed with `S=$0000` and a free-running PC, in rendering code that never touches
+the disk.
+
+**The fix is one instruction at the I/O-CALLER layer**, where the speed bracket
+already lives (§8):
+
+```asm
+lt_ok   clr     DSKREG          ; motor off, no drive selected, HALT disarmed
+        sta     SAM_FAST        ; ... then restore speed
+```
+
+**The oracle does exactly this, explicitly, and always.** Every load in `MASTER.S`
+is bracketed `jsr driveon` … `jmp driveoff` — `LoadStage1A`, `LoadStage1B`,
+`LoadStage2A/B`, `LoadStage3`, `ReloadStuff`, `loadch7`. That housekeeping reads as
+boilerplate when you are reading the original for structure, and it is the answer to
+a bug you have not hit yet.
+
+**The general shape:** a resource-acquiring routine written for a fire-and-forget
+caller carries an implicit "and then the process exits" in its contract. Ask of any
+inherited primitive not "is it correct" but **"what did its previous caller do next,
+and am I doing that?"**
+
+*Established:* P3.4. *Candidate:*
+`a-primitive-proven-where-nothing-returns-leaks-state`.
+
+---
+
+## 27. Recording the port's output: `-aviwrite` is UNCOMPRESSED — transcode it (SQ-1)
+
+**MAME's `-aviwrite` works and its AVI is valid, but it is uncompressed 24-bpp DIB:
+about 27 MB per emulated second** (715 MB for a 26-second intro). It also lands in
+the **`snapshot_directory`** (default `snap/`), not the path you passed — `ls` in the
+working directory says "no file produced" when the file exists.
+
+**`-nothrottle` does NOT distort the recording.** MAME writes one AVI frame per
+EMULATED frame at the emulated refresh rate, so an unthrottled capture produces a
+correctly-timed video and finishes ~8× sooner. (Distinct from the §6 caveat, which
+is about *sampling* a moving image at arbitrary points; capturing every frame has
+no such problem.)
+
+**ffmpeg is installed** (`winget install Gyan.FFmpeg`, 8.1.2; binary under
+`%LOCALAPPDATA%\Microsoft\WinGet\Packages\Gyan.FFmpeg_*\ffmpeg-*\bin\`). The recipe:
+
+```bash
+mame coco3 ... -nothrottle -aviwrite raw.avi -autoboot_script <live>.lua
+ffmpeg -i snap/raw.avi \
+  -vf "select='between(n,FIRST,LAST)',setpts=N/FRAME_RATE/TB,scale=1280:944:flags=neighbor" \
+  -c:v libx264 -preset slow -crf 16 -pix_fmt yuv420p -profile:v high \
+  -aspect 4:3 -movflags +faststart -an out.mp4
+```
+578 MB → **827 KB**, PSNR 59 dB (luma 72 dB — essentially exact).
+
+**THE RAW FRAME IS NOT SQUARE-PIXEL.** `-aviwrite` emits the screen bitmap, 640x236,
+which is **2.71:1** — but a CoCo3's full NTSC raster, borders included, is **4:3**.
+Encode the raw dimensions and it plays back badly squashed: a defect no amount of
+codec or container checking will surface, because the file itself is perfect.
+
+The fix is integer scaling PLUS aspect metadata, so it survives a player that
+honours either one:
+- **x2 horizontal, x4 vertical -> 1280x944.** Integer factors keep the pixels hard
+  (`flags=neighbor`), and 1280x944 is **1.356:1** — only **1.7% off 4:3**, so a
+  player that ignores the aspect flag is imperceptibly wrong rather than broken.
+- **`-aspect 4:3`** sets SAR 59:60 / DAR 4:3 for a player that honours it.
+
+Vertical x3 (1.81:1) and x5 (1.09:1) are 36% and 19% out. **x4 is the only usable
+integer factor.**
+
+**Two more settings that are not arbitrary:**
+- **`scale=…:flags=neighbor` to 2× BEFORE encoding.** The coco3's 320-pixel mode is
+  emitted at 640 wide, so 4:2:0's *horizontal* chroma halving is free — but its
+  *vertical* halving is not, and it smears exactly the NTSC fringe colour the
+  display-faithful conversion exists to reproduce. Doubling both axes first puts
+  the subsampled chroma back at the source's own resolution. `neighbor` keeps the
+  pixel art hard.
+- **`yuv420p` + `high`, not 4:4:4.** Compatibility is the whole point (see below).
+
+**THE TRAP THIS COST A ROUND-TRIP: Windows ships no MJPEG decoder.** Before ffmpeg
+was installed, the AVI was re-encoded as MJPEG — structurally valid, every frame
+decodable, verified by re-parsing — and Media Player/Photos **opened it, found no
+decoder, and closed with no video.** *Validating the container proves nothing about
+whether the target can play the codec.* On a stock Windows box: **H.264/mp4 and
+uncompressed DIB AVI play; MJPEG AVI does not.**
+
+**GIF is a serious option for this content, not a fallback.** A CoCo3 16-colour
+screen has ~16-19 distinct colours in the whole recording, so GIF is **lossless**
+(verified byte-identical, all frames), and an intro that holds still between page
+flips has ~13 distinct images in 15 s — 915 frames became **39 GIF frames, 73 KB**,
+against 103 MB of MJPEG. GIF's 10 ms delay granularity costs 20 ms of drift across
+15 s, because the holds are seconds long. Use it when the target might not have a
+video codec, or when the artifact needs to be small.
+
+*Established:* SQ-1.
+
+---
+
+## 28. Typing `EXEC` overwrites the program you just `LOADM`ed — $02DC is the line buffer (P3.5)
+
+**Color BASIC's line-input buffer is at `$02DC`.** `LOADM` places the program; the
+operator then types `EXEC` to start it; **DECB stores those keystrokes in the
+buffer, on top of the program that was just loaded there.** Caught on the bus, with
+the writing PC inside the BASIC ROM:
+
+```
+f708  $02DD <- $45   'E'    from DECB, PC=$A3E7
+f717  $02DE <- $58   'X'
+f726  $02DF <- $45   'E'
+f735  $02E0 <- $43   'C'
+```
+
+`$02DD` was `sta probe_phase`; `$02E0` was `ldx seq_beat`. **The command that starts
+the program corrupts the program.**
+
+**THREE REGIONS A `LOADM`+`EXEC` PROGRAM MUST CLEAR** — this one completes the set:
+
+| range | owner | when it bites |
+|---|---|---|
+| `$02DC-$03D5` | line-input buffer | typing `EXEC`, i.e. AFTER the load |
+| `$0400-$05FF` | text screen | DECB prints `OK` |
+| `$0600-$09FF` | DBUF0/DBUF1/FAT/FCBs | during `LOADM` itself (§23) |
+
+POP's engine now links at **`$2000`** (`link/pop_engine.link`) — above all three and
+below the graphics pages' end at `$25FF`. The P1.x probes keep `$0200`: they are
+pinned there by the harness contract and are small enough to stop below `$02DC`.
+
+**WHY IT IS VICIOUS.** Whether it matters depends on which instructions happen to
+sit under `$02DC`, so it is **layout-sensitive**: adding four bytes of diagnostic
+changes the symptom or hides it, and successive builds produce mutually
+contradictory measurements that read as flakiness. Across P3.4/P3.5 the same
+program showed correct timing with nonsense status bytes, sane status bytes with
+collapsed timing, a hang, and a clean run.
+
+**AND IT IS INVISIBLE ON THE POKED PATH.** P3.2/P3.3 and `introseq_live.lua` wrote
+the image in from Lua and set PC — nothing types `EXEC`, so nothing is corrupted.
+That is exactly why Jay watched the sequence run correctly while the automated test
+reported it broken: **the two used different launch paths, and the fault was in the
+path, not the program.** When a human's observation and a test disagree, compare
+what each one LAUNCHED before theorising about the code.
+
+**The tell, which was visible early and explained away:** an instruction that
+provably executed followed by one that provably did not, in straight-line code with
+no branch between them. That is never a logic bug — it means the bytes are not what
+the source says. Read the memory, not the control flow.
+
+*Established:* P3.5. *Candidates:*
+`when-human-and-test-disagree-ask-what-each-one-launched`,
+`a-layout-sensitive-fault-makes-the-diagnostic-part-of-the-experiment`.
+
+---
+
+## 29. Ship DMK with SEQUENTIAL interleave — JVC costs 2.5× (P3.6)
+
+**MAME's `coco_jvc` container has no physical sector order to preserve**, so MAME
+synthesises one — and the one it picks is near-pessimal for a whole-track read.
+Measured on POP: **3.31 s/track**; karateka independently: **3.33 s/track**. Both
+≈ **0.89 revolutions per SECTOR**, where a whole track should cost about one.
+
+**DMK preserves the authored order, and imgtool authors it:**
+
+```
+imgtool create coco_dmk_rsdos <img> --tracks=35 --sectors=18 \
+        --sectorlength=256 --interleave=0
+imgtool writesector coco_dmk_rsdos <img> <track> 0 <sector> <file>
+```
+
+**INTERLEAVE 0 = SEQUENTIAL = FASTEST, which inverts the RS-DOS convention.** The
+usual reason to spread sectors is to give a sector-at-a-time reader time to breathe.
+A HALT-paced `m=1` Read-Multiple reads the whole track under ONE command and keeps
+pace inside it, so it wants the next sector to be the *next* sector; any spread
+costs a revolution. karateka swept it and the time rises monotonically — il=0:
+10.66 s, il=1: 12.27, il=9: 25.07, il=13: 31.46 (worse than JVC).
+[`karateka_coco3 docs/project/interleave-realization-mame.md`]
+
+**POP's measured result** (three reads: 1-track bundle + 7-track screen ×2):
+
+| read | JVC | DMK il=0 | |
+|---|---:|---:|---:|
+| bundle (1 track) | 5.2 s | 3.1 s | 1.68× |
+| screen (7 tracks) | 23.2 s | 9.2 s | 2.52× |
+| screen (7 tracks) | 23.0 s | 9.0 s | 2.56× |
+| **to first frame** | **51.4 s** | **21.3 s** | **2.41×** |
+
+Per-track **3.31 s → 1.31 s**, against karateka's 3.33 → 1.33. Byte-for-byte
+identical throughout (5/5 screens). A **~6 rev/track wd_fdc floor remains** that
+interleave cannot touch, so shippable perceived time still wants load-masking.
+
+**Two free consequences:**
+- **`raw_tracks.py` can no longer compute byte offsets.** JVC is linear
+  (`(T*18+S-1)*256`); DMK is raw tracks with IDAM/DAM/gaps/CRCs. Place payload with
+  `imgtool writesector` by logical id — the read side is unchanged, the primitive
+  still asks for ids 1..18.
+- **DMK is READ-ONLY in MAME's floppy layer** (§3), so §24's write-back hazard
+  disappears: verified, the built image's md5 is unchanged across a full suite run
+  and MAME never rewrites the scratch copy either. The scratch-copy rule stays as
+  belt-and-braces.
+
+**AND THE SPEEDUP EXPOSED A LATENT HARNESS RACE.** Posting `EXEC` the instant the
+image verifies is not safe: the segment check only says the BYTES are in memory,
+while DECB may still be finishing the LOADM and getting back to its prompt, and a
+keystroke posted into that window is **dropped** — Jay watched the first `E` of
+`EXEC` get eaten. The slow JVC load had been hiding it by leaving DECB idle before
+the check passed. `anim_test.lua` now settles 90 frames after the image lands and
+requires `nk.empty` before posting. **A load-time change is a harness-timing change.**
+
+*Established:* P3.6.
+
+---
+
+## 30. Keypress-to-start is live from the FIRST intro screen — it lives in the HOLD primitives (P3.7)
+
+**`StartGame?` has exactly two call sites, and both are hold primitives:**
+`PlaySongI` (`MASTER.S:1400`) and `tpause` (`MASTER.S:1417`). Every intro beat holds
+with one or both, so the keypress check runs during **every** beat — starting with
+`PubCredit`'s first `tpause 44`, while the Brøderbund splash is on screen and before
+any caption appears.
+
+**Confirmed on the running oracle, not left at the source** (CLAUDE.md §2 ranks the
+trace higher). Keypress posted at f350, during that first hold:
+
+| | no key (P3.3/P3.4 baseline) | key at f350 |
+|---|---|---|
+| first disk activity after f196 | f2581 | **f356** |
+| next screen change | f405 ("Presents" in) | **f357** (blackout) |
+
+The intro aborts and `DOSTARTGAME` runs — `blackout`, `LoadStage3`, `set1stlevel`.
+
+**The reading to avoid:** `MASTER.S:993` is where `StartGame?` is *defined*, which
+sits after `TitleScreen` in the file and makes it look like a late-attract check.
+Where a routine is defined says nothing about when it runs. **Grep for the callers,
+not the label.**
+
+**Scope for future input work:** polling belongs at the SEQUENCER's hold, not
+per-beat — one check inside `hold_frames` covers every beat exactly as the oracle's
+does, because the oracle put it in the equivalent place. No input is built yet.
+
+*Established:* P3.7 (source + running-oracle confirmation).
+
+---
+
+## 31. The title screen is a CAPTION, not a picture — read the call, not the comment (P3.7)
+
+`MASTER.S:823` reads `* Unpack title onto page 1` and the next two lines are:
+
+```
+ lda #delTitle
+ jsr DeltaExpPop
+```
+
+**`delTitle` is a `del*` blob** — the same family as `delPresents` and `delByline` —
+expanded by `DeltaExpPop`. It is NOT `pacSplash`/`DblExpand`, which is what
+`unpacksplash` actually uses for a whole picture. The two identifier families are
+the structural evidence:
+
+```
+pac*  whole images   pacSplash $40  pacProlog $7c  pacSumup $60  pacProom $84
+del*  patches        delPresents $70  delByline $72  delTitle $74
+```
+
+**`SilentTitle` settles it beyond argument:** it calls `unpacksplash` + `copy1to2`
+FIRST and only then `DeltaExpPop delTitle`. Loading a base picture before applying
+the title would be pointless if the title *were* a picture.
+
+**So the intro is one screen with THREE captions**, not three screens. The title's
+descriptor is `track 0` (inherit) exactly like Mechner's; it is simply much bigger —
+5,909 B against 885 and 687, 229 runs, rows 102-188, and ~6 frames to draw against
+well under one.
+
+**Two consequences that bit:**
+- **A big patch has to pay its draw out of the hold.** The captions draw in under a
+  frame so their `BEAT_PRE` *is* the measured interval; the title needed
+  `118 - 6 = 112` to land on the oracle's frame. Same +1 drift as the others after.
+- **The save buffer must hold the LARGEST patch, not the last one** — 5,361 pixel
+  bytes, not 747.
+
+**The general rule:** a comment names the author's INTENT, the call names the
+MECHANISM, and a port needs the mechanism. Greps surface comments preferentially,
+because comments contain the words humans search for — so the evidence most easily
+found is the evidence least likely to be authoritative.
+
+*Established:* P3.7. *Candidate:*
+`a-comment-names-the-intent-the-call-names-the-mechanism`.
+
+---
+
+## 32. The intro's beats escalate in KIND — captions, own-picture screens, then a cutscene (P3.8)
+
+The oracle's intro looks like one list of screens. It is three different mechanisms,
+and the identifier families give it away before any tracing does:
+
+| beat | mechanism | blob | what it is |
+|---|---|---|---|
+| Brøderbund / Mechner / Title | `DeltaExpPop` | `del*` | **captions** over one shared picture |
+| Prolog1 / Prolog2 | `DblExpand` | `pac*` | **own full pictures** (double hi-res) |
+| PrincessScene | `SngExpand` + `xplaycut` | `pacProom` | **a cutscene** — a subsystem |
+
+`PrincessScene` is where a beat dispatch has to stop, and not marginally:
+`cutprincess1` calls `LoadStage2` (the game's `bgtab1-2`/`chtab4`), unpacks with
+**`SngExpand` — SINGLE hi-res, a different video mode** — and hands off to
+`xplaycut`, the scripted player that also drives the game's cuts #1/#6/#7.
+**Different unpacker, different mode, game tables, animation subsystem.**
+
+**Two mechanism details that change what the port must do:**
+
+- **`Prolog1` WIPES IN over ~100 frames; `Prolog2` appears INSTANTLY.** Neither is a
+  flip. `Prolog1` calls `DblExpand` while its page is displayed, so the unpack is
+  visible; `Prolog2` unpacks FIRST and calls `setdhires` after, so the switch reveals
+  a finished picture. A port that flips matches `Prolog2` exactly and cuts where the
+  oracle wipes.
+- **`ReloadStuff` is NOT the title's problem.** `MASTER.S:862` is inside
+  `PrincessScene`: the Apple's dhires *pages* (`$2000-$5FFF`) sit on the crunch
+  store, so the titles eat their own source data. POP's framebuffers are banked
+  physical RAM outside the 64 KB map — nothing to reload.
+
+**A capability the mechanism "supports" but has never run is not yet a capability.**
+The beat descriptor had carried an own-base field since P3.3 and it was correct —
+but no beat had set it, and the first that did found the caption path running
+unconditionally, ready to walk memory from `$0000` on a null patch pointer. First
+real use is where untested support gets tested.
+
+**And a base-only beat must read its picture ONCE.** The second read exists only so
+the caption repair has a clean hidden copy; with no caption there is nothing to
+repair. Reading twice cost **18 s** of stall per prologue screen instead of 9 s.
+
+*Established:* P3.8. *Candidate:* `a-sequence-escalates-in-kind-not-just-in-content`.
+
+---
+
+## 33. The static intro closes at `SilentTitle`; `jmp Demo` is the intro→engine boundary (P3.9)
+
+The attract flow ends
+`… → Prolog2 → SilentTitle → jmp Demo`, and **`SilentTitle` is the last beat the
+caption/picture mechanism can express.** Past it lies the engine.
+
+**The reprise is beat 1's shape, and for the oracle's own reason.** `SilentTitle`
+(`MASTER.S:808`) is `unpacksplash` + `copy1to2` **first**, *then* `DeltaExpPop
+delTitle` — where `TitleScreen` (beat 3) just applied the caption to the splash
+already resident. The prologue pictures have overwritten it by then, so the reprise
+re-establishes its own base. Same visual as beat 3, different route; **verified
+byte-identical framebuffers** despite that.
+
+**The oracle batch-loads; POP does NOT — do not carry the oracle's cadence across.**
+P3.4 traced the oracle holding its whole compressed stage resident (§P3.4). POP
+deliberately inverted that: the screen picture lives **on disk and nowhere else**,
+read straight into the framebuffer for **0 bytes resident**. Only the captions are
+resident (the bundle). So "re-compose from resident data" is true of the oracle and
+false of POP: the reprise **re-reads tracks 27–33**. Two different machines, two
+different answers, and the oracle's is not automatically the port's.
+
+**WHERE `Demo` STOPS BEING A BEAT:** it is attract *gameplay* — the animation
+player and level tables, the same subsystem `PrincessScene` needs (§32). Nothing
+past `jmp Demo` is expressible as a descriptor row.
+
+**The stall this leaves:** beat 6 re-reads the splash **twice** (caption beats need
+both buffers) — ~18 s, the largest single stall in the intro, immediately before the
+final title. Prefetching during the preceding hold is the fix and needs a
+non-blocking read.
+
+*Established:* P3.9.
+
+---
+
+## 34. An invariant in a comment decays silently when an optimisation narrows it (P3.9)
+
+`intro_seq.s` stated: *"on entry to every beat and on exit from every beat, BOTH
+buffers hold the clean base image."* True when written, and the reason later beats
+could inherit instead of re-establishing.
+
+**P3.8 made it false and nothing broke.** Base-only beats began reading their
+picture once instead of twice (halving a 9 s stall, correct and deliberate), so they
+leave the *previous* screen on the hidden buffer. No beat had yet tried to inherit
+from one, so there was no failure — and the comment went on asserting the
+unqualified rule.
+
+**P3.9's plan was written from that comment** and reasoned the new beat could
+re-compose from state already in place. It could not: the prologue owns both
+buffers. The prescribed mechanism happened to be right for a different reason, so
+the error was invisible without checking the plan against the code.
+
+The statement now reads: **both buffers are clean after every CAPTION beat**, and a
+beat may only inherit from a caption beat.
+
+**The rules:**
+- **Narrow the statement in the same change that narrows the invariant.** One line,
+  and nearly unrecoverable afterwards.
+- **An invariant with no current violation is still weakened** — its value is
+  entirely in what gets built on it later.
+- **Prose invariants have no failing test.** Everything else in the file is checked
+  by something; the header is checked by nobody. Treat a plan derived from a comment
+  as a hypothesis.
+
+*Established:* P3.9. *Candidate:*
+`an-invariant-in-a-comment-decays-silently-when-an-optimisation-narrows-it`.
+
+---
+
+## 35. The GIME masks block numbers to installed RAM — 128 KB aliases mod 16 (P3.10)
+
+**A block number is not an address; it is an index the GIME masks to the RAM that
+is actually fitted.** On a 128 KB CoCo3 only blocks `$00-$0F` exist, so every number
+aliases **mod 16** — and a layout that is correct on 512 KB can put two things on top
+of each other on 128 KB with no warning:
+
+| | assigned | 512 KB physical | 128 KB alias | |
+|---|---|---|---|---|
+| CPU map (`sys.s` sets `$FFA0-$FFA7`) | `$38-$3F` | `$70000` | `$08-$0F` | |
+| buffer A | `$10-$13` | `$20000` | `$00-$03` | ok |
+| buffer B **(was)** | `$18-$1B` | `$30000` | `$08-$0B` | **on the program + kernel** |
+| buffer B **(now)** | `$14-$17` | `$28000` | `$04-$07` | ok |
+
+**The symptom was silent:** on 128 KB the port `LOADM`ed fine, started, reported
+`status=0`, and then never advanced — dead at the first framebuffer access, with no
+error anywhere. `-ramsize 128K` is a one-flag test and worth running on any layout
+change.
+
+**VOFFSET follows the same masking.** `GFX_DB_B_VOFF` is `physical / 8`
+(`$28000/8 = $5000`); on 128 KB the GIME masks the video address exactly as it masks
+the block number, so the displayed buffer stays consistent with the mapped one.
+Verified by the screens being byte-identical at both sizes, not by argument.
+
+**What 128 KB leaves free.** 16 blocks: 4 for the low 32 KB (program, kernel, stack,
+runtime data), 4 for buffer A, 4 for buffer B — **12 used, 4 free = 32 KB**, which
+is exactly one 30,720-byte screen. Enough to bank the splash (read four times today)
+and remove three of the intro's seven disk reads.
+
+**`MAME_RAM=128K` now runs any `run_*_test.sh` at 128 KB.** Verified at both sizes:
+probe, mode, anim, and the full six-beat intro (16/16 checks, 11/11 screens
+byte-identical).
+
+*Established:* P3.10.
+
+---
+
+## 36. `cp` is the WRONG way to mirror a sync-bridged HAL file (P3.10)
+
+The bridge reports *"HAL source aligned … EOL/guard/export-placement normalised"*.
+**Normalised is not identical.** POP's `gfx.s` and karateka's differ by six `export`
+lines — karateka exports the blit-sprite entry points, POP keeps them dormant behind
+a guard — and the bridge is written to look past exactly that.
+
+So copying POP's file over karateka's to propagate a two-constant change **deleted
+those exports** and karateka's build died with six
+`Undefined symbol HAL_gfx_blit_sprite`. The bridge still said OK, because the copy
+had made the files *more* identical than they are supposed to be.
+
+**Mirror by applying the same EDIT to both files, never by copying one over the
+other.** `git checkout` the clobbered file, re-apply the change, rebuild the sibling,
+and check its prod SHA — `88eba89b15cdf17c8d25e082d2d3e1f3cce57d38` here, byte-identical,
+which is what proves the change is inert on that side.
+
+(P3.4's `disk_read.s` mirror was a `cp` and was *safe* only because that file had no
+divergence yet. The technique was wrong both times; the first one got away with it.)
+
+*Established:* P3.10.
+
+---
+
+## 37. A harness gate keyed to a disk-read COUNT is a proxy, and optimisations move it (P3.11)
+
+`introseq_test.lua` captures the framebuffer at chosen moments. The moment it wanted
+was *"the base picture is on the visible page"*. What it actually said was:
+
+```lua
+{ st = 2, ph = 0, tag = "1_base", loads = 2 },   -- bundle + the one splash read
+```
+
+The read count was a stand-in. It worked because beat 0 read the splash, and the
+capture landed after the read that preceded the page flip.
+
+P3.11 put the splash in a RAM bank, so the beat reads it once instead of twice. The
+count still reached its threshold — one read earlier, **before `HAL_gfx_swap`**. The
+harness dumped the visible page, which was still the cleared buffer, and reported
+
+```
+FAIL base screen == converted splash, centred: 22209 bytes differ; first at row 0 col 10
+```
+
+with all 16 in-emulator checks green. The engine was correct; the picture was
+correct; **the failure named an asset, and the defect was in the clock the test read.**
+
+**Gate on the state you mean.** The HAL already exports a swap counter, so the
+condition *"a page flip has happened"* is directly observable:
+
+```lua
+{ st = 2, ph = 0, tag = "1_base", swaps = 1 },
+```
+
+The tell that this was the diagnosis and not a guess: the capture logs
+`cur_back`, and it read `0` — the value it holds *before* the first flip. A dump of
+the buffer showed **zero non-zero bytes**, i.e. a cleared page, not a wrong picture.
+Neither number is visible from the FAIL line, which is why the log line now carries
+`cur_back`, `swaps` and `loads` at every capture.
+
+This gate had already broken once this way (P3.9 → P3.11 moved it 3 → 2). A count
+that has to be re-tuned every time the loading strategy changes is not a gate, it is
+a coincidence with a threshold.
+
+*Established:* P3.11.
+
+---
+
+## 38. A 16-bit count cannot live in D across a copy loop (P3.12)
+
+The LZ decoder's copy loops were written as the obvious thing:
+
+```asm
+lz_lit_loop     lda     ,u+
+                sta     ,x+
+                subd    #1              ; D is the count
+                bne     lz_lit_loop
+```
+
+`lda` loads into **A, which is D's high half**. The first byte copied overwrites the
+top of the counter, so `subd #1` decrements the *data*, and the loop runs until the
+byte just fetched happens to be zero at the same moment B wraps. It cannot work, for
+any input, ever.
+
+The fix is to count in B with the high byte parked in memory — B reaching 0 with the
+page byte still set means another 256 to go, and B wrapping to 255 on the next `decb`
+is exactly right:
+
+```asm
+lz_lits         sta     lz_cnt          ; high byte
+                bne     lz_lit_loop
+                tstb
+                beq     lz_lits_done
+lz_lit_loop     lda     ,u+
+                sta     ,x+
+                decb
+                bne     lz_lit_loop
+                tst     lz_cnt
+                beq     lz_lits_done
+                dec     lz_cnt
+                bra     lz_lit_loop
+```
+
+**Any 6809 loop that loads through A or B cannot also count in D.** The registers
+that survive a `lda`/`ldb` are X, Y, U and memory — nothing else.
+
+What made it expensive was not the bug but where it pointed. The failure appeared as
+a runaway that scribbled through `$FF00` I/O (remapping memory underneath the routine
+doing the remapping), so it presented as "the second screen crashes the machine" —
+data-dependent, load-address-dependent, anything but "the copy loop is impossible".
+Two hypotheses were tested and eliminated against a decoder that had never worked at
+all. A guard that stops the reader leaving the window (`cmpu #$FE00 / bhs`) is worth
+having permanently: it converts a machine that destroys itself into a picture that is
+merely wrong, which can be looked at.
+
+*Established:* P3.12.

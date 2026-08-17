@@ -1,0 +1,839 @@
+{
+ "walk_lo": 1,
+ "walk_n": 85,
+ "magic": 50010,
+ "res_base": 49152,
+ "rot_base": 57344,
+ "resident": [
+  [
+   [
+    "pri",
+    11,
+    0,
+    1
+   ],
+   "p11_p1"
+  ],
+  [
+   [
+    "pri",
+    11,
+    1,
+    1
+   ],
+   "p11_m_p1"
+  ],
+  [
+   [
+    "pri",
+    17,
+    0,
+    0
+   ],
+   "p17_p0"
+  ],
+  [
+   [
+    "pri",
+    18,
+    0,
+    0
+   ],
+   "p18_p0"
+  ],
+  [
+   [
+    "viz",
+    54,
+    0,
+    3
+   ],
+   "v54_p3"
+  ],
+  [
+   [
+    "viz",
+    54,
+    1,
+    1
+   ],
+   "v54_m_p1"
+  ],
+  [
+   [
+    "viz",
+    75,
+    0,
+    3
+   ],
+   "v75_p3"
+  ],
+  [
+   [
+    "viz",
+    76,
+    0,
+    3
+   ],
+   "v76_p3"
+  ],
+  [
+   [
+    "viz",
+    83,
+    0,
+    3
+   ],
+   "v83_p3"
+  ],
+  [
+   [
+    "viz",
+    84,
+    0,
+    3
+   ],
+   "v84_p3"
+  ]
+ ],
+ "pages": [
+  {
+   "index": 0,
+   "block": 13,
+   "sig": 42300,
+   "bytes": 7290,
+   "track": 13,
+   "tracks": 2,
+   "cap": 7680,
+   "base": 57344,
+   "cels": [
+    [
+     [
+      "pri",
+      2,
+      0,
+      1
+     ],
+     "p2_p1"
+    ],
+    [
+     [
+      "pri",
+      3,
+      0,
+      1
+     ],
+     "p3_p1"
+    ],
+    [
+     [
+      "pri",
+      4,
+      0,
+      1
+     ],
+     "p4_p1"
+    ],
+    [
+     [
+      "pri",
+      5,
+      0,
+      2
+     ],
+     "p5_p2"
+    ],
+    [
+     [
+      "pri",
+      6,
+      0,
+      1
+     ],
+     "p6_p1"
+    ],
+    [
+     [
+      "pri",
+      7,
+      0,
+      0
+     ],
+     "p7_p0"
+    ],
+    [
+     [
+      "pri",
+      8,
+      0,
+      1
+     ],
+     "p8_p1"
+    ],
+    [
+     [
+      "pri",
+      9,
+      0,
+      3
+     ],
+     "p9_p3"
+    ],
+    [
+     [
+      "viz",
+      48,
+      0,
+      1
+     ],
+     "v48_p1"
+    ],
+    [
+     [
+      "viz",
+      49,
+      0,
+      1
+     ],
+     "v49_p1"
+    ],
+    [
+     [
+      "viz",
+      50,
+      0,
+      1
+     ],
+     "v50_p1"
+    ],
+    [
+     [
+      "viz",
+      51,
+      0,
+      2
+     ],
+     "v51_p2"
+    ],
+    [
+     [
+      "viz",
+      52,
+      0,
+      0
+     ],
+     "v52_p0"
+    ],
+    [
+     [
+      "viz",
+      53,
+      0,
+      3
+     ],
+     "v53_p3"
+    ],
+    [
+     [
+      "viz",
+      55,
+      0,
+      3
+     ],
+     "v55_p3"
+    ],
+    [
+     [
+      "viz",
+      56,
+      0,
+      3
+     ],
+     "v56_p3"
+    ]
+   ]
+  },
+  {
+   "index": 1,
+   "block": 14,
+   "sig": 42573,
+   "bytes": 6449,
+   "track": 15,
+   "tracks": 2,
+   "cap": 7680,
+   "base": 57344,
+   "cels": [
+    [
+     [
+      "pri",
+      12,
+      0,
+      1
+     ],
+     "p12_p1"
+    ],
+    [
+     [
+      "pri",
+      13,
+      0,
+      2
+     ],
+     "p13_p2"
+    ],
+    [
+     [
+      "pri",
+      14,
+      0,
+      1
+     ],
+     "p14_p1"
+    ],
+    [
+     [
+      "pri",
+      15,
+      0,
+      3
+     ],
+     "p15_p3"
+    ],
+    [
+     [
+      "pri",
+      16,
+      0,
+      1
+     ],
+     "p16_p1"
+    ],
+    [
+     [
+      "viz",
+      67,
+      0,
+      0
+     ],
+     "v67_p0"
+    ],
+    [
+     [
+      "viz",
+      68,
+      0,
+      0
+     ],
+     "v68_p0"
+    ],
+    [
+     [
+      "viz",
+      69,
+      0,
+      0
+     ],
+     "v69_p0"
+    ],
+    [
+     [
+      "viz",
+      70,
+      0,
+      2
+     ],
+     "v70_p2"
+    ],
+    [
+     [
+      "viz",
+      71,
+      0,
+      1
+     ],
+     "v71_p1"
+    ],
+    [
+     [
+      "viz",
+      72,
+      0,
+      0
+     ],
+     "v72_p0"
+    ],
+    [
+     [
+      "viz",
+      73,
+      0,
+      0
+     ],
+     "v73_p0"
+    ],
+    [
+     [
+      "viz",
+      74,
+      0,
+      1
+     ],
+     "v74_p1"
+    ],
+    [
+     [
+      "viz",
+      85,
+      0,
+      0
+     ],
+     "v85_p0"
+    ]
+   ]
+  },
+  {
+   "index": 2,
+   "block": 15,
+   "sig": 42846,
+   "bytes": 5672,
+   "track": 20,
+   "tracks": 2,
+   "cap": 7680,
+   "base": 57344,
+   "cels": [
+    [
+     [
+      "viz",
+      54,
+      0,
+      1
+     ],
+     "v54_p1"
+    ],
+    [
+     [
+      "viz",
+      57,
+      0,
+      1
+     ],
+     "v57_p1"
+    ],
+    [
+     [
+      "viz",
+      58,
+      0,
+      1
+     ],
+     "v58_p1"
+    ],
+    [
+     [
+      "viz",
+      59,
+      0,
+      1
+     ],
+     "v59_p1"
+    ],
+    [
+     [
+      "viz",
+      60,
+      0,
+      1
+     ],
+     "v60_p1"
+    ],
+    [
+     [
+      "viz",
+      61,
+      0,
+      0
+     ],
+     "v61_p0"
+    ],
+    [
+     [
+      "viz",
+      77,
+      0,
+      1
+     ],
+     "v77_p1"
+    ],
+    [
+     [
+      "viz",
+      78,
+      0,
+      0
+     ],
+     "v78_p0"
+    ],
+    [
+     [
+      "viz",
+      79,
+      0,
+      2
+     ],
+     "v79_p2"
+    ],
+    [
+     [
+      "viz",
+      80,
+      0,
+      0
+     ],
+     "v80_p0"
+    ],
+    [
+     [
+      "viz",
+      81,
+      0,
+      0
+     ],
+     "v81_p0"
+    ],
+    [
+     [
+      "viz",
+      82,
+      0,
+      3
+     ],
+     "v82_p3"
+    ]
+   ]
+  },
+  {
+   "index": 3,
+   "block": 13,
+   "sig": 43119,
+   "bytes": 6524,
+   "track": 22,
+   "tracks": 2,
+   "cap": 7680,
+   "base": 57344,
+   "cels": [
+    [
+     [
+      "pri",
+      1,
+      0,
+      0
+     ],
+     "p1_p0"
+    ],
+    [
+     [
+      "viz",
+      48,
+      1,
+      3
+     ],
+     "v48_m_p3"
+    ],
+    [
+     [
+      "viz",
+      49,
+      1,
+      0
+     ],
+     "v49_m_p0"
+    ],
+    [
+     [
+      "viz",
+      50,
+      1,
+      1
+     ],
+     "v50_m_p1"
+    ],
+    [
+     [
+      "viz",
+      51,
+      1,
+      0
+     ],
+     "v51_m_p0"
+    ],
+    [
+     [
+      "viz",
+      52,
+      1,
+      1
+     ],
+     "v52_m_p1"
+    ],
+    [
+     [
+      "viz",
+      53,
+      1,
+      2
+     ],
+     "v53_m_p2"
+    ],
+    [
+     [
+      "viz",
+      62,
+      0,
+      1
+     ],
+     "v62_p1"
+    ],
+    [
+     [
+      "viz",
+      63,
+      0,
+      2
+     ],
+     "v63_p2"
+    ],
+    [
+     [
+      "viz",
+      64,
+      0,
+      0
+     ],
+     "v64_p0"
+    ],
+    [
+     [
+      "viz",
+      65,
+      0,
+      1
+     ],
+     "v65_p1"
+    ],
+    [
+     [
+      "viz",
+      66,
+      0,
+      2
+     ],
+     "v66_p2"
+    ]
+   ]
+  }
+ ],
+ "res_track": 11,
+ "res_tracks": 2,
+ "res_cap": 8192,
+ "track_bytes": 4608,
+ "res_bytes": 5891,
+ "reads": [
+  {
+   "at_beat": 10,
+   "page": 3,
+   "block": 13
+  }
+ ],
+ "schedule": [
+  {
+   "beat": 0,
+   "name": "Pstand",
+   "plays": 7,
+   "block": 13,
+   "sig": 0,
+   "page": 0,
+   "resident_only": true,
+   "read": null
+  },
+  {
+   "beat": 1,
+   "name": "s_Princess",
+   "plays": 109,
+   "block": 13,
+   "sig": 0,
+   "page": 0,
+   "resident_only": true,
+   "read": null
+  },
+  {
+   "beat": 2,
+   "name": "Palert",
+   "plays": 9,
+   "block": 13,
+   "sig": 42300,
+   "page": 0,
+   "resident_only": false,
+   "read": null
+  },
+  {
+   "beat": 3,
+   "name": "(hold)",
+   "plays": 5,
+   "block": 13,
+   "sig": 0,
+   "page": 0,
+   "resident_only": true,
+   "read": null
+  },
+  {
+   "beat": 4,
+   "name": "Vwalk",
+   "plays": 7,
+   "block": 13,
+   "sig": 42300,
+   "page": 0,
+   "resident_only": false,
+   "read": null
+  },
+  {
+   "beat": 5,
+   "name": "Vstop",
+   "plays": 4,
+   "block": 13,
+   "sig": 42300,
+   "page": 0,
+   "resident_only": false,
+   "read": null
+  },
+  {
+   "beat": 6,
+   "name": "s_Vizier",
+   "plays": 51,
+   "block": 13,
+   "sig": 0,
+   "page": 0,
+   "resident_only": true,
+   "read": null
+  },
+  {
+   "beat": 7,
+   "name": "(hold)",
+   "plays": 4,
+   "block": 13,
+   "sig": 0,
+   "page": 0,
+   "resident_only": true,
+   "read": null
+  },
+  {
+   "beat": 8,
+   "name": "Vwalk",
+   "plays": 29,
+   "block": 13,
+   "sig": 42300,
+   "page": 0,
+   "resident_only": false,
+   "read": null
+  },
+  {
+   "beat": 9,
+   "name": "Vstop",
+   "plays": 4,
+   "block": 13,
+   "sig": 42300,
+   "page": 0,
+   "resident_only": false,
+   "read": null
+  },
+  {
+   "beat": 10,
+   "name": "s_Buildup",
+   "plays": 56,
+   "block": 13,
+   "sig": 0,
+   "page": 3,
+   "resident_only": true,
+   "read": 3
+  },
+  {
+   "beat": 11,
+   "name": "Vraise",
+   "plays": 1,
+   "block": 14,
+   "sig": 42573,
+   "page": 1,
+   "resident_only": false,
+   "read": null
+  },
+  {
+   "beat": 12,
+   "name": "Pback",
+   "plays": 13,
+   "block": 14,
+   "sig": 42573,
+   "page": 1,
+   "resident_only": false,
+   "read": null
+  },
+  {
+   "beat": 13,
+   "name": "(hold)",
+   "plays": 5,
+   "block": 14,
+   "sig": 0,
+   "page": 1,
+   "resident_only": true,
+   "read": null
+  },
+  {
+   "beat": 14,
+   "name": "s_Magic",
+   "plays": 16,
+   "block": 14,
+   "sig": 0,
+   "page": 1,
+   "resident_only": true,
+   "read": null
+  },
+  {
+   "beat": 15,
+   "name": "Vexit",
+   "plays": 17,
+   "block": 15,
+   "sig": 42846,
+   "page": 2,
+   "resident_only": false,
+   "read": null
+  },
+  {
+   "beat": 16,
+   "name": "(hold)",
+   "plays": 12,
+   "block": 13,
+   "sig": 43119,
+   "page": 3,
+   "resident_only": false,
+   "read": null
+  },
+  {
+   "beat": 17,
+   "name": "Pslump",
+   "plays": 28,
+   "block": 13,
+   "sig": 43119,
+   "page": 3,
+   "resident_only": false,
+   "read": null
+  },
+  {
+   "beat": 18,
+   "name": "Vstand",
+   "plays": 0,
+   "block": 13,
+   "sig": 0,
+   "page": 3,
+   "resident_only": true,
+   "read": null
+  }
+ ]
+}

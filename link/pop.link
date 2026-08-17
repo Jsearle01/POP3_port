@@ -1,0 +1,68 @@
+; link/pop.link — POP CoCo3 port: the LINKER SCRIPT (P2.4).
+;
+; This is the memory map. It is not a build detail — it is the foundation the
+; kernel/program split sits on, and every address the absolute build used to bake
+; into an `org` now lives here, in one place, on purpose.
+;
+; WHY A SCRIPT AND NOT A FLAG (P2.3-recon D4, the gotcha worth carrying):
+;   `lwlink --section-base=code=0x4000` is SILENTLY IGNORED. No error, no warning,
+;   exit 0 — and the section still lands at the default $2000. A conversion that
+;   used the flag and checked only the exit code would place every section at the
+;   wrong address and look completely healthy. Only a script actually places code.
+;
+; AND THE SCRIPT DOES NOT PROTECT YOU FROM OVERLAP (P3.2, three times in one
+;   task): lwlink will happily place `prog` straight through `code` and out the
+;   far side without a word. Run-time corruption is the only symptom. CHECK THE
+;   .map AFTER ANY ASSET CHANGE — the sizes below are current, not aspirational.
+;
+; ---------------------------------------------------------------------------
+; POP CoCo3 MEMORY MAP
+; ---------------------------------------------------------------------------
+;   $0000-$001F   DP — HAL band            [hal.inc: DIRECT PAGE USAGE POLICY]
+;   $0020-$007F   DP — engine band         (page_register $50, s4_dest_row $66)
+;   $0080-$00FF   DP — reserved, CoCo3 system use
+;   $0100-$01FF   6809 vectors / DECB scratch. $010C is DECB's IRQ hook, which
+;                 LOADM overwrites — nothing may be placed here.
+;                 [mame-idioms-coco3-port.md §5 — the disk-boot overlap]
+;
+;   $0200-$77FF   PROGRAM  (section `prog`)  <-- load + exec address. 30,208 B.
+;   $7800-$78FF   trace ring buffer         [hal.inc KCOCO3_TRACE_BUFFER]
+;   $7900-$7B7A   KERNEL   (section `code`)  <-- the HAL, linked as its own unit
+;   $7B7B-$7EFF   stack space (901 B)
+;   $7F00         stack top (engine programs) -- below the draw window
+;   $8000-$F7FF   MMU DRAW WINDOW ($FFA4-$FFA7) -- the back buffer, 30,720 B
+;   $FF00-$FFFF   I/O — GIME, MMU, SAM, palette
+;
+;   Physical $20000 = buffer A, $30000 = buffer B   [gfx.s GFX_DB_A/B_BLOCK]
+;
+; WHY THE PROGRAM IS LOW AND THE KERNEL IS HIGH (state plainly — it is not the
+; conventional OS layout, and it is not a preference):
+;   $0200 is FORCED. The P1.1 harness reads probe_status at $0203, probe_vbls at
+;   $0204 and probe_magic at $0206 as literal addresses, and gates the LOADM on
+;   finding the bytes 7E 02 08 (`jmp $0208`) at $0200. The program's load address
+;   is therefore a harness contract, not a choice, and the kernel goes above it.
+;   When the engine replaces the probe that constraint disappears and this map
+;   should be revisited — kernel-low is the better long-term shape.
+;
+; WHY THE KERNEL MOVED $7000 -> $7900 (P3.3):
+;   The intro sequencer carries 28,468 bytes of asset — the splash plus its two
+;   caption patches. Against a $0200..$6FFF program region that is 308 bytes over
+;   budget before a single instruction. $7900 is the highest the kernel can start
+;   while clearing the trace buffer at $7800 and leaving usable stack below
+;   $7F00, and it buys the program region 2,048 bytes.
+;
+;   It is a reprieve, not a solution: 28,468 of 30,208 is 94% full, and the
+;   intro's remaining beats (title, prologue, princess) do not fit at any kernel
+;   address. Screen assets belong in high physical RAM mapped through the MMU —
+;   that is the task this map is deferring, and it should be taken before the
+;   next screen rather than after.
+;
+;   DECB's own stack sits at about $7F2B with its string space above it, so a
+;   load ending at $7B7A stays clear of the loader that is placing it. That is
+;   the real ceiling on `code`, not $8000.
+; ---------------------------------------------------------------------------
+
+section prog load 0200
+section code load 7900
+
+entry probe_entry

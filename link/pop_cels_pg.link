@@ -1,0 +1,29 @@
+; link/pop_cels_pg.link — ONE ROTATING PAGE of the split cel image (P3.78).
+;
+; Used once per page, with a different object and a different output each time. EVERY
+; page links at the SAME address, and that is the point rather than an oversight: only
+; one of them is mapped at a time, through $FFA7, so they all occupy $E000 and the beat
+; schedule decides which physical block is showing.
+;
+; That is also exactly why they are separate LINK UNITS and not sections of one image —
+; five things cannot occupy one address inside a single link.
+;
+; ---------------------------------------------------------------------------
+; $E000..$FDFF — 7,680 B, NOT 8,192.
+; ---------------------------------------------------------------------------
+; gfx.s:178 sets $FF90 with MC3=1, which holds $FE00-$FEFF as constant RAM (it is where
+; disk_read.s lands its NMI handler and its motor flag, precisely so they survive an MMU
+; remap), and $FF00-$FFFF is always I/O. So the top 512 B of whichever block sits at
+; $FFA7 CANNOT BE REACHED through the window. A page that overran into it would not fail
+; at link time — it would write cel data at addresses the CPU answers from somewhere
+; else entirely. harness/tools/cel_table.py checks each page's linked LENGTH against
+; 7,680 and fails the build; that check is the only thing standing between a packing
+; error and the silent-garbage failure mode the bank guard was built for.
+;
+; The first two bytes of every page are its own SIGNATURE. See the generated cel_pgN.s
+; header, and char_draw.s's guard.
+;
+; The `load` value is bare hex for the reason link/pop_cels_res.link explains at length:
+; the `$` form parses as zero, silently.
+
+section prog load E000

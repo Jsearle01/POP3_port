@@ -1,0 +1,39 @@
+; link/pop_cels_res.link — the PINNED page of the split cel image (P3.78).
+;
+; Supersedes link/pop_cels.link, which linked the whole image as one unit at $C000. The
+; scene outgrew that: 39,682 B of cels against a bank that is 31,744 B addressable, so
+; the image is cut into a pinned page and five rotating ones (harness/tools/cel_pack.py).
+;
+; ---------------------------------------------------------------------------
+; WHAT LIVES HERE, AND WHY IT IS THE HALF THAT DOES NOT MOVE.
+; ---------------------------------------------------------------------------
+; $C000 is reached through $FFA6, and this page stays mapped for the entire scene. It
+; carries the magic, the bounds, the [cel][facing][phase] table, and the cels that must
+; be reachable when no particular rotating page is:
+;
+;   * the standing cels the two song holds draw — pinning those is precisely what makes
+;     a hold a place a disk read can hide, because the rotating block is then free;
+;   * the cels the packer had to pin to bring an over-large beat under one block (Pback
+;     draws 9,538 B and a rotating block holds 7,680);
+;   * the terminal beat's cels, which hold forever and which no later read can renew.
+;
+; The TABLE is why the pin exists at all. co_variant consults it on every cel it places,
+; so it has to be mapped at every instant; rotating both window registers would mean a
+; copy of it in every page — 1,360 B duplicated five times, and a second home for a fact
+; whose whole design is that it has one.
+;
+; ---------------------------------------------------------------------------
+; THE `load` VALUE IS BARE HEX, AND $C000 WOULD SILENTLY LINK AT ZERO.
+; ---------------------------------------------------------------------------
+; `section prog load $C000` parses the `$` form as 0 — no error, no warning, exit 0, and
+; the image lands at $0000. Same shape of silence as lwasm's `-D` taking a $-prefixed
+; value as zero (build.bat documents that one). It is caught rather than trusted:
+; decb_to_raw.py refuses an image whose first segment is not exactly at the `--base`
+; build.bat states.
+;
+; Comments here are `;`. lwlink does NOT accept `*` — that is an assembler convention and
+; using it is a parse error, not a comment.
+
+section prog load C000
+
+entry cel_image

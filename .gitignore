@@ -1,14 +1,32 @@
-build/
-build/logs/
-*.hdv
-*.dsk
-*.dmk
-*.nib
-*.bin
-*.rom
+# build output
+/build/
+/build/logs/
+obj/
+
+# oracle build artifacts — reproducible from oracle/source/, never committed
+oracle/**/*.hdv
+oracle/**/*.nib
+oracle/**/*.dsk
+oracle/**/*.dmk
+oracle/**/obj/
+
+# python / logs / previews
 __pycache__/
 *.pyc
-harness/**/previews/
-captures/*.png
-viz/*.png
 *.log
+harness/**/previews/
+/build/previews/
+
+# MAME writes cfg/ (coco3.cfg, default.cfg) into its CWD, which is the repo root
+# when harness/smoke/run_*_test.sh runs. Emulator state, not project state.
+/cfg/
+
+# git checkout-index --temp scratch (used by the .gitattributes CRLF round-trip check)
+.merge_file_*
+
+# MAME writes snap/ (screenshots) into its CWD, same as cfg/.
+/snap/
+
+# MAME rewrites files in -cfg_directory on exit and drops a default.cfg there.
+# The authored coco3.cfg templates are tracked; MAME.s byproducts are not.
+dist/mame-cfg/*/default.cfg

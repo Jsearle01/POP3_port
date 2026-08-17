@@ -1,7 +1,13 @@
 # CLAUDE.md — POP → CoCo3 Port Project (Clyde standing rules)
-## Working Agreement v1.0 (adapted from Karateka CLAUDE.md v1.0)
-**Version:** 1.0
+## Working Agreement v1.1 (adapted from Karateka CLAUDE.md v1.0)
+**Version:** 1.1
 **Instantiates:** CODM v0.7. Where this doc and v0.7 overlap, v0.7 governs; this doc adds POP invariants.
+
+**Changelog v1.0 → v1.1 (2026-07-24, Orchestrator-authored per §2D):** resolved the five `<FILL>` markers
+(oracle MAME target + CFFA2 mount; candidate-pool local path; pool row schema; Karateka clone path; standing
+monitor mode). Corrected the §2 ground-truth hierarchy: the source of record is the **adamgreen `build`
+branch pinned at `ec78dbf`** — the tree the oracle is built from — not jmechner's separate archive. No other
+substantive rule changed; every v1.0 invariant is preserved.
 
 ---
 
@@ -23,14 +29,18 @@ authorization.
 
 ## 2. Ground Truth Hierarchy (POP — DIFFERS FROM KARATEKA: real source is trusted)
 
-POP is ported from **actual (or closely-related) Mechner source** — so, unlike Karateka's
-derived-from-memory oracle, **the source is a trusted, labeled default working basis.** The authority stack:
+POP is ported from **real, buildable Mechner assembly source — specifically the adamgreen `build` branch
+(`01 POP Source/Source/*.S`), pinned at commit `ec78dbf`, which is the exact tree the oracle `.hdv` is built
+from.** Unlike Karateka's derived-from-memory oracle, the source is a trusted, labeled default working basis;
+reading and building from ONE tree collapses source-vs-oracle drift. jmechner's archive is the upstream
+original, does not build on modern systems, and is NOT referenced. The authority stack:
 
 1. **Jay (the human)** — ultimate; visual/behavioral ground truth; overrides all below.
 2. **Execution trace / running game** — ultimate authority below Jay; **wins over source on matters of
    fact.** When trace and source disagree, the trace is right.
-3. **Mechner source** — the **trusted default** you plan and build from (much more trustworthy than
-   Karateka's oracle), ranked just below the trace.
+3. **adamgreen `build`-branch source** (`01 POP Source/Source/*.S` @ `ec78dbf`, vendored at `oracle/source/`)
+   — the **trusted default** you plan and build from (much more trustworthy than Karateka's oracle), ranked
+   just below the trace. This is the same tree the oracle is built from.
 4. Disassembly of the built port / memory dumps — evidence.
 5. Comments / labels — lowest; unverified hypothesis.
 
@@ -52,7 +62,13 @@ Standing reference files at the repo root capture every MAME instrumentation qui
 command/Lua syntax, and the harness tool that exercises each — so MAME idioms are **looked up, not
 rediscovered each dispatch**:
 
-- **`mame-idioms-<POP-oracle-target>.md`** — the POP Apple II oracle target. `<FILL: oracle MAME target>`
+- **`mame-idioms-apple2e-oracle.md`** — the POP Apple II oracle target: MAME **`apple2e`** (6502, ~1.023 MHz).
+  The oracle disk `PrinceOfPersia_3.5.hdv` is an 800K 3.5" ProDOS volume; `.hdv` is a **natively accepted**
+  MAME hard-disk extension (`chd,hd,hdv,2mg,hdi`), mounted via a **CFFA2 card** in a slot — **`cffa202`** (the
+  6502-firmware variant) is required for the 6502 `apple2e`; `cffa2` needs an enhanced //e or better. Expected
+  shape `mame apple2e -sl<n> cffa202 -hard1 PrinceOfPersia_3.5.hdv`; confirm the exact slot + `-hard1` media
+  instance via `-listslots`/`-listmedia`. NOT `-flop1` (that is 5.25"). This file carries the
+  inherited-unverified-for-POP banner until re-verified against POP's oracle.
 - **`mame-idioms-coco3-port.md`** — the `coco3` / 6809 port target. **Carry Karateka's file over** (§2G):
   the coco3 idioms transfer directly (same target, same video mode). Seed POP's from Karateka's, then
   extend.
@@ -97,13 +113,18 @@ silently no-op'd for several dispatches by searching the wrong repo and reroutin
 drift. Recorded here so it stays found.)
 
 - **Pool:** `github.com/Jsearle01/methodology-candidate-pool`, a **sibling of `POP3_port`**:
-  local path `<FILL: /c/Projects/methodology-candidate-pool or equiv>`. **POP candidates live in
+  local path `/c/Projects/methodology-candidate-pool` (sibling of `POP3_port`). **POP candidates live in
   `seeds/POP/live/`.** **Clyde creates `seeds/POP/` on first capture** (dispatch-#1 item).
 - **Capture at the FIRST instance** as a NEW row: `seeds/POP/live/<iso8601-date>-<slug>.md`. **New rows only
   — NEVER read or edit existing pool entries** (folding is the reconciler's read-time job).
 - **Row schema:** match an existing `seeds/karateka/live/*.md` exactly (`project: POP`, `source: live`,
-  `instance_history` with `initiator` set faithfully e.g. `clyde` — never guessed). `<FILL: confirm the
-  pool's current row schema from its onboarding; copy the shape from a live entry.>`
+  `instance_history` with `initiator` set faithfully e.g. `clyde` — never guessed). **Schema is frozen in the
+  pool's root `SCHEMA.md`**; two load-bearing constraints: `instance_count` MUST equal
+  `len(instance_history)`, and `live` rows are ALWAYS fresh single-instance rows (never find-and-edit — a
+  task-time pool read is the vetoed thrash). Row fields: `principle, slug, project: POP, source: live,
+  status: open, scope_judgment, parked_at_version, settled_in, settled_note, instance_count: 1,
+  instance_history:[{date, task, context, initiator}], why_might_generalize, proposed_disposition,
+  provenance_complete`.
 - **Commit + push fire-and-forget** — non-blocking; a failed push NEVER gates a task. Report the captured
   slug(s) in the report's "Candidate(s) captured" line.
 - **Credential note:** if the pool remote carries an embedded credential, NEVER copy the token into
@@ -177,7 +198,8 @@ scene placement table the build reads. Exactly ONE home for each.
 ## 2G. Karateka is a read-only SIBLING implementation reference
 
 POP reuses Karateka's proven, Jay-gated CoCo3 substrate. **Karateka's repo is READ-ONLY, alongside
-`POP3_port`** (`<FILL: local clone path>`).
+`POP3_port`** (local clone `/c/Projects/karateka_coco3` — NOTE: local dir uses an **underscore**, the GitHub
+remote is `Jsearle01/karateka-coco3` with a **hyphen**; not interchangeable).
 
 - **Reuse-and-reference (copy-and-adapt INTO `POP3_port`):** the **HAL** (`src/hal/coco3-dsk/gfx.s` — blit
   primitives, sub-byte 4-phase shifter, `$FFD9` double-speed init), **double-buffer page-flip**
@@ -194,6 +216,97 @@ POP reuses Karateka's proven, Jay-gated CoCo3 substrate. **Karateka's repo is RE
   to Karateka is its own Karateka-side task, never an automatic sync.
 - **What does NOT transfer:** Karateka's scene logic, sprite content, behavioral models, attract-loop
   specifics. Reuse the SUBSTRATE, not the game.
+
+---
+
+## 2H. Look past the first mechanism
+
+A mechanism found in the source is a **hypothesis about the whole mechanism**, not the mechanism. Before
+building on one, run these three checks and **state their results in §3**:
+
+1. **Is there a SECOND mechanism serving a different object class?** POP handles sprites and tiles
+   differently in several places; PA.2 and P3.44 each found one and reported it as the only one. Ask what
+   the *other* kind of object does.
+2. **Name the routine that CALLS it, not only the one that implements it.** The caller carries the scope —
+   how often, under what condition, for which objects. *The enclosing routine is the fact, not the line
+   number.*
+3. **Before citing a prior report's characterisation, grep the reports for the same subsystem.** Six
+   instances now of a description standing in for a fact. **A contradiction between two reports survives
+   indefinitely when each is cited alone, and the later one wins by recency rather than by evidence.**
+
+This is not a mandate to search without bound. It is three bounded checks, and **the third is mechanical.**
+
+**The pattern this exists to break** (Jay, 2026-08-15): *"There's been a pattern of Clyde finding a mechanism
+and then going with it as THE mechanism. We've seen several times in this project that there was a deeper
+truth than what is found initially."* The first mechanism found is usually REAL — it is just not the WHOLE
+mechanism, or not the GOVERNING one:
+
+| | |
+|---|---|
+| **PA.2 vs P3.44** | one read `DRAWALL` as a peel-list restore-and-redraw; the other read the same oracle as block-marking with *"no per-sprite save/restore anywhere."* Both cite readable source. Twenty dispatches apart, and the contradiction survived because each was cited separately. |
+| **`pburn`** | a grep returned line numbers; the enclosing routine was the fact, and reading it as scene setup **inverted a correct earlier measurement** (P3.46b) |
+| **the cadence** | the gate existed and was **applied to the decision instead of the drawing** — the mechanism was found, its scope was not (P3.45) |
+| **the slip** | attributed to a cost, and it was **a grid** — an iteration is a whole number of frames, so 6/8/10 has nothing in between (P3.87) |
+| **the peel-skip** | *"the background under a static character never changes"* — true, **and only while it is the only thing on screen** (P3.32) |
+
+---
+
+## 2I. The mandate is visual fidelity and play feel
+
+**The mandate is that the port LOOKS right and FEELS right to play. It is not that the port works the way
+the oracle works.**
+
+The oracle's mechanisms are **evidence about how to achieve that** — usually the best evidence available,
+because they demonstrably produced the result on comparable hardware. They are not requirements in
+themselves.
+
+**A divergence that preserves visual output and play feel is legitimate and needs no justification beyond
+measurement.** Do not argue for it as a deviation; implement it and report what it costs and what it saves.
+
+Where the oracle's approach is cheaper or safer, prefer it — **it usually is, and the port's most expensive
+mechanisms have not always been the faithful ones.** Where the CoCo3 makes a different approach cheaper at
+equal output, take it.
+
+**This does not license guessing at behaviour.** §2's stack still governs *what the oracle does*, and Jay
+(§2.1) remains the authority on whether the result looks and feels right. **The change is that "the oracle
+does it this way" is no longer, on its own, a reason to do it that way.**
+
+**★ THIS DOES NOT RE-RANK §2 — it clarifies what §2 is FOR.** §2 ranks the trace, the source and the
+disassembly as authorities on **what the oracle does**. This section is about **what the port must
+reproduce.** Those are different questions, and conflating them is what produced P3.88's framing of the
+port's peel as *"a CoCo3-side invention to be reconsidered on fidelity grounds"* — an argument that would
+have been irrelevant even had the premise been true, because the peel's standing depends on what it costs
+and what it produces, not on whether the oracle shares it. (The premise was also false: the oracle peels.)
+
+---
+
+## 2J. File creation and editing — not via shell heredocs
+
+Create and edit files with `create_file` / `str_replace`, **not** with shell heredocs. On Git Bash, heredocs
+have bitten this project twice in one session: **CRLF line endings attach to the delimiter** so the heredoc
+never terminates, and **`$` interpolates** inside the body, silently corrupting assembly and script text.
+Both failures produce a file that looks plausible and is wrong.
+
+---
+
+## 2K. 128 KB is the verification target
+
+**Verify on stock 128 KB first. It is the target machine and it is strictly the harder case:** the GIME
+masks a block number to the RAM actually installed, so the framebuffers alias and the bank occupies the
+top of real RAM. **512 KB can pass while a masking assumption is wrong; the reverse does not happen.**
+
+**512 KB is confirmation, not the primary run, and most dispatches do not need it.** Run it when a change
+touches the MMU, the bank, the framebuffers or the loader — **because a DIVERGENCE between the two is
+itself informative: it means something depends on aliasing.** Report 128 KB first in every case.
+
+**The mechanism, from the HAL rather than from memory** [`src/hal/coco3-dsk/gfx.s:405-417`]: *"The GIME
+masks a block number to the RAM actually installed, so on a 128 KB machine only `$00-$0F` exist and every
+number aliases mod 16."* The framebuffers are `GFX_DB_A_BLOCK $10` and `GFX_DB_B_BLOCK $14`, which alias
+to physical `$00000` and `$08000`; that leaves `$0C-$0F` — 32 KB, exactly one screen — for the cel bank.
+
+**★ AND THERE IS A PRECEDENT, WHICH IS WHY THIS IS A RULE AND NOT A PREFERENCE.** The same note records
+P3.10: buffer B at `$18` was *"fine on 512 KB and fatal on 128 KB: the port loaded, started, and died at
+the first framebuffer access."* A 512-KB-first order would have called that build green.
 
 ---
 
@@ -219,9 +332,32 @@ to Jay for confirmation before executing a spatial correction.
 
 - §6 25.3 remains **"pending Jay"** until Jay confirms the gate was observed. Clyde screenshot analysis is
   never authoritative for 25.3; self-certifying it will be rejected.
-- **Monitor mode:** `<FILL: POP standing gate monitor mode — carry Karateka's RGB default (screen_config=1)
-  unless Jay sets otherwise>`. State which mode a given gate used. The exhaustive-enumeration rule (2A.4)
+- **Monitor mode:** **RGB default, `screen_config=1`** (Jay-confirmed 2026-07-24; carried from Karateka,
+  which ships `dist/mame-cfg/rgb/coco3.cfg` and `composite/coco3.cfg`). State which mode a given gate used.
+  The exhaustive-enumeration rule (2A.4)
   and "the fused 1:1 read is the colour gate" stay intact.
+- **LAUNCH PATH — every 25.3 gate MUST record HOW the program reached the screen** (added 2026-07-28 after the
+  wipe slipped three gates, P3.13 §3C). One of:
+  - **`live-disk`** — real `LOADM`+`EXEC` off a mounted floppy (the delivery path: `-ext fdc`, `-flop1 <dsk>`).
+    **This is the only path that gates delivery.**
+  - **`poke`** — image poked into RAM + PC set from Lua (bypasses the disk/launch path — convenient, but HIDES
+    load/launch bugs: the freeze P2.7, the LOADM ceiling P3.3, the EXEC-overwrite P3.5 all lived on the real
+    path and were invisible to poke).
+  - **`static-png`** — a captured still. **A static PNG is NOT a live gate.** It verifies ENDPOINTS only —
+    exactly what the automated suite already checks — and CANNOT show motion (a wipe, a fade, a flip cadence).
+    A gate observed on a static PNG must be recorded as `static-png`, never as an unqualified "PASSED."
+- **MOTION-BEARING gates require a LIVE run, not a still.** If the thing under gate is a transition, animation,
+  wipe, fade, sweep, or any time-varying effect, the gate MUST be observed on a running machine (live-disk
+  preferred) and/or a **frame-by-frame capture** (the ffmpeg video capability, SQ-1) — because a settled
+  framebuffer and a correct duration are BOTH satisfied by a faithful-looking static pause (the wipe survived
+  three static-PNG gates + a green suite; it was found only by Jay watching the oracle run live). Endpoints are
+  not motion.
+- **The live-disk runner is the standard gate runner** (`run_introseq_live.sh`, fixed at P3.13 to mount a
+  floppy — it had silently sat at the BASIC prompt since P3.4). Use it; do not gate motion on the poke path.
+- **Report the path:** §6's `25.3` line states the launch path and (for motion) whether it was live/frame-by-
+  frame, e.g. `25.3: PASSED — Jay, live-disk, RGB` or `25.3: PASSED — Jay, static-png, RGB (endpoints only —
+  no motion under gate)`. A motion-bearing effect gated only on `static-png` is an INCOMPLETE gate and must say
+  so.
 
 ---
 
@@ -263,7 +399,8 @@ Prod <bin> sha1 <…> untouched.
 
 ### 3 — Reasoning
 <addresses the dispatch-named questions; mechanism, not restatement; state which authority tier — trace /
-source / Jay — each conclusion rests on>
+source / Jay — each conclusion rests on; and where a conclusion RELIES on an oracle mechanism, state §2H's
+three checks — second mechanism, calling routine, prior-report grep>
 
 ### 4 — Verification (AC-by-AC)
 - AC1 <text> — <evidence>
@@ -274,8 +411,11 @@ source / Jay — each conclusion rests on>
 25.2 bundled-artifact grep: <verbatim, or "N/A — ROM build, no sibling-import artifact">
 25.3 operator-runtime-smoke: <Jay MAME visual gate — "pending Jay" if not yet observed>
 
-### 6 — Reactive deviations
-<§22.5 changes from spec, or: None.>
+### 6 — Reactive deviations and route accounting
+<§22.5 changes from the dispatch spec, or: None.>
+<ROUTE ACCOUNTING: if you proposed a route (in conversation or in a prior report), state which parts of it this
+change actually contains and which you did NOT implement. "Proposed X + Y; this commit does X only, not Y" —
+or: no route proposed.>
 
 ### 7 — Uncertainty flags
 <what is not yet certain, or: None.>
@@ -292,6 +432,19 @@ source / Jay — each conclusion rests on>
 ### 11 — Commit
 <hash>  (pushed to origin/wip before this report)
 ```
+
+**Route accounting (added 2026-07-30, P3.30 §3D).** A dispatch's spec is checked by §6's reactive-deviations line
+and by the AC list. **A route YOU proposed is checked by nothing** — and a plan diverging from its implementation is
+**invisible in a diff**, because the diff shows only what was done, never what was described. P3.30 proposed *"pack
++ reclaim the room blob"*, implemented only the reclaim, and reported the result as though it were the route; Jay
+caught it by remembering the proposal (*"i thought we packed so it would fit on 2?"*). The dropped half was not the
+optional one — without it the load overruns into the disk driver, so the implemented half could not work alone.
+
+The failure is not skipping a half; wanting something running first is legitimate. **The failure is not SAYING so.**
+A message describing a route and a commit doing something else is worse than either alone, because it spends the
+reader's trust on a picture that no artifact will contradict. So: **before reporting a result, state which parts of
+any route you proposed the change actually contains.** Every other check in this project inspects an artifact; this
+one cannot be, which is exactly why it must be written down.
 
 Reports are written to `reports/<YYYYMMDD-HHMMSS>-<slug>.md` (colon-free), tracked, pushed to origin/wip —
 the Orchestrator fetches them (no paste).

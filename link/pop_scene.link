@@ -1,0 +1,65 @@
+; link/pop_scene.link — the SCENE's program, staged past the LOADM handover (P3.106).
+;
+; ---------------------------------------------------------------------------
+; WHY THIS FILE EXISTS, WHICH IS A MEASUREMENT AND NOT A PREFERENCE.
+; ---------------------------------------------------------------------------
+; The intro and the scene both linked at $2000 and were LOADM'd separately. Merged into
+; one image they are
+;
+;     intro_seq $03A5 + cutscene_room $03ED + lz_unpack $008E = $0820  ->  $2000..$281F
+;
+; against a MEASURED LOADM ceiling of $2488..$2535 [link/pop_engine.link, P3.22] — over by
+; $02EA..$0397. P3.104 stopped there and called it blocking.
+;
+; ★★★ JAY REFRAMED IT AND THAT IS WHAT THIS FILE IS: "D won't work since LOADM isn't
+; available after initial load." LOADM is a BASIC command and BASIC is gone the moment the
+; port takes control — so THE CEILING BINDS ON WHAT IS RESIDENT AT THE HANDOVER, NOT ON
+; WHAT THE PROGRAM MAY EVER HOLD. The $820 was never too much code; it was too much code in
+; the wrong stage.
+;
+; So the intro keeps the LOADM image ($2000..$2432, under the ceiling with room to spare)
+; and the SCENE arrives afterwards, read from a whole track by the intro's own load_tracks
+; over the kernel's disk_read_range — the route link/pop_engine.link already names: "put
+; the code on a disk-resident track and reach it through a fixed table, the way the
+; cutscene bundle does".
+;
+; ---------------------------------------------------------------------------
+; WHY $2500, AND WHY BEING ABOVE THE CEILING IS THE POINT RATHER THAN A VIOLATION.
+; ---------------------------------------------------------------------------
+;   $2000..$2432   the intro's program — LOADM'd, and resident for the whole sequence
+;   $2500..$297A   THIS, read from a track after the handover
+;   $3000..$4883   the scene's flames bundle, expanded
+;   $5400..$68F1   the intro's SAVE_BUF worst case (the TITLE caption, 5,361 B)
+;   $5800..$69FF   the scene's packed bundle — see §3 of the P3.105 report for why those
+;                  two overlap and are still safe
+;   $6A00          DR_VARBASE      $6C00  peel buffers      $7800  trace      $7900  kernel
+;
+; $2500 clears the intro's code with 205 B of gap and clears $3000 by more than $600.
+; NOTHING LOADMs this image, so the ceiling does not apply to it — that is the whole
+; mechanism, and stating it here is the point of the file.
+;
+; ---------------------------------------------------------------------------
+; THE `code` SECTION IS DECLARED AND THEN DISCARDED, DELIBERATELY.
+; ---------------------------------------------------------------------------
+; cutscene_room.s calls HAL_sys_init, HAL_gfx_set_mode, HAL_gfx_mirror and
+; HAL_time_frame_count. lwasm's object mode turns an undefined symbol into an external
+; reference automatically, so the link needs hal_build.o present to RESOLVE them even
+; though the kernel is already resident at $7900 from the intro's own LOADM.
+;
+; Declaring `code` at $7900 makes those references resolve to the addresses the resident
+; kernel actually occupies. The build then drops that segment (decb_to_raw --span-end) so
+; the track carries only $2500.. — because re-reading the kernel from a track WHILE THE
+; KERNEL IS EXECUTING THE READ would overwrite the routine mid-transfer.
+;
+; ★ The two kernel images are byte-identical by construction: same build/obj/hal_build.o,
+; same `code load 7900`. build.bat asserts it rather than trusting it
+; (harness/tools/kernel_identical_check.py), because "identical by construction" is the
+; shape of assumption this project has now been bitten by four times.
+;
+; Comments here are `;`. lwlink does NOT accept `*`, and a `$`-prefixed load value parses
+; as ZERO with no error — both documented at length in link/pop_cels_res.link.
+
+section prog load 2500
+section code load 7900
+
+entry room_entry
