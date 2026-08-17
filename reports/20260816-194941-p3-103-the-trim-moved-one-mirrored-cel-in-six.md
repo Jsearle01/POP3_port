@@ -296,4 +296,4 @@ in. It replaced §1's method; §1's hypothesis and §2 stood. Both tests are rep
 
 ### 11 — Commit
 
-See below — pushed to origin/wip before this report.
+`1e3cb74`  (pushed to origin/wip before this report)
