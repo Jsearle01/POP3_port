@@ -331,7 +331,7 @@ None.
 
 ### 11 — Commit
 
-See below — pushed to origin/wip before this report.
+`954d96c`  (pushed to origin/wip before this report)
 
 **Sources** (AC4a):
 - [Sock Master's Tandy Color Computer 3 Page](https://www.6809.org.uk/twilight/sock/)
