@@ -396,11 +396,15 @@ REM    P_PULSE tap times the port's own $FF20 writes, so the emitted pulse and t
 REM    segment period are read off the bus and fed back here. P4.5 modelled the pulse
 REM    instead and every one of them ran ~6.6 us wide.
 REM      SONG_PULSE_OVH  cycles in the emitted pulse OUTSIDE the delay loop
-REM      SONG_LATENCY    us from the timer hitting zero to the handler's restart write
+REM      SONG_LATENCY    us from the timer hitting zero to the period actually restarting.
+REM    * WITH THE DITHER RETIRED (Jay: "i don't hear a difference") the timer AUTO-RELOADS
+REM      and the handler never rewrites it -- so this is almost entirely the GIME's own
+REM      nnn+2 (SockmasterGime.md:83), measured free-running at +127.80 us = 2.01 ticks.
+REM      The dither build's figures were 170.24/225.22 and are NOT interchangeable.
 REM      SONG_LATENCY_ADV  ditto on the interrupt that also walks the table (+55 us)
 set SONG_PULSE_OVH=5.0
-set SONG_LATENCY=170.24
-set SONG_LATENCY_ADV=225.22
+set SONG_LATENCY=127.80
+set SONG_LATENCY_ADV=195.78
 REM -- TWO TABLES, ONE CODE PATH. A is the as-built quantisation (frac=0); B carries the
 REM    fractional tick so the mean period is right. The ONLY difference Jay hears is the
 REM    detune -- which is what makes the A/B a question he can answer (his words: "it's

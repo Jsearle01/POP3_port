@@ -5,8 +5,9 @@
 # unanswerable. Jay: "it's going to be hard to gate something without knowing what it would
 # sound like the other way."
 #
-#   PORT vs PORT   (run_song_slice.sh, probe_mode 1) isolates the DETUNE — same code, same
-#                  pulse, same everything, one variable: the quantisation.
+#   PORT vs PORT   isolated the DETUNE — same code, same pulse, one variable. ASKED AND
+#                  ANSWERED at P4.6: "i don't hear a difference", so the dither is retired
+#                  and that comparison no longer exists to be made.
 #   PORT vs ORACLE (this script) is the separate question of whether it sounds RIGHT AT ALL,
 #                  and it CANNOT isolate anything: a 6-bit DAC driven by a GIME timer and a
 #                  one-bit speaker driven by a 6502 differ in more ways than one.
@@ -14,7 +15,7 @@
 # So this produces two files and makes no claim about which difference is which.
 #
 #   P_WHICH=oracle   the Apple II, playing s_Princess inside PlayCut0
-#   P_WHICH=port     the CoCo3 slice, table A then table B (probe_mode 1)
+#   P_WHICH=port     the CoCo3 slice, looping (probe_mode 1)
 #   P_WHICH=both     (default)
 #
 # ★ MAME's -wavwrite records the emulated audio output of the whole session, from frame 0.
@@ -81,12 +82,12 @@ if [ "$WHICH" = "port" ] || [ "$WHICH" = "both" ]; then
         || { echo "[song_wav] could not add SONG.BIN to $DSK"; exit 1; }
     sym() { grep -E "^Symbol: $2 " "$1" | sed -E 's/.*= *//'; }
     export P_ENTRY="$(sym "$MAP" probe_entry)"
-    export P_MODE=1                 # A, gap, B, gap, looping — both renditions in one file
+    export P_MODE=1                 # looping with a gap, so the capture has whole passes
     unset P_OUT P_SPIN P_PULSE 2>/dev/null || true
     OUT="build/tmp/port_princess.wav"
     rm -f "$OUT"
     . "$(dirname "$0")/ramsize.sh"
-    echo "[song_wav] port: coco3 $RAMOPT, 45 emulated seconds (boot + LOADM + A/gap/B)..."
+    echo "[song_wav] port: coco3 $RAMOPT, 45 emulated seconds (boot + LOADM + several passes)..."
     "$MAME" coco3 \
         -rompath "$MAME_ROMS" \
         $RAMOPT \
@@ -97,7 +98,7 @@ if [ "$WHICH" = "port" ] || [ "$WHICH" = "both" ]; then
         -wavwrite "$OUT" \
         -autoboot_script harness/smoke/song_live.lua >/dev/null 2>&1
     # EXEC is posted 1200 frames in; the disk read then takes a few seconds.
-    report "$OUT" "PORT (CoCo3 DAC) — table A, 1.5 s gap, table B" 20
+    report "$OUT" "PORT (CoCo3 DAC) — s_Princess, looping" 20
 fi
 
 echo "[song_wav] done. These are for LISTENING, not for a script to grade."

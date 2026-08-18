@@ -37,18 +37,22 @@
 *   fcb count    how many identical segments this row stands for (1..255)
 *   fdb 0        terminates
 *
-* ★★★ THE FRACTION IS THE ONLY WAY LEFT TO FIX THE PITCH. A single tick value can be no
-* closer than half a tick, which at 700 Hz is 2.2% worst case. A Bresenham accumulator
-* alternates ticks and ticks+1 so the MEAN period is right, at the price of up to one tick
-* of per-segment jitter. Table A ships frac=0 everywhere and is therefore exactly the
-* as-built quantisation; table B carries the fractions. SAME CODE PATH, SAME COST, and the
-* only variable between them is the detune — which is what makes the A/B worth Jay's ear
-* (his words: "it's going to be hard to gate something without knowing what it would sound
-* like the other way").
+* ★★★ AND THE FRACTION IS RETIRED — IT IS `SP_DITHER`, OFF BY DEFAULT, AND THE REASON IS
+* JAY'S EAR. A single tick value can be no closer than half a tick, so table A's periods
+* run 0.69% sharp on average (biased, not merely noisy: 2,936 of 3,924 segments share a
+* handful of periods that all round the same way). A Bresenham accumulator alternates ticks
+* and ticks+1 so the MEAN comes out right, at the price of up to one tick of per-segment
+* jitter. P4.6 built both, from ONE code path with two tables, and played them back to back
+* on a loop — his words: "it's going to be hard to gate something without knowing what it
+* would sound like the other way."
 *
-* ★★ AND THE DITHER FORCES A TIMER WRITE EVERY INTERRUPT, which the auto-reload did not
-* need. That costs, it is measured, and `SP_NODITHER` builds the cheap path so the cost is
-* attributed rather than asserted.
+* ★★ HE HEARD BOTH AND RULED: "i don't hear a difference." 0.69% is about 12 cents, an
+* eighth of a semitone on a solo line, and that is the expected answer rather than a failed
+* test — the two renditions measured 6474.7 ms and 6521.5 ms emitted, so they DID differ by
+* the 0.72% they were built to differ by. So the accumulator and the per-interrupt timer
+* write come out: 279 cyc/frame, 0.9% of the VBL budget, returned. `SP_DITHER` rebuilds the
+* A/B if the question is ever reopened; the constants differ between the two paths and
+* pack_song.py must be re-run, never reused.
 *
 * ---------------------------------------------------------------
 * THE TEAR-DOWN IS PART OF THE PLAYER, NOT AN AFTERTHOUGHT
@@ -70,7 +74,7 @@
 *   $200B  probe_pass    1B   which table is sounding now: 0 = A, 1 = B
 *
 * Build-time ablations, for the cost split (P4.6 §2) — the shipping slice defines none:
-*   SP_NODITHER  auto-reload, no accumulator, no per-interrupt timer write
+*   SP_DITHER    (opt-IN) the accumulator + per-interrupt timer write + table B
 *   SP_NOCOUNT   drop the probe_firqs increment
 *   SP_NOPULSE   force the pulse to one iteration
 * ---------------------------------------------------------------
@@ -125,6 +129,7 @@ probe_start
 * launch. The alternative was two programs, and two programs are how the thing measured
 * and the thing demonstrated drift apart.
 sp_pass
+                ifdef   SP_DITHER
                 lda     probe_mode
                 cmpa    #2              ; ★ mode 2 plays TABLE B once and stops — the same
                 bne     sp_a            ;   headless fidelity run, aimed at the other table
@@ -136,6 +141,7 @@ sp_pass
                 lda     #2
                 sta     probe_status
                 bra     sp_finish
+                endc
 sp_a
                 clr     probe_pass
                 ldx     #song_a
@@ -149,9 +155,13 @@ sp_a
 
 sp_loopb        jsr     song_stop
                 jsr     sp_gap
+                ifdef   SP_DITHER
                 lda     #1
                 sta     probe_pass
                 ldx     #song_b
+                else
+                ldx     #song_a         ; ★ no B to compare against — mode 1 just loops the song
+                endc
                 jsr     song_start
                 jsr     sp_wait_end
                 jsr     song_stop
@@ -264,7 +274,7 @@ load_run
 * ★ THE CHEAP PATH RELOADS HERE, ONCE PER RUN. With the dither the handler writes the
 * timer every interrupt and this would be redundant; without it, nothing else ever
 * changes the period, so the run boundary is the only place it can happen.
-                ifdef   SP_NODITHER
+                ifndef  SP_DITHER
                 ldd     sp_ticks
                 stb     $FF95
                 sta     $FF94
@@ -310,7 +320,7 @@ firq_handler
                 lbsr    load_run
                 bcs     fh_out          ; terminator: timer already stopped
 fh_tick
-                ifndef  SP_NODITHER
+                ifdef   SP_DITHER
 * ★ THE ACCUMULATOR. adda sets C; sta and ldd leave it alone, so the bcc below still tests
 * the add. Carry => this segment takes ticks+1, which is how the mean period comes out
 * right when no single tick value can.
@@ -358,7 +368,9 @@ sp_playing      fcb     0
 sp_gapn         fcb     0
 
                 include "build/gen/song_a.s"
+                ifdef   SP_DITHER
                 include "build/gen/song_b.s"
+                endc
 
                 ifdef   OBJTARGET
                 else

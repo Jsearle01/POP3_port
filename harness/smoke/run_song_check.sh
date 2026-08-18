@@ -18,7 +18,9 @@
 # running variants, not by re-deriving the estimate. P_ABLATE builds one:
 #
 #   P_ABLATE=none      the slice as built                      (default)
-#   P_ABLATE=nodither  auto-reload; no per-interrupt timer write
+#   P_ABLATE=dither    the RETIRED path: accumulator + per-interrupt timer write + table B.
+#                      Jay ruled the difference inaudible, so this is now opt-in and its
+#                      packing constants DIFFER -- pack_song.py must be re-run for it.
 #   P_ABLATE=nocount   no probe_firqs increment
 #   P_ABLATE=nopulse   pulse forced to one iteration
 #
@@ -44,7 +46,7 @@ mkdir -p build/tmp
 # or the cost difference is not attributable to the piece removed.
 if [ "$ABL" != "none" ]; then
     case "$ABL" in
-        nodither) DEF=SP_NODITHER ;;
+        dither)   DEF=SP_DITHER   ;;
         nocount)  DEF=SP_NOCOUNT  ;;
         nopulse)  DEF=SP_NOPULSE  ;;
         *) echo "[song_check] unknown P_ABLATE=$ABL"; exit 1 ;;
