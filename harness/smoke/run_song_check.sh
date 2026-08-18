@@ -78,7 +78,10 @@ export P_SPIN="$(sym "$MAP" hal_vbl_spin)"
 export P_TICKS="$(sym "$MAP" sp_ticks)"
 export P_WIDTH="$(sym "$MAP" sp_width)"
 export P_PTR="$(sym "$MAP" sp_ptr)"
-export P_DUR="${P_DUR:-6506.7}"   # the measured length of the source stream, ms
+export P_DUR="${P_DUR:-36566.8}" # the SOUNDING span in ms (pack_song.py prints it).
+                                 # NOT the total: the cut lands on a 6 s rest, and a
+                                 # $FF20 tap cannot measure silence it never emits.
+export P_TO="${P_TO:-5400}"      # frames before giving up; the song is 42.5 s now
 export P_PULSE="${P_PULSE:-1}"
 export P_MODE="${P_MODE:-0}"   # 0 = table A, 2 = table B; the control needs a terminating pass
 export P_OUT="build/tmp/song_check_${ABL}_m$P_MODE.log"
@@ -98,7 +101,7 @@ rm -f "$P_OUT"
     -cfg_directory dist/mame-cfg/rgb \
     -ext fdc -flop1 "$DSK" \
     -window -nomaximize -nothrottle -sound none \
-    -seconds_to_run 60 \
+    -seconds_to_run "${P_SECS:-95}" \
     -autoboot_script harness/smoke/song_live.lua \
     >/dev/null 2>&1
 

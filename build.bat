@@ -402,6 +402,14 @@ REM      and the handler never rewrites it -- so this is almost entirely the GIM
 REM      nnn+2 (SockmasterGime.md:83), measured free-running at +127.80 us = 2.01 ticks.
 REM      The dither build's figures were 170.24/225.22 and are NOT interchangeable.
 REM      SONG_LATENCY_ADV  ditto on the interrupt that also walks the table (+55 us)
+REM    * SONG_CUT -- where the captured stream is cut, in seconds. Jay, hearing the 6.5 s
+REM      version looped against the oracle: "the port sounds like the same piece repeated 3
+REM      times. the oracle sounds like 3 different pieces." It was not a loop bug -- the port
+REM      only HAD 6.5 s, because P4.4 captured a 400-frame window and everything since was
+REM      built on it. The capture is now 5400 frames (90 s) and the cut lands on the 6-second
+REM      silence at 36.6 s, which is where the music itself stops: 42.5 s of it, ending on a
+REM      rest rather than mid-phrase. The raw capture stays whole; the cut lives HERE.
+set SONG_CUT=37.6
 set SONG_PULSE_OVH=5.0
 set SONG_LATENCY=127.80
 set SONG_LATENCY_ADV=195.78
@@ -410,9 +418,9 @@ REM    fractional tick so the mean period is right. The ONLY difference Jay hear
 REM    detune -- which is what makes the A/B a question he can answer (his words: "it's
 REM    going to be hard to gate something without knowing what it would sound like the
 REM    other way").
-python harness/tools/pack_song.py --pairs content/sound/princess_speaker_pairs.txt --out build/gen/song_a.s --label song_a --latency-us %SONG_LATENCY% --latency-adv-us %SONG_LATENCY_ADV% --pulse-overhead-cyc %SONG_PULSE_OVH%
+python harness/tools/pack_song.py --pairs content/sound/princess_cutscene_speaker_pairs.txt --out build/gen/song_a.s --label song_a --latency-us %SONG_LATENCY% --latency-adv-us %SONG_LATENCY_ADV% --pulse-overhead-cyc %SONG_PULSE_OVH% --max-seconds %SONG_CUT% --max-runs 6000
 if errorlevel 1 goto :error
-python harness/tools/pack_song.py --pairs content/sound/princess_speaker_pairs.txt --out build/gen/song_b.s --label song_b --dither --latency-us %SONG_LATENCY% --latency-adv-us %SONG_LATENCY_ADV% --pulse-overhead-cyc %SONG_PULSE_OVH%
+python harness/tools/pack_song.py --pairs content/sound/princess_cutscene_speaker_pairs.txt --out build/gen/song_b.s --label song_b --dither --latency-us %SONG_LATENCY% --latency-adv-us %SONG_LATENCY_ADV% --pulse-overhead-cyc %SONG_PULSE_OVH% --max-seconds %SONG_CUT% --max-runs 6000
 if errorlevel 1 goto :error
 lwasm --obj -DOBJTARGET -I . -o build/obj/song_probe.o src/harness/song_probe.s
 if errorlevel 1 goto :error

@@ -344,11 +344,19 @@ fh_tw           stb     $FF95
                 else
                 ldb     sp_width
                 endc
+* ★★★ WIDTH 0 IS A REST, AND IT IS NOT AN EDGE CASE — IT IS HOW SILENCE EXISTS AT ALL.
+* The GIME timer tops out at 4095 ticks = 261 ms, and the full cutscene contains rests of
+* up to 6 SECONDS. Those are packed as a train of silent maximum-length segments, so a rest
+* is many interrupts that emit nothing rather than one impossible timer value. Without this
+* branch `ldb #0` would fall into the loop and count 256 iterations — the longest pulse in
+* the table, exactly where the music wants none.
+                beq     fh_quiet        ; 3 cyc on every sounding segment
                 lda     #$FC            ; DAC at FULL SCALE — duty carries the amplitude
                 sta     DAC             ; the pulse OPENS here
 fh_pulse        decb                    ; 2 cyc
                 bne     fh_pulse        ; 3 cyc  -> 5 cyc per iteration
                 stb     DAC             ; B is 0 — the pulse CLOSES here
+fh_quiet
                 ifndef  SP_NOCOUNT
                 ldd     probe_firqs
                 addd    #1

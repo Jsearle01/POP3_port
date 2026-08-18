@@ -59,13 +59,16 @@ if [ "$WHICH" = "oracle" ] || [ "$WHICH" = "both" ]; then
     cp -f "$HDV" "$SCRATCH" || exit 1
     OUT="build/tmp/oracle_princess.wav"
     rm -f "$OUT"
-    echo "[song_wav] oracle: apple2e + cffa202, 70 emulated seconds..."
+    echo "[song_wav] oracle: apple2e + cffa202, ${P_ORACLE_SECS:-95} emulated seconds..."
+    # ★ LONG ENOUGH TO COVER WHAT THE PORT PLAYS. PlayCut0 arms ~44.7 s in and the
+    # port carries 42.5 s from there, so a 70 s recording cut the oracle off less than
+    # halfway and made the two clips incomparable by length alone.
     "$MAME" apple2e \
         -rompath "$MAME_ROMS" \
         -sl7 cffa202 \
         -hard1 "$(pwd -W)/$SCRATCH" \
         -nothrottle -video none \
-        -seconds_to_run 70 \
+        -seconds_to_run "${P_ORACLE_SECS:-95}" \
         -wavwrite "$OUT" >/dev/null 2>&1
     # PlayCut0 arms at frame 2681 of a 60 Hz screen -- about 44.7 s in [P4.4].
     report "$OUT" "ORACLE (Apple II speaker)" 40
@@ -82,23 +85,27 @@ if [ "$WHICH" = "port" ] || [ "$WHICH" = "both" ]; then
         || { echo "[song_wav] could not add SONG.BIN to $DSK"; exit 1; }
     sym() { grep -E "^Symbol: $2 " "$1" | sed -E 's/.*= *//'; }
     export P_ENTRY="$(sym "$MAP" probe_entry)"
-    export P_MODE=1                 # looping with a gap, so the capture has whole passes
+    # ★★★ MODE 0 — ONE PASS, NOT A LOOP. Mode 1 handed Jay the same 6.5 s three times
+    # against ~28 s of real cutscene: "the port sounds like the same piece repeated 3 times.
+    # the oracle sounds like 3 different pieces." The loop was not the defect — the port only
+    # HAD 6.5 s — but the loop is what made the comparison impossible to make.
+    export P_MODE=0
     unset P_OUT P_SPIN P_PULSE 2>/dev/null || true
     OUT="build/tmp/port_princess.wav"
     rm -f "$OUT"
     . "$(dirname "$0")/ramsize.sh"
-    echo "[song_wav] port: coco3 $RAMOPT, 45 emulated seconds (boot + LOADM + several passes)..."
+    echo "[song_wav] port: coco3 $RAMOPT, ${P_PORT_SECS:-95} emulated seconds (boot + LOADM + one pass)..."
     "$MAME" coco3 \
         -rompath "$MAME_ROMS" \
         $RAMOPT \
         -cfg_directory dist/mame-cfg/rgb \
         -ext fdc -flop1 "$DSK" \
         -video none -nothrottle \
-        -seconds_to_run 45 \
+        -seconds_to_run "${P_PORT_SECS:-95}" \
         -wavwrite "$OUT" \
         -autoboot_script harness/smoke/song_live.lua >/dev/null 2>&1
     # EXEC is posted 1200 frames in; the disk read then takes a few seconds.
-    report "$OUT" "PORT (CoCo3 DAC) — s_Princess, looping" 20
+    report "$OUT" "PORT (CoCo3 DAC) — PlayCut0 music, one pass" 20
 fi
 
 echo "[song_wav] done. These are for LISTENING, not for a script to grade."
