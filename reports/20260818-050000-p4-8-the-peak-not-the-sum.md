@@ -227,4 +227,4 @@ inverted the comparison rather than merely narrowing it.
 
 ### 11 — Commit
 
-See below — pushed to origin/wip before this report.
+`8329af0`  (pushed to origin/wip before this report)
