@@ -43,20 +43,38 @@ mkdir -p build/tmp
 . "$(dirname "$0")/ramsize.sh"
 
 sym() { grep -E "^Symbol: $2 " "$1" | sed -E 's/.*= *//'; }
-echo "[song] $RAMOPT  probe \$$(sym "$MAP" probe_entry)  runs \$$(sym "$MAP" probe_runs)"
+export P_ENTRY="$(sym "$MAP" probe_entry)"
+# probe_mode 1 = A, gap, B, gap, LOOPING. P4.6 built the comparison Jay asked for:
+# "it's going to be hard to gate something without knowing what it would sound like the
+# other way." A single rendition judged alone answers a different question than the one
+# being asked, and looping it means he can go back and forth rather than remember.
+export P_MODE=1
+
+echo "[song] $RAMOPT  probe \$$P_ENTRY  mode $P_MODE (A / gap / B / gap, looping)"
 echo "[song]"
-echo "[song] ★ THIS RUN IS FOR YOUR EARS. Sound is ON and the machine runs at real speed."
+echo "[song] >> THIS RUN IS FOR YOUR EARS. Sound is ON, real speed."
 echo "[song]"
-echo "[song] Boot, then LOADM\"SONG\" + EXEC. ~20 s of disk, then 6.5 seconds of music:"
-echo "[song]   the opening of PlayCut0 — principally s_Princess — replayed from the"
-echo "[song]   oracle's own speaker timings."
+echo "[song] Boot, then LOADM\"SONG\" + EXEC. ~20 s of disk, then, on repeat:"
+echo "[song]     6.5 s  TABLE A   the as-built quantisation"
+echo "[song]     1.5 s  silence"
+echo "[song]     6.5 s  TABLE B   the same song, periods dithered so the mean is right"
+echo "[song]     1.5 s  silence"
 echo "[song]"
-echo "[song] TWO THINGS TO JUDGE, both yours:"
-echo "[song]   1. THE 3%. TINS=0 runs the top of the range 2.02% flat — about a third of a"
-echo "[song]      semitone. If you can't hear it, the TINS hybrid never gets built."
-echo "[song]   2. THE TIMBRE. This emits a narrow PULSE, like the Apple, not a square wave."
+echo "[song] THE ONLY DIFFERENCE BETWEEN A AND B IS THE TUNING. Same player, same code"
+echo "[song] path, same pulse widths, same table size - only the numbers differ."
+echo "[song]   A: per-segment period error mean 0.92%, worst 1.20%, and BIASED - the song"
+echo "[song]      runs 0.69% sharp overall, because 2,936 of its 3,924 segments share a"
+echo "[song]      handful of periods that all round the same way."
+echo "[song]   B: mean 0.005%, at the price of up to one tick of jitter per segment -"
+echo "[song]      right on average, less steady instant to instant."
 echo "[song]"
-echo "[song] NOT built: the hybrid; any decode of MUSIC.SET*; the other four songs."
+echo "[song] >> AND WHAT P4.5 GAVE YOU WAS NEITHER. It played 7.2% LONG - about 1.2"
+echo "[song] semitones flat - because the GIME runs nnn+2 ticks and the handler's own"
+echo "[song] latency was unmeasured. Both are measured now. If A and B sound alike, that"
+echo "[song] is a real answer: the dither comes out and the player gets 0.9% of a frame back."
+echo "[song]"
+echo "[song] For port-vs-ORACLE, a different question, run run_song_wav.sh."
+echo "[song] NOT built: any decode of MUSIC.SET*; the other four songs."
 echo "[song] Close the window when you are done."
 
 "$MAME" coco3 \

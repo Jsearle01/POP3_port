@@ -1991,3 +1991,48 @@ having permanently: it converts a machine that destroys itself into a picture th
 merely wrong, which can be looked at.
 
 *Established:* P3.12.
+
+## 39. `-wavwrite` records the session's audio; `-sound none` yields a valid, silent file (P4.6)
+
+**`mame ... -wavwrite out.wav` works on `coco3` and on `apple2e`** and writes a 16-bit WAV
+of the whole session at 48 kHz — **from frame 0, not from when the program starts**, so the
+oracle's music sits 44 s inside a 32 MB file. It coexists with `-video none` and
+`-nothrottle`, which is what makes a headless capture cheap.
+
+**Do NOT pass `-sound none` with it.** Every other runner in this project passes it because
+they measure pixels or cycles; here it produces a file that opens, has the right length, and
+contains nothing. *An artifact that looks produced and is empty is the failure mode this
+project keeps meeting.*
+
+Two gotchas found in one dispatch:
+- **The channel count is not 1 or 2.** `coco3` wrote 3 channels and `apple2e` wrote 5. Any
+  parsing must read `getnchannels()`, not assume.
+- **The idle level is not zero.** `apple2e` sits at 0 but `coco3` sits at −8192, so activity
+  detection has to be relative to the file's own baseline. `harness/tools/wav_trim.py` takes
+  the median of the first second as the baseline and cuts to the active span.
+
+## 40. The GIME timer at TINS=0 runs `nnn+2`, and MAME reproduces it — measured (P4.6)
+
+`SockmasterGime.md:83` records that the GIME cannot run a count of 1: the 1986 part
+processes `nnn+2` and the 1987 part `nnn+1`. **MAME's `coco3` implements the +2 behaviour,
+and it is measurable directly:** with the timer free-running (auto-reload, no per-interrupt
+rewrite), the emitted period minus `ticks × 63.695 µs` is **+127.80 µs = 2.01 ticks**, with
+no handler code in the path.
+
+**This is not a rounding detail — for short periods it dominates.** At the 1.27 ms segments
+this port's music mostly uses, two ticks is **10%**, and an unmodelled `nnn+2` left a slice
+playing 7.2% long, about 1.2 semitones flat. **A timer period is `(ticks + 2) × tick`, and
+the tick itself is nominal** — measured at 63.759 µs from adjacent tick values, +0.10%.
+
+**If the handler REWRITES `$FF94` each interrupt** (needed to vary the period per segment,
+e.g. to dither), add its own latency on top, and note it is not one number:
+
+| path | offset | what it is |
+|---|---|---|
+| free-running | +127.8 µs | the chip's `nnn+2`, nothing else |
+| rewrite, steady | +170.2 µs | the above + FIRQ entry and the prologue (~76 cyc) |
+| rewrite, run advance | +225.2 µs | the above + the table walk (~98 cyc) |
+
+**Measure it, do not derive it:** `harness/smoke/song_live.lua` `P_PULSE=1` times the
+`$FF20` writes on the bus and splits the offset by whether `sp_ptr` moved — *by mechanism,
+not by the tick value, which merely correlates with it in one particular song.*

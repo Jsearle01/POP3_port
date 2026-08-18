@@ -1,5 +1,5 @@
 * ---------------------------------------------------------------
-* song_probe.s — P4.5: THE VERTICAL SLICE. One song, end to end, on the target.
+* song_probe.s — P4.5/P4.6: THE VERTICAL SLICE. One song, end to end, on the target.
 *
 * ★★★ WHAT THIS PLAYS IS A MEASUREMENT. Every row of the table was recorded off the running
 * oracle's speaker by oracle_speaker_intervals.lua and packed by pack_song.py. `MUSIC.SET*`
@@ -8,9 +8,10 @@
 *
 * ★★ TINS=0, SINGLE MODE, AND THAT IS THE POINT. P4.4 measured the music at 101..943 Hz; the
 * GIME timer at TINS=1 bottoms out at 874 Hz, so it cannot reach the low notes at all
-* (8.6x past the 4095 ceiling). TINS=0 reaches the whole range at -2.02% at the very top.
-* Jay: "I can't rule on the 3% without hearing it." So the WORSE case is what gets built and
-* heard; the TINS hybrid is deliberately NOT here.
+* (8.6x past the 4095 ceiling). ★★★ AND P4.6 CLOSES THE HYBRID OFF ENTIRELY: 74.8% of this
+* song sits at 600-800 Hz, whose periods are 1.25..1.67 ms against TINS=1's 1.144 ms
+* ceiling — the hybrid cannot reach the band it would be built for. So the detune is
+* answered by BETTER QUANTISATION, not by a second clock (see the dither, below).
 *
 * ---------------------------------------------------------------
 * THE AUDIO PATH — three registers, and two of them are not the DAC
@@ -27,18 +28,51 @@
 * them explicitly rather than assume.
 *
 * ---------------------------------------------------------------
+* THE ROW, AND WHY IT CARRIES A FRACTION
+* ---------------------------------------------------------------
+*   fdb ticks    GIME 12-bit timer, TINS=0 (63.695 us/tick) — the SEGMENT rate
+*   fcb frac     dither numerator 0..255: this many 256ths of the segments in this run
+*                take ticks+1 instead of ticks
+*   fcb width    the pulse, in iterations of the handler's 5-cycle delay loop
+*   fcb count    how many identical segments this row stands for (1..255)
+*   fdb 0        terminates
+*
+* ★★★ THE FRACTION IS THE ONLY WAY LEFT TO FIX THE PITCH. A single tick value can be no
+* closer than half a tick, which at 700 Hz is 2.2% worst case. A Bresenham accumulator
+* alternates ticks and ticks+1 so the MEAN period is right, at the price of up to one tick
+* of per-segment jitter. Table A ships frac=0 everywhere and is therefore exactly the
+* as-built quantisation; table B carries the fractions. SAME CODE PATH, SAME COST, and the
+* only variable between them is the detune — which is what makes the A/B worth Jay's ear
+* (his words: "it's going to be hard to gate something without knowing what it would sound
+* like the other way").
+*
+* ★★ AND THE DITHER FORCES A TIMER WRITE EVERY INTERRUPT, which the auto-reload did not
+* need. That costs, it is measured, and `SP_NODITHER` builds the cheap path so the cost is
+* attributed rather than asserted.
+*
+* ---------------------------------------------------------------
 * THE TEAR-DOWN IS PART OF THE PLAYER, NOT AN AFTERTHOUGHT
 * ---------------------------------------------------------------
-* ★★★ A FIRQ player that is merely SILENCED keeps firing into whatever runs next. The
-* dispatch calls this out because Jay's stop mechanism needs it: `song_stop` masks FIRQ,
-* clears FIRQENR, puts $FF90 back the way HAL_sys_init left it, and parks the DAC at zero.
-* It is called on the normal end AND is safe to call at any time.
+* ★★★ A FIRQ player that is merely SILENCED keeps firing into whatever runs next.
+* `song_stop` masks FIRQ, clears FIRQENR, stops the timer, puts $FF90 back the way
+* HAL_sys_init left it, and parks the DAC at zero. Called on the normal end AND safe to
+* call at any time.
 *
 * Published for the harness:
 *   $2003  probe_status  1B   0=boot 1=playing 2=finished 3=torn down
 *   $2004  probe_runs    2B   runs consumed
-*   $2006  probe_firqs   2B   FIRQ entries (wraps; liveness)
+*   $2006  probe_firqs   2B   FIRQ entries (wraps; liveness AND the measured rate)
 *   $2008  probe_magic   2B   $50 4E once torn down
+*   $200A  probe_mode    1B   POKED BEFORE EXEC. 0 = one pass of A, then stop (the
+*                             headless/cost path). 1 = A, gap, B, gap, repeat (Jay's ear).
+*                             2 = one pass of B, then stop (the same headless measurement,
+*                             aimed at the dithered table).
+*   $200B  probe_pass    1B   which table is sounding now: 0 = A, 1 = B
+*
+* Build-time ablations, for the cost split (P4.6 §2) — the shipping slice defines none:
+*   SP_NODITHER  auto-reload, no accumulator, no per-interrupt timer write
+*   SP_NOCOUNT   drop the probe_firqs increment
+*   SP_NOPULSE   force the pulse to one iteration
 * ---------------------------------------------------------------
                 ifdef   OBJTARGET
                 section prog
@@ -62,10 +96,13 @@ probe_status    fcb     0               ; $2003
 probe_runs      fdb     0               ; $2004
 probe_firqs     fdb     0               ; $2006
 probe_magic     fdb     0               ; $2008
+probe_mode      fcb     0               ; $200A
+probe_pass      fcb     0               ; $200B
 
 PROBE_MAGIC     equ     $504E
 DAC             equ     $FF20
 STACK_TOP       equ     $7F00
+GAP_FRAMES      equ     90              ; ~1.5 s of silence between A and B
 
 * ---------------------------------------------------------------
 probe_start
@@ -79,29 +116,71 @@ probe_start
                 lda     #0              ; GFX_MODE_320x192x4 — a screen so the run is visible
                 jsr     HAL_gfx_set_mode
 
-                bsr     audio_on
-                bsr     song_start
-
+                jsr     audio_on
                 lda     #1
                 sta     probe_status
                 andcc   #$EF            ; VBL IRQs on, so HAL_time_vbl_wait works
 
-* The foreground does NOTHING but wait. ★ That is deliberate: the whole claim of the
-* interrupt architecture is that the music does not need the CPU's attention, and a
-* foreground that helped would hide a failure of exactly that.
-sp_wait         jsr     HAL_time_vbl_wait
-                lda     sp_playing
-                bne     sp_wait
-
+* ★ MODE 0 IS THE MEASURED PATH AND MODE 1 IS THE HEARD ONE, from one binary and one
+* launch. The alternative was two programs, and two programs are how the thing measured
+* and the thing demonstrated drift apart.
+sp_pass
+                lda     probe_mode
+                cmpa    #2              ; ★ mode 2 plays TABLE B once and stops — the same
+                bne     sp_a            ;   headless fidelity run, aimed at the other table
+                lda     #1
+                sta     probe_pass
+                ldx     #song_b
+                jsr     song_start
+                jsr     sp_wait_end
                 lda     #2
                 sta     probe_status
-                bsr     song_stop
+                bra     sp_finish
+sp_a
+                clr     probe_pass
+                ldx     #song_a
+                jsr     song_start
+                jsr     sp_wait_end
+                lda     probe_mode
+                bne     sp_loopb
+                lda     #2              ; finished, not yet torn down
+                sta     probe_status
+                bra     sp_finish
+
+sp_loopb        jsr     song_stop
+                jsr     sp_gap
+                lda     #1
+                sta     probe_pass
+                ldx     #song_b
+                jsr     song_start
+                jsr     sp_wait_end
+                jsr     song_stop
+                jsr     sp_gap
+                bra     sp_pass
+
+sp_finish
+                jsr     song_stop
                 lda     #3
                 sta     probe_status
                 ldd     #PROBE_MAGIC
                 std     probe_magic
 sp_hold         jsr     HAL_time_vbl_wait
                 bra     sp_hold
+
+* The foreground does NOTHING but wait. ★ That is deliberate: the whole claim of the
+* interrupt architecture is that the music does not need the CPU's attention, and a
+* foreground that helped would hide a failure of exactly that.
+sp_wait_end     jsr     HAL_time_vbl_wait
+                lda     sp_playing
+                bne     sp_wait_end
+                rts
+
+sp_gap          lda     #GAP_FRAMES
+                sta     sp_gapn
+sp_gap1         jsr     HAL_time_vbl_wait
+                dec     sp_gapn
+                bne     sp_gap1
+                rts
 
 * ---------------------------------------------------------------
 * audio_on — mux to the DAC and open the sound gate.
@@ -122,12 +201,11 @@ audio_on
                 rts
 
 * ---------------------------------------------------------------
-* song_start — arm the timer FIRQ and load the first run.
+* song_start — X = the table. Arm the timer FIRQ and load the first row.
 * ---------------------------------------------------------------
 song_start
-                ldx     #song_princess
                 stx     sp_ptr
-                clr     sp_count        ; forces the first interrupt to load a row
+                clr     sp_acc
                 lda     #1
                 sta     sp_playing
                 ldd     #0
@@ -144,7 +222,10 @@ song_start
 * FEN on, everything else as HAL_sys_init left it ($6C).
                 lda     #$6C+$10
                 sta     $FF90
-                bsr     load_run        ; sets the timer from the first row
+                bsr     load_run        ; the first row
+                ldd     sp_ticks
+                stb     $FF95           ; ★ LSB THEN MSB: writing $FF94 is what restarts the
+                sta     $FF94           ;   timer, so a 16-bit STD would be wrong here
                 lda     #$20            ; TMR
                 sta     $FF93
                 andcc   #$BF            ; unmask FIRQ
@@ -165,28 +246,40 @@ song_stop
                 rts
 
 * ---------------------------------------------------------------
-* load_run — X = sp_ptr -> a row. Sets the timer and the level, or ends the song.
-* Row: fdb ticks / fcb level / fcb count
-* ★ LSB THEN MSB: writing $FF94 is what restarts the timer, so the MSB goes last —
-* which also means a 16-bit STD would be wrong here [SockmasterGime.md].
+* load_run — advance sp_ptr to the next row. Returns C=1 on the terminator, having
+* stopped the timer, so the handler can leave without emitting one more pulse.
 * ---------------------------------------------------------------
 load_run
                 ldx     sp_ptr
                 ldd     ,x++            ; D = ticks
-                bne     lr_go
-                clr     sp_playing      ; ticks 0 = terminator
-                rts
-lr_go
-                stb     $FF95
-                sta     $FF94
+                beq     lr_end
+                std     sp_ticks
+                lda     ,x+
+                sta     sp_frac
                 lda     ,x+
                 sta     sp_width
                 lda     ,x+
                 sta     sp_count
                 stx     sp_ptr
+* ★ THE CHEAP PATH RELOADS HERE, ONCE PER RUN. With the dither the handler writes the
+* timer every interrupt and this would be redundant; without it, nothing else ever
+* changes the period, so the run boundary is the only place it can happen.
+                ifdef   SP_NODITHER
+                ldd     sp_ticks
+                stb     $FF95
+                sta     $FF94
+                endc
                 ldd     probe_runs
                 addd    #1
                 std     probe_runs
+                andcc   #$FE            ; C=0 — more to play
+                rts
+lr_end
+                clr     $FF94           ; stop the timer; no further FIRQ
+                clr     $FF95
+                clr     DAC
+                clr     sp_playing
+                orcc    #$01            ; C=1 — the song is over
                 rts
 
 * ---------------------------------------------------------------
@@ -194,45 +287,78 @@ lr_go
 *
 * ★ FIRQ stacks only PC and CC on the 6809, so everything used is saved by hand. A,B,X are
 * all needed because the run-advance walks the table.
-* ★★ The PULSE, not a square wave: the DAC goes to the level and straight back to zero, so
-* the output is a narrow pulse train at the segment rate — which is what the oracle's
-* speaker actually emits (7.8-22.5 us inside 1,061-9,883 us, P4.4). A square wave of the
-* same pitch would be the same NOTE with a different TIMBRE, and the mandate is that it
-* sound right (CLAUDE.md §2I).
+* ★★ The PULSE, not a square wave: the DAC goes to full scale and back to zero, so the
+* output is a narrow pulse train at the segment rate — which is what the oracle's speaker
+* actually emits (7.8-22.5 us inside 1,061-9,883 us, P4.4). A square wave of the same pitch
+* would be the same NOTE with a different TIMBRE, and the mandate is that it sound right
+* (CLAUDE.md §2I).
+* ★★★ AND THE WIDTH IS THE AMPLITUDE, WHICH IS WHY IT IS CARRIED PER ROW. P4.5's first cut
+* emitted a fixed ~4 us pulse and Jay heard it: "i need more volume." The Apple's own
+* arrangement is one level and a varying duty, and that is what this reproduces — the four
+* distinct widths in the captured 6.5 s ARE whichever of MSYS's HM1..HM29 patterns were
+* running, with no decode in between.
 * ★ The GIME source is acknowledged by READING $FF93; without it the FIRQ re-asserts
 * immediately and the machine wedges.
+* ★ THE TIMER IS WRITTEN FIRST, before the pulse, so the restart latency is a CONSTANT and
+* pack_song.py can subtract it. Written after a variable-width pulse it would not be.
 * ---------------------------------------------------------------
 firq_handler
                 pshs    a,b,x
                 lda     $FF93           ; acknowledge
-* ★★★ THE PULSE IS HELD FOR ITS MEASURED WIDTH. The first cut wrote the DAC and cleared it
-* on the next instruction — a ~4 us pulse against the oracle's measured 7.8-22.5, a 0.28%
-* duty cycle against 0.55-1.6%. Jay: "i need more volume." It was 2-6x under AND less
-* faithful than this file claimed, since reproducing the pulse is the whole reason this
-* renders a pulse train rather than a square wave.
-* ★ DAC at FULL SCALE, duty carries the amplitude — the Apple's own arrangement.
-                lda     #$FC
-                sta     DAC
-                lda     sp_width        ; 3..8 iterations, from the measurement
-fh_pulse        deca                    ; 2 cyc
+                dec     sp_count
+                bne     fh_tick
+                lbsr    load_run
+                bcs     fh_out          ; terminator: timer already stopped
+fh_tick
+                ifndef  SP_NODITHER
+* ★ THE ACCUMULATOR. adda sets C; sta and ldd leave it alone, so the bcc below still tests
+* the add. Carry => this segment takes ticks+1, which is how the mean period comes out
+* right when no single tick value can.
+                lda     sp_acc
+                adda    sp_frac
+                sta     sp_acc
+                ldd     sp_ticks
+                bcc     fh_tw
+                addd    #1
+fh_tw           stb     $FF95
+                sta     $FF94           ; restarts the timer
+                endc
+* ★★ EVERYTHING THAT CAN BE HOISTED OUT OF THE PULSE IS, because the instructions inside it
+* ARE the minimum amplitude. Measured at P4.6: `lda sp_width` + `clr DAC` put 12 cycles
+* inside the window, so the quietest pulse the player could emit was 9.5 us against the
+* oracle's 7.8 — 21% too loud at the bottom of the range, and unfixable from the table.
+* Counting in B leaves B=0 at the loop exit, so the close is `stb DAC` (5 cyc) with the
+* width load hoisted above the open.
+                ifdef   SP_NOPULSE
+                ldb     #1
+                else
+                ldb     sp_width
+                endc
+                lda     #$FC            ; DAC at FULL SCALE — duty carries the amplitude
+                sta     DAC             ; the pulse OPENS here
+fh_pulse        decb                    ; 2 cyc
                 bne     fh_pulse        ; 3 cyc  -> 5 cyc per iteration
-                clr     DAC
+                stb     DAC             ; B is 0 — the pulse CLOSES here
+                ifndef  SP_NOCOUNT
                 ldd     probe_firqs
                 addd    #1
                 std     probe_firqs
-                dec     sp_count
-                bne     fh_out
-                lbsr    load_run
+                endc
 fh_out          puls    a,b,x
                 rti
 
 * ---------------------------------------------------------------
 sp_ptr          fdb     0
+sp_ticks        fdb     0
+sp_frac         fcb     0       ; dither numerator, 256ths of a tick
+sp_acc          fcb     0
 sp_width        fcb     1       ; the measured pulse width, in 5-cycle iterations
 sp_count        fcb     0
 sp_playing      fcb     0
+sp_gapn         fcb     0
 
-                include "build/gen/song_princess.s"
+                include "build/gen/song_a.s"
+                include "build/gen/song_b.s"
 
                 ifdef   OBJTARGET
                 else

@@ -391,7 +391,24 @@ REM MUSIC.SET*. Like tone_probe it is a harness probe and is NOT written to the 
 REM disk -- run_song_slice.sh puts it on a copy, because P4.2's instrument on probe.dmk
 REM took granules over a reserved cel-page track and broke the walk suite.
 if not exist build\gen mkdir build\gen
-python harness/tools/pack_song.py --pairs build/tmp/speaker_pairs.txt --out build/gen/song_princess.s --label song_princess
+REM -- THE TWO CONSTANTS BELOW ARE MEASURED, NOT ASSUMED (P4.6 SS1). song_live.lua's
+REM    P_PULSE tap times the port's own $FF20 writes, so the emitted pulse and the emitted
+REM    segment period are read off the bus and fed back here. P4.5 modelled the pulse
+REM    instead and every one of them ran ~6.6 us wide.
+REM      SONG_PULSE_OVH  cycles in the emitted pulse OUTSIDE the delay loop
+REM      SONG_LATENCY    us from the timer hitting zero to the handler's restart write
+REM      SONG_LATENCY_ADV  ditto on the interrupt that also walks the table (+55 us)
+set SONG_PULSE_OVH=5.0
+set SONG_LATENCY=170.24
+set SONG_LATENCY_ADV=225.22
+REM -- TWO TABLES, ONE CODE PATH. A is the as-built quantisation (frac=0); B carries the
+REM    fractional tick so the mean period is right. The ONLY difference Jay hears is the
+REM    detune -- which is what makes the A/B a question he can answer (his words: "it's
+REM    going to be hard to gate something without knowing what it would sound like the
+REM    other way").
+python harness/tools/pack_song.py --pairs content/sound/princess_speaker_pairs.txt --out build/gen/song_a.s --label song_a --latency-us %SONG_LATENCY% --latency-adv-us %SONG_LATENCY_ADV% --pulse-overhead-cyc %SONG_PULSE_OVH%
+if errorlevel 1 goto :error
+python harness/tools/pack_song.py --pairs content/sound/princess_speaker_pairs.txt --out build/gen/song_b.s --label song_b --dither --latency-us %SONG_LATENCY% --latency-adv-us %SONG_LATENCY_ADV% --pulse-overhead-cyc %SONG_PULSE_OVH%
 if errorlevel 1 goto :error
 lwasm --obj -DOBJTARGET -I . -o build/obj/song_probe.o src/harness/song_probe.s
 if errorlevel 1 goto :error
