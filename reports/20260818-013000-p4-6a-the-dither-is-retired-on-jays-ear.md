@@ -135,4 +135,4 @@ None. P4.6's capture covers the method; this is its consequence.
 
 ### 11 — Commit
 
-See below — pushed to origin/wip before this report.
+`69d56da`  (pushed to origin/wip before this report)
