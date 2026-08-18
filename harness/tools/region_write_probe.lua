@@ -37,6 +37,7 @@ local n, first, last, byaddr, bypc = 0, nil, nil, {}, {}
 -- is answered the same way: mark every byte anything writes to across a whole run, then
 -- report the untouched runs. Arithmetic only to confirm, never to propose.
 local SWEEP = os.getenv("P_SWEEP")
+local lastn = 0
 local touched = {}
 
 -- ★ A WRITE TAP, NOT A READ TAP. The question is whether the region is SAFE TO OWN, which is
@@ -91,8 +92,15 @@ _G._n = emu.add_machine_frame_notifier(function()
         end
         return
     end
-    if fn % 600 ~= 0 then return end
-    log(string.format("# frame %-6d writes so far: %d", fn, n))
+-- ★ THE BUCKET SIZE IS THE MEASUREMENT HERE, NOT A PROGRESS INDICATOR. P4.13 printed every
+-- 600 frames and one bucket read 612 -> 612 across ten seconds: a quiet stretch, visible
+-- only because the totals happened to straddle it. If the question is WHEN a region is
+-- written, the bucket has to be smaller than the thing being looked for.
+    local every = tonumber(os.getenv("P_EVERY") or "600")
+    if fn % every ~= 0 then return end
+    local d = n - (lastn or 0)
+    lastn = n
+    log(string.format("# frame %-6d  +%-7d  total %d%s", fn, d, n, d == 0 and "   <- QUIET" or ""))
 end)
 
 emu.register_stop(function()
