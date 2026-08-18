@@ -32,10 +32,22 @@ local out = io.open(OUT, "w")
 local function log(s) out:write(s .. "\n"); out:flush() end
 
 local n, first, last, byaddr, bypc = 0, nil, nil, {}, {}
+-- ★★★ SWEEP MODE. P4.13 answered "is THIS region free" and the answer was no. The next
+-- question is "what IS free", and the map has now been wrong twice about exactly that, so it
+-- is answered the same way: mark every byte anything writes to across a whole run, then
+-- report the untouched runs. Arithmetic only to confirm, never to propose.
+local SWEEP = os.getenv("P_SWEEP")
+local touched = {}
 
 -- ★ A WRITE TAP, NOT A READ TAP. The question is whether the region is SAFE TO OWN, which is
 -- about writes; reads of uninitialised memory are harmless and would bury the signal.
 _G._tw = mem:install_write_tap(LO, HI, "region", function(off, data, mask)
+    if SWEEP then
+        -- the callback runs on EVERY write in the range, so it does exactly one thing
+        touched[off] = true
+        n = n + 1
+        return data
+    end
     n = n + 1
     local fn = scr:frame_number()
     first = first or { f = fn, a = off, d = data, pc = cpu.state["PC"].value }
@@ -85,6 +97,36 @@ end)
 
 emu.register_stop(function()
     log("")
+    if SWEEP then
+        log(string.format("# ★★★ SWEEP — %d writes over $%04X..$%04X", n, LO, HI))
+        log("# UNTOUCHED RUNS, in descending size. A run here was written to by NOTHING for")
+        log("# the entire run — which is the only claim worth making about free space.")
+        local runs, s0 = {}, nil
+        for a = LO, HI + 1 do
+            if a <= HI and not touched[a] then
+                s0 = s0 or a
+            elseif s0 then
+                runs[#runs + 1] = { s0, a - 1, a - s0 }
+                s0 = nil
+            end
+        end
+        table.sort(runs, function(x, y) return x[3] > y[3] end)
+        local need = tonumber(os.getenv("P_NEED") or "2590")
+        for i = 1, math.min(#runs, 20) do
+            local r = runs[i]
+            log(string.format("#   $%04X..$%04X  %6d B%s", r[1], r[2], r[3],
+                              r[3] >= need and "   <- fits the largest song" or ""))
+        end
+        local big = runs[1] and runs[1][3] or 0
+        log("")
+        if big >= need then
+            log(string.format("# ★ LARGEST RUN %d B >= %d B needed.", big, need))
+        else
+            log(string.format("# ★★★ LARGEST RUN %d B, SHORT BY %d B of the %d needed.",
+                              big, need - big, need))
+        end
+        out:close(); return
+    end
     log(string.format("# ★★★ TOTAL WRITES INTO THE REGION: %d", n))
     if n == 0 then
         log("# CLEAN — nothing wrote into it for the whole run.")
