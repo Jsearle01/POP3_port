@@ -424,6 +424,20 @@ python harness/tools/pack_song.py --pairs content/sound/princess_cutscene_speake
 if errorlevel 1 goto :error
 lwasm --obj -DOBJTARGET -I . -o build/obj/song_probe.o src/harness/song_probe.s
 if errorlevel 1 goto :error
+
+REM -- THE INTERPRETED PLAYER (P4.19). The note stream, not a recording.
+REM    gen_msys_tables.py emits BOTH the tables and the 1,024-byte song page from the SAME
+REM    decoded grammar msys_decode.py validates against the oracle's capture -- one home
+REM    for each fact (CLAUDE.md §2F), so the port and the validator cannot disagree.
+REM    ★ The generated files carry NO `section` directive: they are included inside
+REM    msys_player.s's section, and lwasm cannot nest sections.
+python harness/tools/gen_msys_tables.py
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -I . -o build/obj/msys_player.o src/engine/msys_player.s
+if errorlevel 1 goto :error
+call :size build/obj/msys_player.o
+lwasm --obj -DOBJTARGET -I . -o build/obj/interp_probe.o src/harness/interp_probe.s
+if errorlevel 1 goto :error
 call :size build/obj/anim_probe.o
 
 echo --- Link: mode-cycling probe + HAL kernel ---
@@ -457,6 +471,15 @@ if errorlevel 1 goto :error
 lwlink --decb --script=link/pop_engine.link --entry=probe_entry --map=build/obj/song.map ^
        -o build/song_probe.bin build/obj/song_probe.o build/obj/hal_build.o
 if errorlevel 1 goto :error
+
+REM ★★ ONE BINARY, BOTH PLAYERS. Pass A interprets MUSIC.SET1's own bytes; pass B replays
+REM    the P4.4 capture through the IDENTICAL FIRQ+DAC back end. Two binaries is how the
+REM    thing measured and the thing demonstrated drift apart (P4.6), and this A/B is the
+REM    bigger question -- the two paths do not share a note.
+lwlink --decb --script=link/pop_engine.link --entry=probe_entry --map=build/obj/interp.map ^
+       -o build/interp_probe.bin build/obj/interp_probe.o build/obj/msys_player.o build/obj/hal_build.o
+if errorlevel 1 goto :error
+call :size build/interp_probe.bin
 call :size build/song_probe.bin
 call :size build/anim_probe.bin
 
