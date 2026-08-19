@@ -482,6 +482,19 @@ REM ★★ ONE BINARY, BOTH PLAYERS. Pass A interprets MUSIC.SET1's own bytes; p
 REM    the P4.4 capture through the IDENTICAL FIRQ+DAC back end. Two binaries is how the
 REM    thing measured and the thing demonstrated drift apart (P4.6), and this A/B is the
 REM    bigger question -- the two paths do not share a note.
+REM ★★★ AND AGAIN AS A DISK-RESIDENT UNIT. The probe LOADMs the player; the INTRO will
+REM     READ it, the way the caption bundle, the scene, the scene bundle and four cel
+REM     pages all arrive (intro_seq.s:51 -- "that is exactly why the assets are READ
+REM     here rather than LOADED here"). P4.19 linked it into INTROSEQ.BIN first and
+REM     LOADM truncated: the suite read $7900..$7D43 as "34..00" against "34..39".
+REM     ★★ ONE ADDRESS FOR BOTH PATHS ($0E00), so there is ONE binary and the ear gate
+REM     tests exactly what ships.
+lwlink --decb --script=link/pop_msys.link --entry=msys_init --map=build/obj/msys.map -o build/msys_player.bin build/obj/msys_player.o
+if errorlevel 1 goto :error
+call :size build/msys_player.bin
+python harness/tools/decb_to_raw.py --bin build/msys_player.bin --out build/assets/msys_player.raw --base 0x0E00
+if errorlevel 1 goto :error
+
 lwlink --decb --script=link/pop_engine.link --entry=probe_entry --map=build/obj/interp.map ^
        -o build/interp_probe.bin build/obj/interp_probe.o build/obj/msys_player.o build/obj/hal_build.o
 if errorlevel 1 goto :error
@@ -503,6 +516,16 @@ REM link/pop_engine.link, NOT link/pop.link: the engine loads at $2000 because
 REM Color BASIC's line-input buffer at $02DC is where the typed EXEC lands, on top
 REM of a program loaded at $0200 (P3.5). The probes keep $0200 -- they are pinned
 REM there by the P1.1 harness contract and are small enough to stay under $02DC.
+REM ★★★ msys_player.o IS DELIBERATELY NOT HERE, AND IT WAS TRIED (P4.19). Linking it in
+REM     took the image from 2,215 B of payload to 5,317 and LOADM TRUNCATED: the suite
+REM     read $7900..$7D43 as "34..00" against "34..39" -- the kernel segment started and
+REM     did not finish. That is the LOADM ceiling this file's link script documents
+REM     ("prog ending $2487 boots; $2535 image corrupted"), and it is a TOTAL SIZE limit,
+REM     not an address one -- the player links and runs fine at $0E00 in interp_probe.bin,
+REM     which is 9 KB, because that binary is LOADM'd off a single-file disk.
+REM     ★★ THE ROUTE IS THE ONE link/pop_engine.link ALREADY NAMES: put it on a
+REM     disk-resident track and read it with the HAL's WD1773 primitive, the way the
+REM     caption bundle, the scene and the cel pages all arrive. That is a design step.
 lwlink --decb --script=link/pop_engine.link --entry=intro_seq_entry --map=build/obj/introseq.map ^
        -o build/intro_seq.bin build/obj/intro_seq.o build/obj/lz_unpack.o build/obj/hal_build.o
 
@@ -628,6 +651,11 @@ if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/princess_room.lz --track 29 --tracks 1 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/flames.lz --track 30 --tracks 2 --reserve --imgtool "%IMGTOOL%"
+REM ★ Track 32: the first free one (9-31 are allocated, 17 is the RS-DOS directory).
+REM   --reserve marks the granules used-with-no-directory-entry so DECB cannot
+REM   allocate a file over them -- P4.2 lost a suite to exactly that.
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/msys_player.raw --track 32 --tracks 1 --reserve --imgtool "%IMGTOOL%"
+if errorlevel 1 goto :error
 REM The scene's program, on track 24. One track holds 9,216 B against the image's ~1,150.
 REM
 REM ★ NOT TRACK 17, AND P3.104's MAP WAS WRONG ABOUT THAT. That map read "tracks 17 and 24
@@ -660,6 +688,24 @@ if errorlevel 1 goto :error
 
 "%IMGTOOL%" dir coco_dmk_rsdos build\probe.dmk
 if errorlevel 1 goto :error
+
+REM ======================================================================
+REM SECTION-OVERLAP AND LOADM-FLOOR GATE (P4.19)
+REM
+REM lwlink PLACES OVERLAPPING SECTIONS SILENTLY -- this file has said so since P3.2
+REM ("did so three times"), and a check that asks a human to look is a check that
+REM eventually is not run. At P4.19 the music player at $1000 ran to $2167, straight
+REM through the engine's own load address, and the symptom was "the LOADM/EXEC did
+REM not take" -- the signature of a DIFFERENT fault, one region away.
+REM
+REM It also asserts the LOADM FLOOR. DECB's file buffers reach above $0A00; bisection
+REM found $0D00 loads and RUNS with silently damaged data, and $0E00 is clean.
+REM ======================================================================
+python harness\tools\map_overlap_check.py build/obj/introseq.map build/obj/interp.map build/obj/scene.map build/obj/room.map build/obj/song.map
+if errorlevel 1 (
+    echo *** BUILD BLOCKED: linked sections collide or sit below the LOADM floor ***
+    exit /b 1
+)
 
 echo === BUILD COMPLETE ===
 exit /b 0

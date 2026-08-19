@@ -85,14 +85,25 @@
 *   msys_ticks           16-bit: ticks elapsed. The PLAN-duration assert reads this.
 * ---------------------------------------------------------------
 
-* ★★★ `section prog`, NOT `section code`. link/pop_engine.link loads `code` at $7900 and
-* the stack top is $7F00 — the KERNEL fits in that 1,024 bytes and this player does not
-* (4,417 B). Placed in `code` it pushes hal_build.o to $8A41, which under DECB is ROM:
-* LOADM writes nothing there, the probe reads back garbage, and the failure presents as
-* "the LOADM/EXEC did not take" rather than as an overflow. This is engine code and it
-* belongs in `prog` with the engine.
+* ★★★ ITS OWN SECTION, `msys`, AT $0A00 — AND THE ADDRESS IS THE RESULT OF A SEARCH, NOT
+* A PREFERENCE (P4.19; `harness/tools/intro_map.py` derives the map). This player is
+* 4,417 B and there is nowhere else for it:
+*   `code`  the kernel ends at $7D44 and the stack top is $7F00. 444 bytes.
+*           ★ Placed there it pushed hal_build.o to $8A41, which under DECB is ROM —
+*           LOADM wrote nothing, the probe read back garbage, and the failure presented
+*           as "the LOADM/EXEC did not take" rather than as an overflow.
+*   `prog`  the engine runs to $2462 and the scene program is READ to $2500. 157 bytes.
+*   every other gap between $2000 and the trace ring: 3,951 B in FIVE pieces,
+*           largest 1,625 — the cutscene's peel buffers at $6C00..$727F split the
+*           biggest candidate in half, and a resident player must survive the scene.
+*
+* ★★ $0A00..$1FFF is 5,632 B and free, above everything DECB uses ($0600-$09FF is
+* DBUF0/DBUF1/FAT/FCBs, which LOADM itself needs). The link script's own region map said
+* otherwise for many dispatches — it still listed the intro bundle at $0A00 and the
+* caption save buffer at $1C00, both of which moved (P3.7 to $3000, P3.25 to $5400) — and
+* that stale block is why the first answer to "where does this go" was "nowhere".
                 ifdef   OBJTARGET
-                section prog
+                section msys
                 export  msys_init
                 export  msys_play
                 export  msys_stop

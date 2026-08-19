@@ -1,0 +1,31 @@
+; link/pop_msys.link — the MUSIC PLAYER as a DISK-RESIDENT unit (P4.19).
+;
+; ★★★ IT IS NOT IN THE LOADM IMAGE, AND THAT IS THE WHOLE POINT. P3.4 established the
+; intro's shape: the LOADM'd program stays ONE GRANULE and everything else is read by the
+; HAL's WD1773 primitive once DECB has finished — the caption bundle, every screen, the
+; scene program, the scene bundle and four cel pages all arrive that way. intro_seq.s:51
+; puts it plainly: "that is exactly why the assets are READ here rather than LOADED here."
+;
+; ★★ P4.19 IGNORED THAT AND PAID FOR IT. Linking the player into INTROSEQ.BIN took the
+; image from 2,215 B of payload to 5,317 and LOADM truncated — the suite read $7900..$7D43
+; as "34..00" against "34..39", the kernel segment begun and not finished. The ceiling was
+; only ever in play because the player was in the wrong kind of file.
+;
+; ★ AND READING IT INSTEAD MOVES THE FLOOR. $0E00 was the lowest address a LOADM SEGMENT
+; could survive (DECB's file buffers reach above $0A00 — measured: $0D00 loads and runs
+; with silently damaged data). A disk READ happens long after DECB is done, so the whole
+; of $0A00..$1FFF is available: 5,632 B against the player's 3,102.
+;
+;   $0A00-$0DFF   free at run time, but NOT LOADM-able (DECB's file buffers)
+;   $0E00-$1A1D   THE PLAYER, 3,102 B
+;   $1A1E-$1FFF   free, 1,506 B of margin below the engine
+;   $2000-$24FF   engine (LOADM'd)
+;   $2500-$29A6   scene program (read from disk, same mechanism)
+;   $3000-$52FF   caption bundle (read from disk, same mechanism)
+;
+; The entry symbol is nominal: this unit is a library the engine calls, not a program the
+; operator EXECs. lwlink --decb requires one, and decb_to_raw discards it.
+
+section msys load 0E00
+
+entry msys_init
