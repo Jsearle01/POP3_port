@@ -144,4 +144,4 @@ None. The "dispatch premise inherited an over-confident summary" lesson is
 
 ### 11 — Commit
 
-See below — pushed to origin/wip before this report.
+`a8cb988`  (pushed to origin/wip before this report)
