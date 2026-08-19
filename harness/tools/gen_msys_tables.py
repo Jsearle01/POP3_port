@@ -82,22 +82,33 @@ def segment_us(note, mult):
 
 
 
-# ★★★ WHICH PATTERNS ARE ACTUALLY REACHABLE, MEASURED ACROSS EVERY SHIPPED SONG SET.
-# The oracle carries 32 harmonic patterns and 16 envelopes; the 39 songs in MUSIC.SET1/2/3
-# reference 5 and 6 of them. The other 1,357 bytes are dead weight, and they matter because
-# the player's home is $0E00..$1FFF -- 4,608 bytes against 4,456 untrimmed. A 152-byte
-# margin on a boundary lwlink overruns SILENTLY (build.bat: "lwlink places overlapping
-# sections silently, and did so three times in P3.2") is not a margin.
+# ★★★ EVERY PATTERN IS EMITTED. THIS SCAN REPORTS; IT DOES NOT TRIM — AND THAT IS A
+# CORRECTION, MADE BECAUSE JAY DID NOT BELIEVE IT.
 #
-# ★★ THE UNION IS COMPUTED, NOT LISTED. A hand-maintained list of "the patterns we use"
-# would be a second home for a fact the song data already contains (CLAUDE.md §2F), and it
-# would go stale the first time a set changed -- which is exactly how the link script's
-# region map came to be wrong about four addresses.
+# P4.19 first shipped a TRIM: emit only the harmonic and envelope patterns the songs
+# reference, drop the other 1,357 bytes. Jay: "so youre sure that no song or sound effect
+# uses anything trimmed? I find it hard to believe that jordan would waste binary space on
+# unneded code." He was right, and the trim was wrong in two ways at once:
 #
-# ★ AND THE DROPPED SLOTS STILL RESOLVE. The pointer tables stay full length, every
-# unreferenced entry aimed at a silent stub, so a stream that reaches one plays NOTHING
-# rather than reading past the table and calling it a pattern.
+#   1. THE SCAN WALKED ONLY IDS 0..12. The address table is $68 = 104 entries per half,
+#      and MUSIC.SET2 has SEVENTEEN songs. Four were never looked at.
+#   2. IT FOLLOWED CONTROL FLOW, and swallowed failures with `except: continue` -- so a
+#      song that halted early contributed only the patterns seen before it stopped.
+#
+# A scan of every ALIGNED event slot inside each song's real extent -- no control flow, no
+# early exit -- finds HM22, MV8 and MV10, all three of which the trim had DROPPED.
+#
+# ★★ AND THE JUSTIFICATION HAD ALREADY EVAPORATED. The trim existed to buy margin when the
+# player was LOADM'd into a 4,608-byte window. It is now read off a disk track into
+# $0A00..$1FFF -- 5,632 bytes against 4,456 untrimmed, 1,176 to spare. It was saving
+# nothing and betting on a scan that was wrong.
+#
+# ★ What survives is the REPORT: which patterns the shipped sets actually reach, printed at
+# build time, so the fact is available without anything depending on it.
 def scan_sets(paths):
+    """Every ALIGNED event slot in every song of every set. No control flow, no early
+    exit -- the stream pointer steps by exactly two from a song's start, so every even
+    offset is a real event slot whether or not execution gets there."""
     used_hm, used_mv = {0}, {0}          # MINIT points MBASS1 at HM1 and MVAR6 at MV0
     seen = []
     for path in paths:
@@ -106,27 +117,19 @@ def scan_sets(paths):
             continue
         page = M.load_page(f)
         lo, hi = page[0:0x68], page[0x68:0xD0]
-        for sid in range(13):
-            addr = hi[sid] * 256 + lo[sid]
-            if not (0xD000 <= addr < 0xD400):
-                continue
-            pl = M.Player(page, 0xD000, sid)
-            pl.pad_us = PAD_US
-            try:
-                pl.run(sid)
-            except Exception:
-                continue
-            for v in (pl.voice1, pl.voice2):
-                if v is None:
-                    continue
-                for kind, off, b0, b1, det in v.trace:
-                    if kind == "instr":
-                        used_hm.add(int(det.split("HM")[1].split(",")[0]) - 1)
-                    elif kind == "note":
-                        used_mv.add(int(det.split("instr")[1].split()[0]))
-        seen.append(f.name)
-    if not seen:
-        raise SystemExit("[gen_msys_tables] no song set scanned — refusing to trim blind")
+        # ★ ALL 104 TABLE ENTRIES, not the 13 the first version assumed.
+        addrs = sorted({hi[i] * 256 + lo[i] for i in range(0x68)
+                        if 0xD000 <= hi[i] * 256 + lo[i] < 0xD400})
+        for a, e in zip(addrs, addrs[1:] + [0xD400]):
+            for off in range(a - 0xD000, e - 0xD000 - 1, 2):
+                b0, b1 = page[off], page[off + 1]
+                if b1 == 0:
+                    if b0 >= 9:                      # SYMPH01 instrument select
+                        x = b0 - 9
+                        used_hm.add(x & 0x1F if x >= 32 else x)
+                elif b1 & 0x3F:                      # a NOTE -> 4-bit envelope index
+                    used_mv.add(((b1 & 0xC0) >> 4) | (b0 & 0x03))
+        seen.append("%s(%d songs)" % (f.name, len(addrs)))
     return sorted(used_hm), sorted(used_mv), seen
 
 
@@ -237,15 +240,14 @@ def emit(path, songs_path, music, sets):
     # ---- MV (envelope) patterns --------------------------------------------
     w("* msys_env — the 16 envelope patterns [MSYS.S:43-59]. $7F = sustain until the")
     w("* note is nearly over; bit 7 = end, hold the last amplitude.")
-    w("* ★ ONLY THE %d OF 16 THAT ANY SHIPPED SONG REFERENCES (%s) — see scan_sets."
+    w("* ★ ALL SIXTEEN. The shipped sets reach %d of them (%s); the rest are emitted"
       % (len(used_mv), ",".join(str(i) for i in used_mv)))
-    for i in used_mv:
+    w("*   anyway — see scan_sets for why a trim was tried and withdrawn.")
+    for i in range(len(M.MV)):
         w("msys_mv%-8d fcb     %s" % (i, ",".join("$%02X" % b for b in M.MV[i])))
-    w("msys_mv_none    fcb     $FF         ; end-of-envelope = hold; never heard")
     w("msys_envtbl")
     for i in range(len(M.MV)):
-        w("                fdb     %s" % ("msys_mv%d" % i if i in used_mv
-                                          else "msys_mv_none"))
+        w("                fdb     msys_mv%d" % i)
     w("")
 
     # ---- HM (harmonic) patterns --------------------------------------------
@@ -255,18 +257,14 @@ def emit(path, songs_path, music, sets):
     w("*    emits no pulse at all. The default pattern is `1,3,128`: silent, sound,")
     w("*    repeat, which is why the oracle's speaker toggles once every TWO segments.")
     w("* Bit 7 set = jump back to (value & $7F) and continue -- the pattern LOOPS.")
-    w("* ★ ONLY THE %d OF 32 THAT ANY SHIPPED SONG REFERENCES (HM%s) — see scan_sets."
+    w("* ★ ALL THIRTY-TWO. The shipped sets reach %d of them (HM%s); the rest are"
       % (len(used_hm), ", HM".join(str(i + 1) for i in used_hm)))
-    for i in used_hm:
+    w("*   emitted anyway — see scan_sets for why a trim was tried and withdrawn.")
+    for i in range(len(M.HM)):
         w("msys_hm%-9d fcb     %s" % (i, ",".join("$%02X" % b for b in M.HM[i])))
-    w("* ★★ THE STUB IS SILENT, NOT ABSENT. Value 1 selects VTBL+0, which is always zero,")
-    w("*    and $80 loops back to index 0 — so a stream reaching a dropped instrument")
-    w("*    plays NOTHING instead of reading past the table and calling it a pattern.")
-    w("msys_hm_none    fcb     1,$80")
     w("msys_harmtbl")
     for i in range(len(M.HM)):
-        w("                fdb     %s" % ("msys_hm%d" % i if i in used_hm
-                                          else "msys_hm_none"))
+        w("                fdb     msys_hm%d" % i)
     pathlib.Path(path).write_text("\n".join(out) + "\n", encoding="utf-8")
 
     # ---- the song page ------------------------------------------------------
@@ -295,18 +293,16 @@ def emit(path, songs_path, music, sets):
           "(idx %d, NOTE %d x%d -> TINS%d div%d %d)"
           % (cents, i, note, mult, tins, div, cnt))
     print("  pad %.0f us -> TINS%d %d ticks" % (PAD_US, ptins, pcnt))
-    hm = sum(len(M.HM[i]) for i in used_hm) + 2
-    mv = sum(len(M.MV[i]) for i in used_mv) + 1
-    hm_all = sum(len(h) for h in M.HM)
-    mv_all = sum(len(v) for v in M.MV)
-    print("  scanned %s -> harmonic %d of 32, envelope %d of 16"
-          % (", ".join(seen), len(used_hm), len(used_mv)))
+    hm = sum(len(h) for h in M.HM)
+    mv = sum(len(v) for v in M.MV)
+    print("  scanned %s" % ", ".join(seen))
+    print("    reachable: harmonic %d of 32 %s" % (len(used_hm),
+                                                   sorted(i + 1 for i in used_hm)))
+    print("               envelope %d of 16 %s" % (len(used_mv), used_mv))
+    print("    ALL are emitted; the scan reports, it does not trim.")
     print("  data: page 1024  harm %d+64  env %d+32  period 300  length 75  "
           "amp 16  htp 32  voice 8" % (hm, mv))
-    total = 1024 + hm + 64 + mv + 32 + 300 + 75 + 16 + 32 + 8
-    print("  TOTAL %d B   (untrimmed would be %d; %d B dropped as unreachable)"
-          % (total, 1024 + hm_all + 64 + mv_all + 32 + 300 + 75 + 16 + 32 + 8,
-             (hm_all - hm) + (mv_all - mv)))
+    print("  TOTAL %d B" % (1024 + hm + 64 + mv + 32 + 300 + 75 + 16 + 32 + 8))
 
 
 def main():
