@@ -7,11 +7,11 @@
 * would sound like the other way." Two binaries is how the thing measured and the thing
 * demonstrated drift apart — and this A/B is a bigger question than the dither's, because
 * the two paths do not share a note. One reads 1,024 bytes of score; the other replays
-* 18,018 bytes of recording.
+* 3,137 bytes of recording -- of this one song.
 *
 * PASS A = INTERPRET   msys_player.s walking MUSIC.SET1's own bytes.
-* PASS B = CAPTURE     the P4.4/P4.15 speaker recording, song_a.s, replayed by the same
-*                      FIRQ+DAC back end song_probe.s has been gated on since P4.5.
+* PASS B = CAPTURE     the oracle's own per-song recording of THE SAME SONG, replayed by
+*                      the same FIRQ+DAC back end gated on Jay's ear since P4.5.
 *
 * ★ The two passes SHARE the audio path, the DAC, the pulse shape and the tear-down. The
 * only thing that differs is where the (period, width) pairs come from. That is what makes
@@ -253,7 +253,15 @@ cap_width       fcb     1
 cap_count       fcb     0
 cap_playing     fcb     0
 
-                include "build/gen/song_a.s"
+* ★★★ song_princess.s, NOT song_a.s — AND THE DIFFERENCE IS WHAT MAKES THE A/B ANSWERABLE.
+* `song_a` is the P4.4 capture of PlayCut0's WHOLE music stretch, cut at 37.6 s. The
+* interpret pass plays s_Princess, which is 12.7 s. Pairing them asks the listener to
+* compare thirteen seconds of one piece against thirty-seven seconds of a different one —
+* which is not an A/B, and is the same shape as P4.6's "the port sounds like the same piece
+* repeated 3 times" and P4.15's "I captured the wrong songs."
+* ★★ This is the oracle's own per-song capture of song 7 — 6,930 segments, 12,724 ms,
+* the SAME piece and the SAME length the interpreter walks. One variable: the decode.
+                include "build/gen/song_princess.s"
 
                 ifdef   OBJTARGET
                 endsection

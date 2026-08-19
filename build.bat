@@ -436,6 +436,12 @@ if errorlevel 1 goto :error
 lwasm --obj -DOBJTARGET -I . -o build/obj/msys_player.o src/engine/msys_player.s
 if errorlevel 1 goto :error
 call :size build/obj/msys_player.o
+REM -- THE A/B's CAPTURE SIDE: the SAME song the interpreter walks, at the SAME length.
+REM    song_a is PlayCut0's whole 37.6 s stretch; s_Princess is 12.7 s. Pairing those is
+REM    not an A/B. This packs the oracle's own per-song capture of song 7 -- one of only
+REM    two of the eleven that are uncontaminated (P4.19 §3E).
+python harness/tools/pack_song.py --pairs content/sound/song_7_s_Princess_pairs.txt --out build/gen/song_princess.s --label song_a --latency-us %SONG_LATENCY% --latency-adv-us %SONG_LATENCY_ADV% --pulse-overhead-cyc %SONG_PULSE_OVH% --max-seconds 0 --max-runs 8000
+if errorlevel 1 goto :error
 lwasm --obj -DOBJTARGET -I . -o build/obj/interp_probe.o src/harness/interp_probe.s
 if errorlevel 1 goto :error
 call :size build/obj/anim_probe.o
