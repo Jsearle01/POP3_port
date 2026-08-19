@@ -44,10 +44,18 @@ local SPEED, MUSICON, SPKR = 0x030C, 0x031A, 0xC030
 -- game set's s_Vict=7) and are disambiguated ONLY by which MUSIC.SET is resident — P4.1
 -- named that open and it still is. PlayCut0 runs under set 1, so these names apply HERE and
 -- the id-space is recorded with every capture rather than assumed.
-local NAME = { [7]="s_Princess", [8]="s_Squeek", [9]="s_Vizier",
+local NAME = { [1]="s_Presents", [2]="s_Byline", [3]="s_Title", [4]="s_Prolog",
+               [5]="s_Sumup", [7]="s_Princess", [8]="s_Squeek", [9]="s_Vizier",
                [10]="s_Buildup", [11]="s_Magic", [12]="s_StTimer" }
 
+-- ★★★ ARMING ON PlayCut0's MARKER MISSES THE INTRO'S OWN SONGS, and five dispatches called
+-- the result "the six title songs" without noticing. Set 1 holds TWELVE: s_Presents 1,
+-- s_Byline 2, s_Title 3, s_Prolog 4, s_Sumup 5 play in the BOOT CHAIN before the cutscene;
+-- s_Princess 7 .. s_StTimer 12 play inside it. The port's five intro beats want 1-5, and
+-- arming on SPEED 12 guaranteed they could never appear. P_ARM=boot records from frame 0.
+local ARMBOOT = os.getenv("P_ARM") == "boot"
 local armed_at, t0 = nil, nil
+if ARMBOOT then armed_at, t0 = 0, 0.0 end
 local calls, pcs, kept = {}, {}, {}
 local ev, nev = {}, 0
 
@@ -60,6 +68,7 @@ _G._tsp = mem:install_write_tap(SPEED, SPEED, "sp", function(off, data, mask)
     if data == 12 and armed_at == nil then armed_at = scr:frame_number(); t0 = now() end
     return data
 end)
+if ARMBOOT then t0 = 0.0 end
 
 _G._tm = mem:install_read_tap(MUSICON, MUSICON, "mon", function(off, data, mask)
     if armed_at == nil then return data end
