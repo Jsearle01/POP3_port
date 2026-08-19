@@ -18,11 +18,12 @@ listing it came from, and the player is built and runs on the target.**
 |---|---|
 | **`MMPLAY` resolved** | **outcome 2** — a second STREAM, not a second SOUND. Hard-stop does NOT fire. |
 | **`s_Princess` walked** | 10 notes + 1 in voice 2, 0 calls, instruments 3 and 5, **314 ticks, 757.6 frames against a traced 762.4** |
-| **the player** | **4,417 B for all thirteen songs**, against ~10.5 KB for one capture |
+| **the player** | **4,456 B for all thirteen songs**, against **3,137 B for ONE song** as a capture |
 | **on the target** | **6,930 toggle pairs — the oracle emitted 6,930.** 774.0 frames against 762.4 |
 | **suites** | green, 128 KB first, `integ` included |
 | **Jay's ear** | **★★★ RULED — PASSED.** *"i would say the interpreter sounds the same as the oracle, but maybe a bit less fuzzy"* |
-| **wiring the twelve** | **BLOCKED on a memory-map decision** — 157 B of headroom against a 4,417 B player (§3H) |
+| **the player's home** | **disk track 32, read to `$0A00`** — not LOADM'd, not linked (§3J). 1,176 B of margin. |
+| **wiring the twelve** | still NOT done — and the probe's own disk read is not working yet either (§7) |
 
 **★★★ THE ONE FACT THAT WOULD HAVE MADE THE PLAYER WRONG: the note's duration is `byte1 & $3F`, not
 `byte1`.** P4.18 §3A recorded it as the whole byte. Decoded that way `s_Princess` runs **1,477 frames
@@ -36,7 +37,17 @@ dispatch predicted: a grammar that parses without error and produces the wrong c
 - `src/engine/msys_player.s` — NEW. The interpreter, FIRQ handler and tear-down.
 - `src/harness/interp_probe.s` — NEW. Both players in one binary, for the A/B.
 - `harness/smoke/interp_live.lua`, `harness/smoke/run_interp_check.sh` — NEW. Live-disk, 128 KB, `$FF20` tap.
-- `build.bat` — the generator, two assemblies and one link, wired in.
+- `build.bat` — the generator, the assemblies, the standalone player link, the raw-image
+  conversion, the track placement, and the overlap gate.
+- `link/pop_msys.link` — NEW. The player as a disk-resident unit.
+- `link/pop_engine.link` — the region map corrected; four addresses were stale (§3K).
+- `harness/tools/intro_map.py` — NEW. Derives the intro's memory map from the link maps.
+- `harness/tools/map_overlap_check.py` — NEW. Build gate: silent section overlap + LOADM floor.
+- `harness/tools/wav_window.py`, `harness/tools/wav_gain.py` — NEW. The oracle comparison.
+- `harness/smoke/run_interp_ab.sh`, `run_interp_3way.sh` — NEW. The ear gate and the
+  oracle compare.
+- `content/sound/song_7_s_Princess_pairs.txt` — NEW. The clean per-song oracle capture, so
+  the A/B's two halves are the same piece.
 
 Explicit-path staging only.
 
@@ -246,7 +257,12 @@ port vs decoded model:
 quantisation-limited: the port's minimum pulse step is 2.79 µs and the oracle's minimum pulse is 7.83,
 so 8.38 (+0.55) is the closest reachable value and 5.59 (−2.24) is the alternative.
 
-#### 3H — ★★★ THE WIRING IS BLOCKED, AND IT IS A MEMORY-MAP PROBLEM, NOT A CODE ONE
+#### 3H — the wiring is blocked — ★ SUPERSEDED BY §3J, KEPT BECAUSE THE ERROR IS THE POINT
+
+**★★★ THIS SECTION'S CONCLUSION IS WRONG AND §3J REPLACES IT.** It is kept intact rather than
+rewritten because what it got wrong is more useful than what it got right: it searched for
+somewhere to LOADM a unit that should never have been LOADM'd, using a region map that had four
+stale addresses in it (§3K). Read it as the state of the diagnosis at that moment.
 
 **The intro already has the seam and it was built for this.** `play_song` takes `A` = song, `X` = frames —
 Mechner's own contract [`SUBS.S:822-842`] — and `intro_seq.s:886` says outright: *"when sound arrives it
@@ -306,6 +322,118 @@ difference."* **He flagged his own observation as confounded.** A timbre finding
 level-mismatched pair of two different pieces is not a finding, and banking it would have put a false
 positive in the record.
 
+#### 3J — ★★★ WHERE THE PLAYER ACTUALLY LIVES, AND THE MISTAKE THAT TOOK TWO CORRECTIONS
+
+**§3H concluded the intro's memory was full and the wiring was blocked. That conclusion was
+wrong, and it was wrong twice over.**
+
+**★ First error: I searched for somewhere to LOADM it.** P3.4 set this intro's shape — the
+LOADM'd program stays ONE GRANULE and everything else is READ by the HAL's WD1773 primitive
+once DECB has finished. The caption bundle, every screen, the scene program, the scene
+bundle and four cel pages all arrive that way. `intro_seq.s:51` says it outright: *"that is
+exactly why the assets are READ here rather than LOADED here."* I quoted
+`link/pop_engine.link` recommending exactly that route and then linked the player into
+`INTROSEQ.BIN` anyway. **Measured: payload 2,215 B → 5,317 B and LOADM TRUNCATED** — the
+suite read `$7900..$7D43` as `34..00` against `34..39`, the kernel segment begun and not
+finished. *Jay: "why are we still working against the loadm cieling, i thought we were using
+a disk loader to avoid that."*
+
+**★★ Second error: having moved it to a track, I still pinned its ADDRESS to the LOADM
+floor.** `$0E00` is the lowest address a LOADM'd *segment* survives — measured by bisection,
+because DECB's file buffers reach above `$0A00`:
+
+| | |
+|---|---|
+| `$0A00`, `$0C00` | the probe never starts |
+| **`$0D00`** | **it loads and RUNS, and emits no sound at all** — silent data corruption |
+| `$0E00` | clean |
+
+I chose `$0E00` so the interp *probe* could LOADM the player, which let **a test harness
+constrain the shipping layout for a load path neither the player nor the intro uses.**
+*Jay, again: "again we shouldnt need to orry about loadm."*
+
+**Where it landed:**
+
+```
+player      $0A00..$1B67   4,456 B   disk track 32, granules 62-63 reserved
+margin      $1B68..$1FFF   1,176 B   below the engine at $2000
+entry       a fixed table at the base: +0 init  +3 play  +6 stop  +9 playing  +12 ticks
+```
+
+**★ The entry table is not decoration.** A unit read off a track has no linker symbols for
+its caller to import — the same relationship `cutscene_room.s` has with the flame bundle
+(*"Bundle entry points, at fixed offsets from FLAME_BASE"*). The offsets ARE the interface,
+and `char_draw.s` records what a moved entry costs: an entry that went from +58 to +40
+*"linked cleanly, booted, read the disk twice, stepped the VM, and only then jumped through
+$303A into cel data."*
+
+**★★ A third address failed for a different reason entirely, and it is why there is now a
+build gate.** `$1000` put 4,456 B at `$1000..$2167` — straight through the engine's own load
+address — and **lwlink placed it silently.** The symptom was *"the LOADM/EXEC did not take"*,
+which is the signature of the ceiling, one region away from the actual fault.
+`harness/tools/map_overlap_check.py` now fails the build on both overlap and the floor.
+`build.bat` has warned about silent overlap since P3.2 (*"did so three times"*), and a check
+that asks a human to look is a check that eventually is not run.
+
+#### 3K — ★★ FOUR STALE ADDRESSES IN THE LINK SCRIPT'S REGION MAP, AND ONE COST A DISPATCH
+
+The search that produced §3H's "the memory is full" verdict was reading a map that had gone
+out of date in four places:
+
+| the map said | the truth | moved by |
+|---|---|---|
+| `$0A00-$1BFF` intro asset bundle | the bundle is at `$3000` (`intro_seq.s BUNDLE`) | P3.7 |
+| `$1C00-$1EFF` caption save buffer | it is at `$5400` (`SAVE_BUF`) | P3.25 |
+| `$1F00-$1F06` disk parameters | `build.bat` has passed `$6A00` for many dispatches | — |
+| `intro_seq.s:51` "read off disk into `$0A00`" | the code reads to `#BUNDLE` = `$3000` | P3.7 |
+
+**★ So the region the map described as occupied — `$0A00..$1FFF`, 5,632 B — was free, and
+had been for many dispatches.** Corrected in the script, and `harness/tools/intro_map.py`
+now derives the whole map from the link maps at build time so the block can be **checked
+rather than trusted.**
+
+The map it produces, with the phase each region belongs to (a resident player must survive
+all of them):
+
+```
+$0A00..$1FFF   5632  -        FREE          <- the player
+$2000..$2462   1123  always   engine
+$2500..$29A6   1191  scene    scene program
+$3000..$52FF   8960  beats    intro caption bundle
+$3000..$488C   6285  scene    scene bundle (shares the above; never live together)
+$5400..$68F1   5362  beats    SAVE_BUF
+$6C00..$727F   1664  scene    cutscene peel buffers   <- split the other candidate in half
+$7800..$78FF    256  always   trace ring
+```
+
+#### 3L — ★★★ THE TRIM WAS WRONG, AND JAY CAUGHT IT ON INSTINCT
+
+I shipped a trim: emit only the harmonic and envelope patterns the songs reference, drop
+1,357 bytes. **Jay: *"so youre sure that no song or sound effect uses anything trimmed? I
+find it hard to believe that jordan would waste binary space on unneded code."***
+
+**No, I was not sure, and it was wrong in two independent ways:**
+
+1. **★★ THE SCAN WALKED ONLY IDS 0..12.** `MADRLO`/`MADRHI` are `$68` = **104 entries each**.
+   **`MUSIC.SET2` has SEVENTEEN songs.** Four were never looked at.
+2. **★★ IT FOLLOWED CONTROL FLOW and swallowed failures with `except: continue`** — a song
+   that halted early contributed only the patterns seen before it stopped, silently.
+
+Checked a different way — every **aligned** event slot inside every song's real extent, no
+control flow, no early exit — the reachable set is `HM[1,12,22,23,27,32]` and
+`MV[0,1,2,3,4,5,8,10]`. **The trim had dropped HM22, MV8 and MV10, all three reachable.** A
+deliberately over-wide static superset (every byte pair, both alignments, whole page)
+reaches 19 harmonic and **all sixteen** envelope patterns, so it was not provably safe by
+any reading.
+
+**★★★ AND ITS JUSTIFICATION HAD ALREADY EVAPORATED.** The trim bought margin when the player
+was LOADM'd into a 4,608-byte window. Read off a track into `$0A00..$1FFF` there are 5,632 B
+against 4,456 untrimmed. **It was saving nothing and betting on a broken measurement.**
+
+**Withdrawn. All 32 harmonic and all 16 envelope patterns ship.** The scan survives as a
+*report*, corrected to all 104 entries and aligned rather than executed; nothing depends on
+it.
+
 #### 3G — residency
 
 | | |
@@ -337,8 +465,11 @@ the offsets (§2F).
   **Hard-stop 4 does NOT fire: he did not prefer capture.** See §3I for how the comparison was corrected
   before the ruling was taken, and §7 for what "less fuzzy" is and is not evidence of.
 - **AC6 all twelve wired, cost in a hold, scenery decoupled, abort asserted, drift reported** —
-  **NOT DONE, AND NOT FOR WANT OF THE GATE. It is BLOCKED on a memory-map decision** (§3H): the intro's
-  program region has **157 bytes** of headroom before `SCENE_BASE` and the player is **4,417**.
+  **NOT DONE.** §3H's memory-map blocker is RESOLVED (§3J): the player is on disk track 32 and reads to
+  `$0A00`. **What remains is `intro_seq.s` reading that track and calling `msys_play`** — the seam is
+  `play_song(A = song, X = frames)` and every beat already carries `BEAT_SONG`. **★ And a nearer
+  blocker appeared: the interp probe's own track-32 read fails (§3L/§7), so the fidelity check cannot
+  currently be re-run.**
 - **AC7 retired items named** — **PARTIAL.** Named in §8; not yet removed. **Now that the ear has ruled,
   removal is unblocked** — but it should follow the wiring, not precede it.
 - **AC8 suites green 128 KB first, `integ` included, build verified by symbol** — **PASS.**
@@ -397,12 +528,29 @@ gen_msys_tables: build/gen/msys_tables.s + build/gen/msys_songs.s
       pairs whose PERIOD is off by more than 2%: 89 / 6918  (1.29%)
 ```
 
-**Build verified by symbol** (`build/obj/interp.map`):
+**Build verified by symbol.** The player as a standalone disk-resident unit
+(`build/obj/msys.map`), and the gate that now checks placement:
 ```
-Section: prog (build/obj/interp_probe.o) load at 2000, length 2A38
-Section: prog (build/obj/msys_player.o)  load at 4A38, length 1141
-Section: code (build/obj/hal_build.o)    load at 7900, length 0444
+Section: msys (build/obj/msys_player.o) load at 0A00, length 1168
+build/assets/msys_player.raw: 4456 B flat image based at $0A00
+build/assets/msys_player.raw: 4456 B -> build/probe.dmk tracks 32..32 (18 sectors, 152 B pad)
+  FAT: granules 62..63 marked $C9 (used, no directory entry)
+[map_check] 5 map(s) clean — no overlap, nothing below $0E00.
 ```
+
+**Re-run after every change in §3J-§3L** (`harness/smoke/run_suites.sh`, 128 KB):
+```
+[suites] === introseq ===
+[run_introseq_test] PASS
+[suites] === integ ===
+[integ] PASS
+
+[suites] ALL PASS
+```
+
+**★ AND ONE CHECK THAT DOES NOT PASS**, stated here rather than in §7 alone:
+`run_interp_check.sh` reports `probe_status ... raw now $EE` — the probe's own marker for
+*"the player's disk read failed"*. See §7.
 
 **25.2 bundled-artifact grep:** N/A — no sibling-import artifact; the song page is generated from
 `oracle/source/Other/MUSIC.SET1` by `gen_msys_tables.py` on every build.
@@ -433,10 +581,22 @@ cut from a live run of each machine, and the sound is the whole time-varying thi
 **It does NOT contain** the twelve-song wiring, the cost-in-a-hold measurement, the scenery-decoupling
 confirmation, the abort assertion, the drift comparison, or the removal of the retired items.
 
-**★ AND THE REASON CHANGED PART-WAY.** Those were gated behind Jay's ear by the dispatch's ordering; the
-ear has now ruled, so that gate is open. **They are now blocked on something else: §3H's memory map.** The
-dispatch's §4 reads as though wiring were mechanical once the ear passed. It is not — the player is 4,417 B
-and the intro's program region has 157 B free.
+**★ AND THE REASON CHANGED TWICE.** Those were gated behind Jay's ear by the dispatch's ordering; the ear
+ruled, so that gate opened. They were then blocked on §3H's memory map — **and that blocker is now
+resolved** (§3J): the player is on disk track 32 with 1,176 B of margin. **What blocks them now is
+smaller and nearer: the probe's own track-32 read does not work.**
+
+**Reactive deviations, added after the first version of this report:**
+
+4. **I linked the player into `INTROSEQ.BIN` and broke the LOADM**, then reverted it (§3J). The suite
+   caught it; the tree was never left in that state.
+5. **I shipped a data trim and withdrew it** (§3L). It was in the tree for three commits. It was
+   output-identical on the one song under test, which is exactly why a broken reachability scan could
+   have survived — nothing measurable would have shown it until a song selected a dropped pattern.
+6. **★ I broke `build.bat` with `sed -i`**, which stripped its CRLF line endings; a batch file cannot
+   parse LF-only, and cmd began executing fragments of its header comments. Restored. **That is
+   CLAUDE.md §2J's lesson one tool over** — the rule names heredocs, and the general form is that
+   shell text munging on Windows files is how this project keeps losing an hour.
 
 **I proposed no route in conversation; the route is the dispatch's.**
 
@@ -469,6 +629,19 @@ and the intro's program region has 157 B free.
   models the oracle's irregularity, and adding it back would be a deliberate step, not a bug fix.
 - **★ THE RULING IS ON ONE SONG.** `s_Princess` is the only fully clean capture (§3E), so the ear gate
   covers 1 of 12. The other eleven are decoded by the same grammar and none of them has been heard.
+- **★★★ THE PROBE'S DISK READ DOES NOT WORK, AND IT IS THE NEAREST OPEN ITEM.**
+  `interp_probe.s` now reads the player off track 32 rather than linking it; the read fails with
+  `probe_status $EE`. Adding `disk_read_init` — which `intro_seq.s` calls before its first
+  `load_tracks` — did not fix it. **Not diagnosed further; I stopped rather than keep grinding at the
+  end of a long session.**
+  **What it does NOT invalidate:** the player's code is byte-for-byte what Jay ruled on — only its
+  address and its call mechanism changed — **so the ear gate stands.** What is lost until the read
+  works is the ability to RE-RUN the gate or the headless fidelity check. That check last passed at
+  **314 ticks / 6,930 toggle pairs / period mean 0.838% / pulse mean 0.42 µs**, with the player linked
+  at `$0E00`.
+- **★ THE `$0D00` RESULT IS THE ONE TO REMEMBER FROM THE BISECTION**: a program that LOADS, RUNS and
+  produces silently damaged data. `$0A00` and `$0C00` simply failed to start, which is loud. Anything
+  that ever wants to LOADM into that region should assume a floor of `$0E00`.
 - **The per-tick pad (4,855 µs) is FITTED to the `s_Princess` capture**, and so is the segment-cost
   constant (`SEG_FIT = 7.5` cycles). Both are constant offsets, not scale factors — which is what says
   the pitch model itself is counted rather than tuned — but they are fits and are labelled as such in
@@ -488,12 +661,15 @@ and the intro's program region has 157 B free.
 
 ### 8 — Follow-up candidates
 
-- **★★★ THE PLACEMENT DECISION (§3H), which now gates everything else.** The player splits into 1,186 B of
-  code and 3,231 B of wholly static data. Options, none of them chosen here: move the data to a
-  disk-resident track behind a fixed table (the route the link script itself names); move `SCENE_BASE`;
-  or relayout. **Jay's or the Orchestrator's call.**
-- **Then**: wire the twelve, cost in a hold, scenery decoupling, abort assertion, drift.
+- **★★★ THE PROBE'S TRACK-32 READ (§7).** Nearest item; without it neither the gate nor the fidelity
+  check can be re-run.
+- **Then the wiring**: `intro_seq.s` reads track 32 and calls `msys_play` through the entry table;
+  cost in a hold; scenery decoupling; abort assertion; drift.
 - **Hear more than one song.** The ear gate covers `s_Princess` only.
+- **★ Re-capture the eleven per-song oracle traces with a source discriminator** (§3E) — nine of
+  eleven are contaminated, which is why the A/B and the three-way both had to use `s_Princess`.
+- **`harness/tools/note_freq.py` still carries the `MLBL300`-less pitch model** and should be corrected
+  or retired — it is the tool P4.3's FIRQ-floor argument rested on.
 - **Re-capture the eleven songs with a source discriminator**, so the other ten can be validated the way
   `s_Princess` was.
 - **Exercise the call path on the target** — `s_Sumup` or a synthetic stream.
@@ -507,7 +683,34 @@ and the intro's program region has 157 B free.
 
 ### 9 — User interaction during task
 
-None during execution.
+**★★★ SUBSTANTIAL, AND IT DROVE FOUR CORRECTIONS. Recorded in order because in each case the
+artifact looked finished and Jay's reaction is what showed it was not.**
+
+1. **"run it for me"** — the A/B was launched. It ran 140 s and he closed it.
+2. **"try again"** — which is what sent me to measure the two passes separately. **They were
+   14 s and 37 s: two different pieces.** The A/B was not an A/B (§3I.1).
+3. **"where is the oracle compare"** — the A/B compares the port against the PORT and
+   structurally cannot answer *"does it sound like Prince of Persia."* Produced
+   `run_interp_3way.sh` (§5).
+4. **"anyway to raise the volume of the oracle, its hard to hear cleanly"** — 12 dB apart.
+   My first fix matched PEAK and over-corrected by 4.8 dB (§3I.2).
+5. **"i don't see the _lvl files"** — `build/` is gitignored; opened the folder.
+6. **"they both sound close although the volume is still off. i would say the interpreter
+   sounds a bit 'cleaner' but that may be the volume difference"** — the mis-levelled
+   observation, **flagged as confounded by him**, which is why it was not banked (§3I).
+7. **"i would say the interpreter sounds the same as the oracle, but maybe a bit less
+   fuzzy"** — **the ruling. AC5/25.3 PASSED.**
+8. **"do the memory search"** → §3K's stale addresses and the map tool.
+9. **"do both"** → the link-script correction and the LOADM ceiling test, which FIRED.
+10. **"why are we still working against the loadm cieling, i thought we were using a disk
+    loader to avoid that"** — ★★★ the correction that mattered most (§3J).
+11. **"what did you tirm"** → the exact list.
+12. **"so youre sure that no song or sound effect uses anything trimmed? I find it hard to
+    believe that jordan would waste binary space on unneded code"** — ★★★ **he was right;
+    the trim was withdrawn** (§3L).
+13. **"again we shouldnt need to orry about loadm"** — the second time, and the one that
+    unpinned the player's address from a harness constraint.
+14. **"update the report"** — this revision.
 
 ### 10 — Candidate(s) captured this task
 
@@ -516,4 +719,16 @@ and pushed to the pool.
 
 ### 11 — Commit
 
-`4925235` (pushed to origin/wip before this report)
+`2ea69e8` (pushed to origin/wip before this report). The dispatch's work across:
+
+| | |
+|---|---|
+| `4925235` | the grammar decoded, walked against the trace, the player built |
+| `19cb5c1` | the report |
+| `daa86b0` | the oracle compare — three clips, one song, one exact window |
+| `8dbc3ec` / `44c0007` | levelling, then the correction to match RMS not peak |
+| `5afae3e` | Jay's ear PASSED |
+| `741ca79` | the memory search |
+| `e7d8d97` | the player made disk-resident |
+| `e3b45ca` | the trim withdrawn |
+| `2ea69e8` | `$0A00` + the entry table; the probe's read not yet working |
