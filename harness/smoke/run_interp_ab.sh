@@ -39,11 +39,8 @@ BIN="build/interp_probe.bin"
 [ -f "$BIN" ] || { echo "[interp-ab] missing $BIN — run build.bat"; exit 1; }
 [ -f "$MAP" ] || { echo "[interp-ab] missing $MAP — run build.bat"; exit 1; }
 
-# A fresh disk: the binary is 16,332 B and build/probe.dmk has 13,824 free, so a copy
-# cannot hold it — and the interpreter reads no cel data, so it needs none of that image.
-rm -f "$DSK"
-"$IMGTOOL" create coco_dmk_rsdos "$DSK" >/dev/null 2>&1 \
-    || { echo "[interp-ab] could not create $DSK"; exit 1; }
+# A copy of probe.dmk: the player is READ off track 32 of it, the way the intro will.
+cp -f build/probe.dmk "$DSK" || exit 1
 "$IMGTOOL" put coco_dmk_rsdos "$DSK" "$BIN" INTERP.BIN \
     --ftype=binary --ascii=binary >/dev/null 2>&1 \
     || { echo "[interp-ab] could not add INTERP.BIN to $DSK"; exit 1; }

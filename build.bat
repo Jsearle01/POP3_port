@@ -489,14 +489,14 @@ REM     here rather than LOADED here"). P4.19 linked it into INTROSEQ.BIN first 
 REM     LOADM truncated: the suite read $7900..$7D43 as "34..00" against "34..39".
 REM     ★★ ONE ADDRESS FOR BOTH PATHS ($0E00), so there is ONE binary and the ear gate
 REM     tests exactly what ships.
-lwlink --decb --script=link/pop_msys.link --entry=msys_init --map=build/obj/msys.map -o build/msys_player.bin build/obj/msys_player.o
+lwlink --decb --script=link/pop_msys.link --entry=msys_entry --map=build/obj/msys.map -o build/msys_player.bin build/obj/msys_player.o
 if errorlevel 1 goto :error
 call :size build/msys_player.bin
-python harness/tools/decb_to_raw.py --bin build/msys_player.bin --out build/assets/msys_player.raw --base 0x0E00
+python harness/tools/decb_to_raw.py --bin build/msys_player.bin --out build/assets/msys_player.raw --base 0x0A00
 if errorlevel 1 goto :error
 
 lwlink --decb --script=link/pop_engine.link --entry=probe_entry --map=build/obj/interp.map ^
-       -o build/interp_probe.bin build/obj/interp_probe.o build/obj/msys_player.o build/obj/hal_build.o
+       -o build/interp_probe.bin build/obj/interp_probe.o build/obj/hal_build.o
 if errorlevel 1 goto :error
 call :size build/interp_probe.bin
 call :size build/song_probe.bin

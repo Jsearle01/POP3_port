@@ -33,14 +33,13 @@ BIN="build/interp_probe.bin"
 [ -f "$BIN" ] || { echo "[interp_check] missing $BIN — run build.bat"; exit 1; }
 mkdir -p build/tmp
 
-# ★★★ A FRESH DISK, NOT A COPY OF probe.dmk -- and for two reasons, one of which is a
-# hazard and one of which is arithmetic. The hazard: P4.2 put its instrument on
-# build/probe.dmk and DECB allocated the granules over a RESERVED cel-page track, so a
-# suite with nothing to do with audio reported "0 of 19 beats". The arithmetic: probe.dmk
-# has 13,824 bytes free and this binary is 16,332 -- it does not fit, and a copy would
-# fail every time. The interpreter reads no cel data, so it needs none of that image.
-rm -f "$DSK"
-"$IMGTOOL" create coco_dmk_rsdos "$DSK" >/dev/null 2>&1     || { echo "[interp_check] could not create $DSK"; exit 1; }
+# ★★★ A COPY OF probe.dmk, BECAUSE THE PLAYER LIVES ON IT. The player is not linked into
+# this binary any more -- it is READ off track 32, the way the intro will read it, so the
+# probe needs the disk that carries it. That also makes this the shipping arrangement
+# rather than a convenient one: same image, same track, same primitive.
+# ★ The earlier fresh-disk version existed because the binary was 16,332 B with the player
+# linked in and would not fit; without it the binary is small and probe.dmk has room.
+cp -f build/probe.dmk "$DSK" || exit 1
 "$IMGTOOL" put coco_dmk_rsdos "$DSK" "$BIN" INTERP.BIN \
     --ftype=binary --ascii=binary >/dev/null 2>&1 \
     || { echo "[interp_check] could not add INTERP.BIN to $DSK"; exit 1; }

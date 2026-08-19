@@ -109,8 +109,12 @@ _G._n = emu.add_machine_frame_notifier(function()
     r:write("# THE INTERPRETED PLAYER, HEADLESS — grammar walk, FIRQ, DAC, tear-down.\n")
     r:write(string.format("# probe_mode %d  song %d  pass %d\n", MODE, SONG,
                           mem:read_u8(PASS)))
-    r:write(string.format("# probe_status high-water %d of 3 (1=playing 2=finished 3=torn down)\n",
-                          maxst))
+    -- ★ the RAW byte too: probe_start writes $EE if the disk read of the player failed,
+    -- and the high-water counter only tracks 1..3, so a disk failure and "never started"
+    -- were indistinguishable in the report.
+    r:write(string.format("# probe_status high-water %d of 3 (1=playing 2=finished "
+                          .. "3=torn down)   raw now $%02X   ($EE = the player's disk "
+                          .. "read failed)\n", maxst, mem:read_u8(ST)))
     r:write(string.format("# msys ticks %d   VBL frames %d   magic $%04X (want $504E)\n",
                           u16(TICKS), u16(FRAMES), u16(MG)))
     r:write(string.format("# toggle pairs emitted %d\n", pairs_n))

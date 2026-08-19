@@ -98,7 +98,7 @@ section prog load 2000
 ; cannot go in `code` either -- the kernel ends at $7D44 and the stack top is $7F00. Every
 ; other gap between $2000 and the trace ring totals 3,951 B across five pieces, largest
 ; 1,625. $0A00 takes it whole with 1,215 B to spare, above everything DECB uses.
-section msys load 0E00
+section msys load 0A00
 section code load 7900
 
 entry probe_entry

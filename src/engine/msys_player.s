@@ -104,6 +104,7 @@
 * that stale block is why the first answer to "where does this go" was "nowhere".
                 ifdef   OBJTARGET
                 section msys
+                export  msys_entry
                 export  msys_init
                 export  msys_play
                 export  msys_stop
@@ -115,6 +116,30 @@
                 else
                 setdp   0
                 endc
+
+* ---------------------------------------------------------------
+* ★★★ THE ENTRY TABLE, AT FIXED OFFSETS FROM THE BASE — because this unit is READ off a
+* disk track, not linked. Its caller cannot see a linker symbol in it, exactly as the
+* cutscene room cannot see one in the flame bundle ("Bundle entry points, at fixed offsets
+* from FLAME_BASE. The room reaches everything through this table" — cutscene_room.s:161).
+*
+* ★★ IT MUST BE FIRST AND IT MUST NOT BE REORDERED. char_draw.s records what happens
+* otherwise: a table entry moved from +58 to +40 "linked cleanly, booted, read the disk
+* twice, stepped the VM, and only then jumped through $303A into cel data." Offsets are the
+* interface; adding an entry goes on the END.
+*
+*   +0   msys_init      once, after HAL_sys_init
+*   +3   msys_play      A = song id
+*   +6   msys_stop      tear down; safe any time, idempotent
+*   +9   msys_playing   A != 0 while sounding
+*   +12  msys_ticks     16-bit, read directly — the PLAN-duration assert's input
+* ---------------------------------------------------------------
+msys_entry
+                jmp     msys_init       ; +0
+                jmp     msys_play       ; +3
+                jmp     msys_stop       ; +6
+                jmp     msys_playing    ; +9
+msys_ticks      fdb     0               ; +12  ticks elapsed
 
 DAC             equ     $FF20
 FF90            equ     $FF90
@@ -807,7 +832,6 @@ msys_played     fcb     0       ; the `$FD` flag
 msys_state      fcb     0       ; 0 = sounding segments, 1 = the pad
 msys_segn       fcb     0       ; segments left in this tick
 msys_divn       fcb     1       ; the prescale counter
-msys_ticks      fdb     0       ; ticks elapsed — the PLAN-duration assert reads this
 
 msys_v1         rmb     VS_SIZE
 msys_v2         rmb     VS_SIZE

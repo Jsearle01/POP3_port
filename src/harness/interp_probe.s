@@ -44,11 +44,19 @@
                 import  HAL_time_init
                 import  HAL_time_vbl_wait
                 import  HAL_gfx_set_mode
-                import  msys_init
-                import  msys_play
-                import  msys_stop
-                import  msys_playing
-                import  msys_ticks
+                import  disk_read_init
+                import  disk_read_range
+                import  disk_read_motor_off
+
+* ★★ THE PLAYER IS REACHED THROUGH ITS ENTRY TABLE, NOT THROUGH THE LINKER. It is read off
+* track 32 to $0A00 at run time, so there is no symbol to import — the same relationship
+* the cutscene room has with the flame bundle. These offsets are the interface.
+MSYS_BASE       equ     $0A00
+msys_init       equ     MSYS_BASE+0
+msys_play       equ     MSYS_BASE+3
+msys_stop       equ     MSYS_BASE+6
+msys_playing    equ     MSYS_BASE+9
+msys_ticks      equ     MSYS_BASE+12
 
 probe_entry     jmp     probe_start     ; $2000 — EXEC address
 
@@ -77,11 +85,68 @@ probe_start
                 jsr     HAL_time_init
                 lda     #0              ; GFX_MODE_320x192x4 — a screen, so the run is visible
                 jsr     HAL_gfx_set_mode
+
+* ★★★ READ THE PLAYER OFF DISK — the same way the intro will, and the same way the caption
+* bundle, every screen, the scene program, the scene bundle and four cel pages already do
+* [intro_seq.s:51 -- "that is exactly why the assets are READ here rather than LOADED
+* here"]. It used to be LINKED into this binary, which pinned it to $0E00 so DECB's LOADM
+* could survive it, and let this HARNESS constrain the SHIPPING layout for a load path the
+* game never uses. Reading it here means the gate exercises the path that ships.
+* ★ `disk_read_init` FIRST — the primitive lands its NMI handler and completion flag in
+* the $FE00 constant page, and without it the read fails outright (probe_status $EE).
+* intro_seq.s:286 calls it before its first load_tracks for exactly this reason.
+                jsr     disk_read_init
+                bsr     load_player
+                bcs     ip_diskfail
                 jsr     msys_init
 
                 lda     #1
                 sta     probe_status
                 andcc   #$EF            ; VBL IRQs on, so HAL_time_vbl_wait works
+
+ip_diskfail     lda     #$EE            ; a disk failure must not look like a quiet song
+                sta     probe_status
+ip_dead         jsr     HAL_time_vbl_wait
+                bra     ip_dead
+
+* ---------------------------------------------------------------
+* load_player — track MSYS_TRACK to $0A00. C set on failure.
+* ★ SAM_SLOW/SAM_FAST bracket it: the FDC cannot keep up at 1.78 MHz and HAL_gfx_init has
+*   already set double speed (idiom §8, and CLAUDE.md §2G's disk-speed rule).
+* ---------------------------------------------------------------
+MSYS_TRACK      equ     32
+MSYS_SECS       equ     18              ; one whole track
+SAM_SLOW        equ     $FFD8
+SAM_FAST        equ     $FFD9
+DR_VARBASE      equ     $6A00
+dr_dest         equ     DR_VARBASE+2
+dr_r_track      equ     DR_VARBASE+5
+dr_r_count      equ     DR_VARBASE+6
+
+load_player
+                pshs    a,b,x,cc
+                orcc    #$50
+                lda     #MSYS_TRACK
+                sta     dr_r_track
+                ldb     #MSYS_SECS
+                stb     dr_r_count
+                ldx     #MSYS_BASE
+                stx     dr_dest
+                clr     lp_err
+                sta     SAM_SLOW        ; value irrelevant — the SAM latches on the write
+                jsr     disk_read_range
+                bcc     lp_ok
+                com     lp_err
+lp_ok           jsr     disk_read_motor_off
+                sta     SAM_FAST
+                puls    a,b,x,cc
+                tst     lp_err
+                bne     lp_bad
+                andcc   #$FE
+                rts
+lp_bad          orcc    #$01
+                rts
+lp_err          fcb     0
 
 ip_pass
                 lda     probe_mode

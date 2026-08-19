@@ -16,9 +16,8 @@
 ; with silently damaged data). A disk READ happens long after DECB is done, so the whole
 ; of $0A00..$1FFF is available: 5,632 B against the player's 3,102.
 ;
-;   $0A00-$0DFF   free at run time, but NOT LOADM-able (DECB's file buffers)
-;   $0E00-$1A1D   THE PLAYER, 3,102 B
-;   $1A1E-$1FFF   free, 1,506 B of margin below the engine
+;   $0A00-$1B67   THE PLAYER, 4,456 B, READ from disk track 32
+;   $1B68-$1FFF   free, 1,176 B of margin below the engine
 ;   $2000-$24FF   engine (LOADM'd)
 ;   $2500-$29A6   scene program (read from disk, same mechanism)
 ;   $3000-$52FF   caption bundle (read from disk, same mechanism)
@@ -26,6 +25,6 @@
 ; The entry symbol is nominal: this unit is a library the engine calls, not a program the
 ; operator EXECs. lwlink --decb requires one, and decb_to_raw discards it.
 
-section msys load 0E00
+section msys load 0A00
 
-entry msys_init
+entry msys_entry
