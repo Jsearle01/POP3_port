@@ -24,6 +24,14 @@
 # MAME_RAM=128K runs it on a 128 KB machine.
 set -u
 
+# ★★★ SOUND IS ON BY DEFAULT SINCE P4.21, AND THAT CHANGES WHAT THIS RUNNER IS FOR.
+# It passed `-sound none` from P3.3 onward, correctly: the intro had no audio and this was
+# a gate on pixels and timing. Beat 1 now plays s_Presents through the interpreted player,
+# so a silent run can no longer answer the question being asked of it.
+# MUTE=1 restores the old behaviour when the look is what is under inspection.
+SOUNDOPT="-sound sdl"
+if [ "${MUTE:-0}" = "1" ]; then SOUNDOPT="-sound none"; fi
+
 cd "$(dirname "$0")/../.." || exit 1
 
 MAME="${MAME:-/c/mame/mame.exe}"
@@ -59,5 +67,5 @@ export P_OUT="build/introseq_live.log"
     -ext fdc \
     -flop1 "$DSK" \
     -window -nomaximize -prescale 2 \
-    -sound none \
+    $SOUNDOPT \
     -autoboot_script harness/smoke/introseq_live.lua
