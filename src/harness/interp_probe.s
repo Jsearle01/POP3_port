@@ -68,6 +68,9 @@ probe_magic     fdb     0               ; $2008
 probe_mode      fcb     0               ; $200A
 probe_song      fcb     7               ; $200B
 probe_frames    fdb     0               ; $200C
+probe_dstat     fcb     0               ; $200E  ★ the WD1773 status the read ended on
+probe_dfirst    fdb     0               ; $200F  ★ the first two bytes landed at $0A00
+probe_dcarry    fcb     $A5             ; $2011  ★ 0 = read reported success, 1 = failure
 
 PROBE_MAGIC     equ     $504E
 DAC             equ     $FF20
@@ -103,6 +106,14 @@ probe_start
                 lda     #1
                 sta     probe_status
                 andcc   #$EF            ; VBL IRQs on, so HAL_time_vbl_wait works
+* ★★★ JUMP OVER THE ERROR HANDLER. Without this the SUCCESS path falls straight through
+* into `ip_diskfail`, which overwrites probe_status with $EE and spins — so a working read
+* reported itself as a failed one. P4.19 lost the rest of a session to it, and both
+* hypotheses it spent that time on (a missing `disk_read_init`, the track placement) were
+* wrong. What settled it was publishing `dr_status` and the first two bytes at $0A00: the
+* status was the expected end-of-track RNF and $0A00 held $7E0A, the player's own JMP.
+* ★★ The read had ALWAYS worked. The error handler was in the success path.
+                bra     ip_pass
 
 ip_diskfail     lda     #$EE            ; a disk failure must not look like a quiet song
                 sta     probe_status
@@ -120,6 +131,8 @@ SAM_SLOW        equ     $FFD8
 SAM_FAST        equ     $FFD9
 DR_VARBASE      equ     $6A00
 dr_dest         equ     DR_VARBASE+2
+dr_status       equ     DR_VARBASE+4    ; ★ derived, not imported — the HAL does not
+*                                               ;   export the variables, only the entries
 dr_r_track      equ     DR_VARBASE+5
 dr_r_count      equ     DR_VARBASE+6
 
@@ -137,10 +150,31 @@ load_player
                 jsr     disk_read_range
                 bcc     lp_ok
                 com     lp_err
-lp_ok           jsr     disk_read_motor_off
+lp_ok
+* ★★ MEASURE THE FAILURE, DO NOT GUESS AT IT. dr_status is the WD1773's own last status
+* byte and it distinguishes "never seeked" from "seeked and found no sector" from "read
+* but CRC-failed"; probe_dfirst says whether anything landed at all.
+                lda     dr_status
+                sta     probe_dstat
+                ldd     MSYS_BASE
+                std     probe_dfirst
+                jsr     disk_read_motor_off
+* ★★★ AND CHECK WHAT LANDED, NOT ONLY THAT THE READ RETURNED. The WD1773 ends a
+* whole-track read on RNF by design ($10 here), so "no error" is a weak claim; and if the
+* track carries no player, `jsr msys_init` jumps into whatever IS there. The entry table
+* starts with a JMP, so $7E at the base is a cheap integrity check with a defined failure.
+                lda     MSYS_BASE
+                cmpa    #$7E
+                beq     lp_sig
+                com     lp_err          ; nothing that looks like the player landed
+lp_sig
                 sta     SAM_FAST
                 puls    a,b,x,cc
+                clr     probe_dcarry
                 tst     lp_err
+                beq     lp_good
+                inc     probe_dcarry
+lp_good         tst     lp_err
                 bne     lp_bad
                 andcc   #$FE
                 rts

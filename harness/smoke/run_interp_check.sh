@@ -39,7 +39,19 @@ mkdir -p build/tmp
 # rather than a convenient one: same image, same track, same primitive.
 # ★ The earlier fresh-disk version existed because the binary was 16,332 B with the player
 # linked in and would not fit; without it the binary is small and probe.dmk has room.
-cp -f build/probe.dmk "$DSK" || exit 1
+# ★★★ P_SEED=nodisk — THE SEEDED FAILURE (P4.21 §3). A probe that cannot detect its own
+# planted fault is an instrument whose silence proves nothing (P3.48b/P3.49). This one has
+# a specific thing to get wrong: the player is READ, so "the track is not there" must be
+# reported and must not be mistaken for a quiet song. The seed builds a disk with
+# INTERP.BIN and NO track 32, which is exactly the configuration P4.19 ran by accident.
+if [ "${P_SEED:-}" = "nodisk" ]; then
+    echo "[interp_check] ★ SEEDED FAILURE: a disk with no player on track 32."
+    echo "[interp_check]   The probe MUST report a disk/signature failure, not a PASS."
+    rm -f "$DSK"
+    "$IMGTOOL" create coco_dmk_rsdos "$DSK" >/dev/null 2>&1         || { echo "[interp_check] could not create $DSK"; exit 1; }
+else
+    cp -f build/probe.dmk "$DSK" || exit 1
+fi
 "$IMGTOOL" put coco_dmk_rsdos "$DSK" "$BIN" INTERP.BIN \
     --ftype=binary --ascii=binary >/dev/null 2>&1 \
     || { echo "[interp_check] could not add INTERP.BIN to $DSK"; exit 1; }
@@ -73,7 +85,17 @@ echo "[interp_check] --- $P_REPORT ---"
 if [ -f "$P_REPORT" ]; then sed 's/^/  /' "$P_REPORT"; else echo "  (no log produced)"; exit 1; fi
 
 rc=0
-grep -q "^# PASS" "$P_REPORT" || { echo "[interp_check] DID NOT PASS"; rc=1; }
+if [ "${P_SEED:-}" = "nodisk" ]; then
+    if grep -q "^# PASS" "$P_REPORT"; then
+        echo "[interp_check] ★★★ SEED NOT CAUGHT — the probe PASSED with no player on the"
+        echo "[interp_check]     disk. The instrument cannot see its own planted fault."
+        rc=1
+    else
+        echo "[interp_check] ★ seed caught — the probe reported the failure."
+    fi
+else
+    grep -q "^# PASS" "$P_REPORT" || { echo "[interp_check] DID NOT PASS"; rc=1; }
+fi
 
 # ---- the fidelity diff, against the decoded model ----------------------------
 # ★ Only meaningful on the interpret pass; the capture pass is measuring the OTHER path.

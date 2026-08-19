@@ -40,6 +40,9 @@ local MG     = ENTRY + 8
 local MODEA  = ENTRY + 10
 local SONGA  = ENTRY + 11
 local FRAMES = ENTRY + 12
+local DSTAT  = ENTRY + 14
+local DFIRST = ENTRY + 15
+local DCARRY = ENTRY + 17
 
 local function u16(a) return mem:read_u8(a) * 256 + mem:read_u8(a + 1) end
 
@@ -118,7 +121,26 @@ _G._n = emu.add_machine_frame_notifier(function()
     r:write(string.format("# msys ticks %d   VBL frames %d   magic $%04X (want $504E)\n",
                           u16(TICKS), u16(FRAMES), u16(MG)))
     r:write(string.format("# toggle pairs emitted %d\n", pairs_n))
-    if maxst >= 3 and u16(MG) == 0x504E and pairs_n > 100 then
+    -- ★★ THE READ, MEASURED. dr_status is the WD1773's own last status byte, so it tells
+    -- "never seeked" from "seeked, no sector" from "read but CRC-failed"; the first two
+    -- bytes at $0A00 say whether anything landed (the player starts with a JMP, $7E).
+    r:write(string.format("# player disk read: WD1773 status $%02X   carry %s   "
+                          .. "first bytes at $0A00 $%04X (want $7Exx — a JMP)\n",
+                          mem:read_u8(DSTAT),
+                          (mem:read_u8(DCARRY) == 0xA5) and "NEVER RAN"
+                            or tostring(mem:read_u8(DCARRY)),
+                          u16(DFIRST)))
+    -- ★★★ THE DISK VERDICT COMES FIRST, AND IT NAMES ITSELF. A failed player read used to
+    -- fall through to "the LOADM/EXEC did not take" — the wrong subsystem, and that exact
+    -- misdirection is what P4.19 spent a session inside. A probe that reports the wrong
+    -- cause is worse than one that reports nothing.
+    if mem:read_u8(DCARRY) == 1 then
+        r:write("# FAIL — THE PLAYER'S DISK READ. Nothing that looks like the entry table\n")
+        r:write("#        landed at $0A00 (want $7E, a JMP). The probe never ran the\n")
+        r:write("#        player; this says nothing about the player itself.\n")
+    elseif mem:read_u8(DCARRY) == 0xA5 then
+        r:write("# FAIL — the probe never reached the player read at all.\n")
+    elseif maxst >= 3 and u16(MG) == 0x504E and pairs_n > 100 then
         r:write("# PASS — it loaded, walked the stream, sounded and tore the FIRQ down.\n")
     elseif maxst == 0 then
         r:write("# FAIL — the probe never started. The LOADM/EXEC did not take.\n")
