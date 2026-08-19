@@ -310,6 +310,22 @@ the first framebuffer access."* A 512-KB-first order would have called that buil
 
 ---
 
+## 2L. The LOADM ceiling is a stage constraint
+
+**`LOADM`'s memory limit (`$2488..$2535`, measured at P3.22) applies ONLY to what must be resident at the
+moment Disk BASIC hands control to the port's loader.** After that handover, BASIC is gone, the port owns
+the machine, and the ceiling no longer applies.
+
+**Anything the port's own disk driver can fetch after the handover does not need to be in the `LOADM`
+image.** The port already uses this — the intro's screens, the cutscene's cel pages, and the scene's
+program at `$2500` are all loaded by the port's driver, not by `LOADM`.
+
+**Do not treat the LOADM ceiling as a limit on the program's total size, on per-beat data, or on anything
+loaded after the initial handover.** If something does not fit in the `LOADM` image, the first question is
+whether it belongs there at all.
+
+---
+
 ## 3. PNG Handling Rules (absolute)
 
 PNG files are diagnostic artifacts for human review:
