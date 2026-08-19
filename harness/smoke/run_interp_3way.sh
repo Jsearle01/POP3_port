@@ -100,14 +100,29 @@ port_pass() {
 port_pass 0 2_interpret "PORT interpret"
 port_pass 2 3_capture   "PORT capture"
 
+# ---------------------------------------------------------------- level them
+# ★★★ THE ORACLE IS 12 dB QUIETER THAN THE PORT and that made the gate harder than the
+# question it was asking -- Jay: "anyway to raise the volume of the oracle, its hard to
+# hear cleanly." One scalar gain per clip preserves pitch, tempo, timbre and the envelope
+# WITHIN each clip; only the absolute level moves, and the between-machine level was never
+# comparable anyway. The *_lvl.wav files are the ones to listen to; the un-levelled
+# originals stay beside them.
+python harness/tools/wav_gain.py     --wav "$OUTDIR/1_oracle.wav"     --wav "$OUTDIR/2_interpret.wav"     --wav "$OUTDIR/3_capture.wav"
+
 cat <<BANNER
 
 [3way] ---------------------------------------------------------------
 [3way] Three clips, ${DUR}s each, same song (s_Princess), in $OUTDIR:
 [3way]
-[3way]   1_oracle.wav      the Apple IIe. The thing being ported.
-[3way]   2_interpret.wav   the CoCo3 walking MUSIC.SET1's own 1,024 bytes.
-[3way]   3_capture.wav     the CoCo3 replaying the oracle's recording.
+[3way]   1_oracle_lvl.wav      the Apple IIe. The thing being ported.
+[3way]   2_interpret_lvl.wav   the CoCo3 walking MUSIC.SET1's own 1,024 bytes.
+[3way]   3_capture_lvl.wav     the CoCo3 replaying the oracle's recording.
+[3way]
+[3way] ★ LISTEN TO THE _lvl FILES. All three are brought to one typical level, so you
+[3way]   can switch between them without touching the volume. The oracle comes up
+[3way]   about 11 dB. Nothing is clipped -- the level is capped by the oracle's own
+[3way]   loudest second, which is what makes it safe.
+[3way]   The un-levelled originals are beside them if you want the raw levels.
 [3way]
 [3way] 1 vs 2 is the real question: does the decode sound like Prince of Persia.
 [3way] 2 vs 3 is the narrower one: did I read the format correctly.
