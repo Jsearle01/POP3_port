@@ -379,11 +379,19 @@ local function tick()
                 --
                 -- ★ At 512 KB the two do not collide and the sixth read would be enough —
                 -- which is why this suite runs at 128 KB first (CLAUDE.md §2K).
-                check("disk_reads_completed", rd8(ENGINE + 8) == 7,
-                      string.format("probe_loads = %d (want 7: bundle + splash + prolog1 "
-                                    .. "+ the scene's program + the captions again + prolog2 "
-                                    .. "+ the splash again, the bank having been overwritten "
-                                    .. "by the scene; WD1773 status $%02X",
+                -- ★★ EIGHT SINCE P4.21, and the eighth is the MUSIC PLAYER. It is read to
+                -- $0A00 in the same opening burst as the captions, because the LOADM
+                -- ceiling binds only on what must be resident at handover (CLAUDE.md §2L)
+                -- and 4,456 bytes of player does not belong in that image. Raising this
+                -- number is the one honest response to a read that was deliberately added;
+                -- what it must NOT become is a number nobody can account for, so the list
+                -- below names all eight.
+                check("disk_reads_completed", rd8(ENGINE + 8) == 8,
+                      string.format("probe_loads = %d (want 8: bundle + THE MUSIC PLAYER "
+                                    .. "+ splash + prolog1 + the scene's program + the "
+                                    .. "captions again + prolog2 + the splash again, the "
+                                    .. "bank having been overwritten by the scene; "
+                                    .. "WD1773 status $%02X",
                                     rd8(ENGINE + 8), rd8(ENGINE + 9)))
                 check("image_cannot_contain_screen", BIN_BYTES < 30720,
                       string.format("INTROSEQ.BIN is %d B; the framebuffer it put on "

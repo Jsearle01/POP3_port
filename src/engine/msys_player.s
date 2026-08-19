@@ -144,10 +144,12 @@ msys_ticks      fdb     0               ; +12  ticks elapsed
 DAC             equ     $FF20
 FF90            equ     $FF90
 FF91            equ     $FF91
+FF92            equ     $FF92
 FF93            equ     $FF93
 FF94            equ     $FF94
 FF95            equ     $FF95
-HAL_FF90_IDLE   equ     $6C             ; what HAL_sys_init leaves in $FF90
+HAL_FF90_IDLE   equ     $6C             ; INIT0 as HAL_time_init leaves it [time.s:95-96]
+HAL_IRQENR_VBL  equ     $08             ; IRQENR as HAL_time_init leaves it [time.s:90-91]
 
 * ---------------------------------------------------------------
 * Voice state block. TWO of these; `msys_cur` points at the one the FIRQ is serving.
@@ -260,10 +262,15 @@ msys_stop
 msys_stop_i
                 orcc    #$40                    ; mask FIRQ before touching anything
                 clr     FF93                    ; no FIRQ sources
+* ★ AND HAND THE VBL BACK. `firq_arm` took IRQENR down to nothing so one handler could own
+* the shared latches; leaving it there would silently cost the caller every frame
+* interrupt it has after the song.
+                lda     #HAL_IRQENR_VBL
+                sta     FF92                    ; ★ the VBL, back to the IRQ path
                 clr     FF94                    ; MSB 0 = timer stopped
                 clr     FF95
                 lda     #HAL_FF90_IDLE
-                sta     FF90                    ; FEN back off, as HAL_sys_init left it
+                sta     FF90                    ; FEN back off
                 clr     DAC                     ; park the speaker
                 clr     msys_active
                 clr     msys_two
@@ -298,12 +305,36 @@ firq_arm
                 sta     FF91
                 lda     VS_DIV,x
                 sta     msys_divn
-                lda     #HAL_FF90_IDLE+$10      ; FEN on
+                lda     #HAL_FF90_IDLE+$10      ; FEN on, over the HAL's INIT0
                 sta     FF90
                 ldd     VS_TIMER,x
                 stb     FF95
                 sta     FF94
-                lda     #$20                    ; TMR as the FIRQ source
+* ★★★ THE FIRQ TAKES EVERY GIME SOURCE WHILE A SONG PLAYS, AND IT HAS TO.
+* `$FF92` and `$FF93` share one set of interrupt latches: reading EITHER *"acknowledges
+* and resets the interrupt source"* [SockmasterGime.md:67]. So the handler's own
+* acknowledge destroys a VBORD that arrived in the same window — and `$FF93` reports only
+* the sources enabled in FIRQENR, so with TMR alone it destroys the frame and does not
+* even say it did. Measured: FF92 reads fell 105 -> 0 while FF93 reads passed 2,400, the
+* HAL frame counter froze at 190, and the intro's `hold_frames` spun on it forever.
+* ★★ So: enable VBORD in FIRQENR as well, take IRQENR down to nothing, and let ONE handler
+* dispatch both. irq_vbl.s asked for exactly this — *"If future work enables additional
+* GIME sources… save A and dispatch on each bit before any are lost."*
+* ★★★ THE GIME's $FF90/$FF92/$FF93 ARE WRITE-ONLY ENABLES. READING THEM DOES NOT GIVE THE
+* VALUE BACK. `lda $FF92` returns the PENDING-SOURCE BITMAP and *acknowledges and resets*
+* it [SockmasterGime.md:67] — it is not a read of the enable mask. P4.21 tried to be
+* careful here and made it worse: it saved `lda $FF92` at arm time meaning to restore it
+* later, saved a pending bitmap instead, and put that back. Measured: the HAL frame counter
+* froze at 471 the moment the song ended, exactly as if nothing had been restored, because
+* nothing had been.
+* ★★ SO THE VALUES ARE THE CONSTANTS THE HAL ESTABLISHES, quoted from where it sets them:
+*     $FF92 = $08   VBORD only            [time.s:90-91]
+*     $FF90 = $6C   MMUEN+IEN+MC3+MC2     [time.s:95-96, "$4C -> $6C: set bit 5 (IEN=1)"]
+* ★ Coupling, and it is real: if the caller ever runs with different INIT0 or IRQENR, this
+* player puts back the HAL's, not theirs. That is a documented assumption rather than a
+* silent one, and it is checkable — both constants live in time.s and are quoted here.
+                clr     FF92                    ; the IRQ path takes nothing for now
+                lda     #$28                    ; TMR + VBORD, both as FIRQ sources
                 sta     FF93
                 andcc   #$BF                    ; unmask FIRQ
                 puls    a,b,x,pc
@@ -319,7 +350,35 @@ firq_arm
 * ---------------------------------------------------------------
 firq_handler
                 pshs    a,b,x,y,u
-                lda     FF93                    ; acknowledge
+                lda     FF93                    ; acknowledge — A = the SOURCE BITMAP
+
+* ★★★ AND DISPATCH THE BITS THIS READ JUST DESTROYED. Reading `$FF93` does not acknowledge
+* only the timer: it *"tells you which interrupts came in and acknowledges and resets the
+* interrupt source"* [SockmasterGime.md:67], and `$FF92`/`$FF93` share one set of latches.
+* So a VBORD that arrived in the same window is CONSUMED HERE and the VBL IRQ never fires
+* for it.
+*
+* ★★ irq_vbl.s PREDICTED THIS IN SO MANY WORDS: *"If future work enables additional GIME
+* sources (timer, HBORD, keyboard, serial, cartridge), save A and dispatch on each bit
+* before any are lost."* The timer is that future work, and this is that dispatch.
+*
+* ★★★ WITHOUT IT THE INTRO HANGS, AND NOT WHERE YOU WOULD LOOK. `hold_frames` spins in
+* `HAL_time_vbl_wait`, which waits for `hal_frame_lo` to advance [time.s:136-139]. Measured
+* on the target: FF92 reads fell 105 -> 0 as FF93 reads climbed past 2,400, the HAL frame
+* counter froze at 190, and when the song ended and the FIRQ tore itself down the
+* foreground was left spinning on a counter nothing would ever touch again.
+*
+* ★ It cannot double-count. If the IRQ won the race it incremented and cleared the latch,
+* so bit 3 reads back zero here; if this read won it, the IRQ will never see it. Exactly
+* one increment either way.
+                bita    #$08                    ; VBORD — the frame this read consumed
+                beq     fh_novbl
+                inc     $0011                   ; hal_frame_lo  [time.s DP $10/$11]
+                bne     fh_novbl
+                inc     $0010                   ; hal_frame_hi
+* ★ INC touches memory and CC, never A — so the bitmap survives for the next test.
+fh_novbl        bita    #$20                    ; TMR: is there a segment to play at all?
+                lbeq    fh_out                  ; no — this was the frame, and it is done
 
                 dec     msys_divn               ; ★ the prescale: only the FIRST interrupt
                 beq     fh_seg                  ;   of a segment sounds (gen_msys_tables.py)
@@ -384,10 +443,21 @@ fh_pad          clr     msys_state
                 jsr     tick_advance
                 tst     msys_active
                 bne     fh_pad1
+* ★★★ THE SONG ENDS INSIDE THE INTERRUPT, SO THE INTERRUPT MUST HAND THE MACHINE BACK.
+* `firq_arm` parked IRQENR so one handler could own the shared latches; if this path only
+* stopped the timer, the machine would be left with NO interrupt source at all — and the
+* caller is typically still inside `hold_frames`, spinning on a frame counter nothing can
+* increment. `msys_stop` cannot rescue it: `msys_stop` is what the caller runs AFTER the
+* hold returns. Measured before this: the HAL frame counter froze at 471 the moment the
+* song finished, and the intro never reached beat 2.
                 clr     FF94                    ; the song ended: stop the timer dead
                 clr     FF95
                 clr     FF93
                 clr     DAC
+                lda     #HAL_IRQENR_VBL
+                sta     FF92                    ; ★ the VBL, back to the IRQ path
+                lda     #HAL_FF90_IDLE
+                sta     FF90                    ; FEN off
                 bra     fh_out
 fh_pad1         ldx     msys_cur
                 lda     VS_FF91,x

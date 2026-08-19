@@ -141,6 +141,33 @@ FB_B_BLOCK      equ     $14             ; lwasm's export does not carry equ symb
 DISK_BUNDLE_TRK equ     25              ; two tracks — palette + all three captions
 DISK_BUNDLE_SEC equ     2*SECS_PER_TRACK
 
+* --- THE MUSIC PLAYER, read like every other asset -------------------------
+* ★★★ IT IS NOT IN THE LOADM IMAGE, AND CLAUDE.md §2L IS WHY: the LOADM ceiling binds on
+* what must be resident when Disk BASIC hands over, and nothing after. The player is
+* 4,456 B carrying all thirteen songs; it arrives the same way the captions, the screens,
+* the scene program and the cel pages do.
+* ★★ ITS ENTRY POINTS ARE FIXED OFFSETS, not linker symbols — a unit read off a track has
+* no symbols for its caller to import. Same relationship cutscene_room.s has with the
+* flame bundle, and char_draw.s records what a moved offset costs.
+DISK_MSYS_TRK   equ     32
+DISK_MSYS_SEC   equ     1*SECS_PER_TRACK
+MSYS_BASE       equ     $0A00
+msys_init       equ     MSYS_BASE+0
+msys_play       equ     MSYS_BASE+3     ; A = song id
+msys_stop       equ     MSYS_BASE+6
+msys_playing    equ     MSYS_BASE+9
+MSYS_SIG        equ     $7E             ; the entry table opens with a JMP
+
+* ★ P4.21 WIRES ONE SONG, DELIBERATELY. Jay: "let's just wire in the first and verify I
+* hear and see it, and then we'll have the formula for the rest." Every other beat's
+* BEAT_SONG is left to play silence until this path is gated, so a fault in the wiring
+* shows up in ONE place rather than five. Widening it is deleting the comparison below.
+* ★ Overridable so a dispatch can BISECT: -DMSYS_WIRED_SONG=6 reads and inits the player
+*   but matches no beat, which separates "the read/init broke it" from "playback broke it".
+                ifndef  MSYS_WIRED_SONG
+MSYS_WIRED_SONG equ     S_PRESENTS
+                endc
+
 * --- runtime RAM, all of it ABOVE the LOADM image on purpose. DECB's DBUF0
 * --- ($0600), DBUF1 ($0700), FAT ($0800) and FCBs ($094A) sit under $0A00, and
 * --- writing over them is only safe once DECB has finished — which it has, by the
@@ -292,6 +319,25 @@ seq_start
                 ldb     #DISK_BUNDLE_SEC
                 jsr     load_tracks
                 bne     seq_disk_fail
+
+* --- the music player, in the SAME burst, before anything is on screen -----
+* ★★★ IT CANNOT LAND VISIBLY, AND THAT IS STRUCTURAL RATHER THAN LUCKY. $0A00 is not in
+* the draw window — HAL maps the back buffer at $8000 — so this read touches no
+* framebuffer byte. It also happens inside the existing one-burst-of-I/O before the first
+* beat, so it adds no second pause where the oracle has none.
+                ldx     #MSYS_BASE
+                lda     #DISK_MSYS_TRK
+                ldb     #DISK_MSYS_SEC
+                jsr     load_tracks
+                bne     seq_disk_fail
+* ★★ AND CHECK WHAT LANDED. A whole-track read ends on RNF by design, so "no error" is a
+* weak claim; the entry table opens with a JMP. Without this, a bad read means the first
+* beat JSRs into whatever is at $0A00. P4.21's probe found the same gap and closed it the
+* same way.
+                lda     MSYS_BASE
+                cmpa    #MSYS_SIG
+                bne     seq_disk_fail
+                jsr     msys_init
 
 * --- the artwork's palette, now that it is in memory --------------
 * set_mode installs a diagnostic palette (P2.5); this screen needs the Apple DHR
@@ -894,10 +940,31 @@ bk_block_end
 *
 * A = 0 means NO SONG -- a real designed pause. Beat 5 is the only one: the oracle's
 * gap there is the PrincessScene cutscene, which is not built.
+* ★★★ SOUND ARRIVED, AND THIS IS THE BODY THE COMMENT ABOVE PROMISED IT WOULD REPLACE.
+*
+* ★★ THE FRAME COUNT STILL OWNS THE INTERVAL. `hold_frames` runs exactly as before, on the
+* beat's traced count — the song plays INSIDE it and does not extend it. That is what
+* "duration is an input in the port" means (P4.1), and it is why wiring audio cannot move
+* a beat boundary or re-time the intro. If a song is longer than its beat, `msys_stop`
+* cuts it; if shorter, the rest of the beat is silent. Both are visible to the ear gate
+* and neither is allowed to change the pace Jay already accepted (P3.87).
+*
+* ★ `msys_stop` RUNS ON EVERY PATH, including the silent one and including a beat whose
+* song was never started. It is idempotent, and a hold that returned with a live FIRQ
+* would hand the next beat an interrupt it does not know about.
 play_song
-                tfr     x,d             ; the frame count; the song id is not used yet
-* falls through into hold_frames -- deliberately, so there is ONE loop that spends
-* frames rather than two that could drift apart.
+                tsta
+                beq     ps_hold         ; A = 0 — a designed pause, not a song
+                cmpa    #MSYS_WIRED_SONG
+                bne     ps_hold         ; not wired yet (P4.21 proves one path first)
+                pshs    x
+                jsr     msys_play       ; returns at once; the FIRQ does the rest
+                puls    x
+ps_hold
+                tfr     x,d             ; the beat's frame count, unchanged
+                bsr     hold_frames
+                jsr     msys_stop       ; ★ tear down, always
+                rts
 
 hold_frames
                 pshs    y
