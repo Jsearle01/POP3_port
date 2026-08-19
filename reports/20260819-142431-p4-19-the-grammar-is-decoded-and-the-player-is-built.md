@@ -21,7 +21,8 @@ listing it came from, and the player is built and runs on the target.**
 | **the player** | **4,417 B for all thirteen songs**, against ~10.5 KB for one capture |
 | **on the target** | **6,930 toggle pairs — the oracle emitted 6,930.** 774.0 frames against 762.4 |
 | **suites** | green, 128 KB first, `integ` included |
-| **Jay's ear** | **NOT RULED. 25.3 pending Jay.** |
+| **Jay's ear** | **★★★ RULED — PASSED.** *"i would say the interpreter sounds the same as the oracle, but maybe a bit less fuzzy"* |
+| **wiring the twelve** | **BLOCKED on a memory-map decision** — 157 B of headroom against a 4,417 B player (§3H) |
 
 **★★★ THE ONE FACT THAT WOULD HAVE MADE THE PLAYER WRONG: the note's duration is `byte1 & $3F`, not
 `byte1`.** P4.18 §3A recorded it as the whole byte. Decoded that way `s_Princess` runs **1,477 frames
@@ -245,6 +246,66 @@ port vs decoded model:
 quantisation-limited: the port's minimum pulse step is 2.79 µs and the oracle's minimum pulse is 7.83,
 so 8.38 (+0.55) is the closest reachable value and 5.59 (−2.24) is the alternative.
 
+#### 3H — ★★★ THE WIRING IS BLOCKED, AND IT IS A MEMORY-MAP PROBLEM, NOT A CODE ONE
+
+**The intro already has the seam and it was built for this.** `play_song` takes `A` = song, `X` = frames —
+Mechner's own contract [`SUBS.S:822-842`] — and `intro_seq.s:886` says outright: *"when sound arrives it
+replaces this BODY."* Every beat already carries `BEAT_SONG`, and beats 1-4 and 6 already name
+`S_PRESENTS`, `S_BYLINE`, `S_TITLE`, `S_PROLOG`, `S_SUMUP`. **Nothing about the wiring is undecided at the
+source level.**
+
+**What blocks it is where the player would go:**
+
+```
+intro_seq prog   $2000..$2462   1,123 B   (intro_seq.o 0x3D5 + lz_unpack.o 0x8E)
+SCENE_BASE       $2500                    the cutscene room program is READ here
+FLAME_BASE       $3000                    the cutscene bundle, up to DR_VARBASE $6A00
+headroom before SCENE_BASE                  157 B
+msys_player                               4,417 B
+                                        --------
+shortfall                                 4,260 B
+```
+
+**★★ AND THE `code` SECTION IS NOT THE ANSWER EITHER** — the kernel runs `$7900..$7D44` and the stack top is
+`$7F00`, so there are 444 bytes there. That is the same overflow that made this player's first target run
+report *"the LOADM/EXEC did not take"* (§6), one region further along.
+
+**★ The established route is named in the link script itself** and it was *"arrived at three times the hard
+way"*: *"put the code on a disk-resident track and reach it through a fixed table, the way the cutscene
+bundle does."* The player splits cleanly for it — **1,186 B of code against 3,231 B of wholly static data**
+(the 1,024 B song page, the HM and MV patterns, the timer table). **But which of the two goes to disk,
+and whether `SCENE_BASE` moves instead, is a design step and Jay's or the Orchestrator's call.**
+
+**I am not improvising it at the end of this session.** P3.10 put a framebuffer at block `$18`, which was
+*"fine on 512 KB and fatal on 128 KB"*, and the LOADM ceiling *"misled three dispatches"* — this project's
+memory map is where its most expensive mistakes have lived.
+
+#### 3I — ★★ THE FIRST A/B WAS NOT AN A/B, AND THE FIRST LEVELLING WAS WRONG
+
+**Two defects in the gate itself, both caught only because Jay said the run was hard to judge.** Recorded
+because a gate that is quietly mis-built produces a ruling that means something other than it says.
+
+1. **The A/B compared two different pieces.** Pass A interpreted `s_Princess` (12.7 s); pass B replayed
+   `song_a` — the P4.4 capture of PlayCut0's **whole 37.6 s music stretch**. Measured alone: **14 s against
+   37 s.** *That is the shape of P4.6's "the port sounds like the same piece repeated 3 times" and P4.15's
+   "I captured the wrong songs", for the third time.* Pass B is now the oracle's own per-song capture of
+   song 7: 6,930 segments, 12,724 ms, **3,137 B**. Measured after: 14 s against 13 s.
+2. **The levelling over-corrected by 4.8 dB.** `wav_gain.py`'s first cut matched the median per-second
+   **peak**. Perceived loudness follows **RMS**, and the two machines have different crest factors — the
+   Apple's one-bit speaker 18.8 against the CoCo3 DAC's 16.1-16.5. So peak-matching left the oracle
+   **1.7× LOUDER** in RMS where it had been 2.4× quieter:
+
+   | | oracle rms | port rms | |
+   |---|---|---|---|
+   | raw | 459 | 1,089 / 1,090 | oracle 2.4× quiet |
+   | peak-matched — **what the first ruling was taken on** | 1,653 | 948 / 972 | oracle 1.7× loud |
+   | rms-matched — what the second was | **1,653** | **1,653 / 1,653** | matched, 0 samples clipped |
+
+**★★★ AND THE SECOND HALF OF JAY'S FIRST SENTENCE IS WHY BOTH MATTER**: *"...but that may be the volume
+difference."* **He flagged his own observation as confounded.** A timbre finding taken from a
+level-mismatched pair of two different pieces is not a finding, and banking it would have put a false
+positive in the record.
+
 #### 3G — residency
 
 | | |
@@ -268,12 +329,18 @@ the offsets (§2F).
   the duration is six bits.
 - **AC4 player built against the complete specification** — **PASS** (§3F). Assembles, links, runs on
   128 KB live-disk, emits 6,930 toggle pairs against the oracle's 6,930.
-- **AC5 A/B on `s_Princess`, Jay's ear** — **NOT DONE — PENDING JAY.** The A/B is BUILT and in one binary
-  (`probe_mode 1`); nobody has heard it. **I am not self-certifying this.**
+- **AC5 A/B on `s_Princess`, Jay's ear** — **★★★ PASSED.** Jay's words, verbatim:
+  > *"i would say the interpreter sounds the same as the oracle, but maybe a bit less fuzzy"*
+
+  and earlier, on the level-mismatched set: *"they both sound close although the volume is still off.
+  i would say the interpreter sounds a bit 'cleaner' but that may be the volume difference."*
+  **Hard-stop 4 does NOT fire: he did not prefer capture.** See §3I for how the comparison was corrected
+  before the ruling was taken, and §7 for what "less fuzzy" is and is not evidence of.
 - **AC6 all twelve wired, cost in a hold, scenery decoupled, abort asserted, drift reported** —
-  **NOT DONE.** Gated behind AC5 by the dispatch's own ordering (§4: "If passed: all twelve wired").
-- **AC7 retired items named** — **PARTIAL.** Named in §8; not yet removed, because removal before the ear
-  gate would leave no fallback if Jay prefers capture (hard-stop 4).
+  **NOT DONE, AND NOT FOR WANT OF THE GATE. It is BLOCKED on a memory-map decision** (§3H): the intro's
+  program region has **157 bytes** of headroom before `SCENE_BASE` and the player is **4,417**.
+- **AC7 retired items named** — **PARTIAL.** Named in §8; not yet removed. **Now that the ear has ruled,
+  removal is unblocked** — but it should follow the wiring, not precede it.
 - **AC8 suites green 128 KB first, `integ` included, build verified by symbol** — **PASS.**
 - **AC9 Jay gates by ear and eye, words verbatim** — **PENDING JAY.**
 - **AC10 route accounting present; Karateka untouched; `main` untouched** — **PASS** (§6).
@@ -340,17 +407,36 @@ Section: code (build/obj/hal_build.o)    load at 7900, length 0444
 **25.2 bundled-artifact grep:** N/A — no sibling-import artifact; the song page is generated from
 `oracle/source/Other/MUSIC.SET1` by `gen_msys_tables.py` on every build.
 
-**25.3 operator-runtime-smoke:** **PENDING JAY.** Not observed. **The A/B is motion-and-sound bearing and
-cannot be gated on anything but a live run** — `bash harness/smoke/run_interp_check.sh` with `P_MODE=1`
-and no `P_OUT` leaves the window up: interpret, 1.5 s gap, capture, 1.5 s gap, repeating.
+**25.3 operator-runtime-smoke:** **PASSED — Jay, live-disk + recorded three-way, RGB, 128 KB.**
+
+Two observations, both his, in order:
+
+> *"they both sound close although the volume is still off. i would say the interpreter sounds a bit
+> 'cleaner' but that may be the volume difference."*
+
+> *"i would say the interpreter sounds the same as the oracle, but maybe a bit less fuzzy"*
+
+**The first was taken on a MIS-LEVELLED set and he said so himself** — §3I. The second was taken after the
+levelling was corrected, and it is the ruling.
+
+★ **Launch paths, stated as §4 requires:** the A/B loop ran **`live-disk`** (`run_interp_ab.sh`, real
+`LOADM"INTERP"`+`EXEC` off a mounted floppy, sound on, real speed). The oracle comparison is
+**recorded** — `run_interp_3way.sh` — because the oracle is an `apple2e` and cannot share a MAME session
+with a `coco3`. **A recorded clip is not a live gate for MOTION**, but this gate is on SOUND, the clips are
+cut from a live run of each machine, and the sound is the whole time-varying thing under judgement.
 
 ### 6 — Reactive deviations and route accounting
 
 **ROUTE ACCOUNTING. This report contains** §1 complete (all four named items plus `MLBL300`), §2's walk
-**passing on the trace**, and §3's player built, assembled, linked and **verified on the target**.
-**It does NOT contain** §4 — the A/B ruling, the twelve-song wiring, the cost-in-a-hold measurement, the
-scenery-decoupling confirmation, the abort assertion, the drift comparison, or the removal of the retired
-items. All of those are downstream of Jay's ear by the dispatch's own ordering.
+**passing on the trace**, §3's player built, assembled, linked and **verified on the target**, and §4's
+**A/B — built, corrected twice, run live, and RULED BY JAY (PASSED)**.
+**It does NOT contain** the twelve-song wiring, the cost-in-a-hold measurement, the scenery-decoupling
+confirmation, the abort assertion, the drift comparison, or the removal of the retired items.
+
+**★ AND THE REASON CHANGED PART-WAY.** Those were gated behind Jay's ear by the dispatch's ordering; the
+ear has now ruled, so that gate is open. **They are now blocked on something else: §3H's memory map.** The
+dispatch's §4 reads as though wiring were mechanical once the ear passed. It is not — the player is 4,417 B
+and the intro's program region has 157 B free.
 
 **I proposed no route in conversation; the route is the dispatch's.**
 
@@ -373,9 +459,16 @@ items. All of those are downstream of Jay's ear by the dispatch's own ordering.
 
 ### 7 — Uncertainty flags
 
-- **★★★ NOBODY HAS HEARD IT.** Every number here is a timing measurement. **The pulse is 7% wide at the
-  smallest amplitude and the pitch is up to 10 cents off** — both below thresholds Jay has previously
-  ruled on, but he ruled on *those* stimuli, not this one.
+- **★★ "MAYBE A BIT LESS FUZZY" IS A DIFFERENCE FROM THE ORACLE, AND IT IS NOT NOISE IN THE MEASUREMENT.**
+  It is expected and it has a mechanism: the interpreter regenerates each period from an exact table
+  value, where the capture replays intervals measured off the oracle and carries its jitter — `pack_song`'s
+  own period error is **0.995% mean against the interpreter's 0.838%**. And the CoCo3's 6-bit DAC emits a
+  cleaner pulse edge than a one-bit speaker. **So the port is slightly MORE regular than the thing it is
+  porting.** Under §2I that is legitimate — the mandate is that it sound right, and Jay ruled it does.
+  **★ But it is a divergence and it is Jay's to reverse if he ever wants the fuzz**; nothing in the player
+  models the oracle's irregularity, and adding it back would be a deliberate step, not a bug fix.
+- **★ THE RULING IS ON ONE SONG.** `s_Princess` is the only fully clean capture (§3E), so the ear gate
+  covers 1 of 12. The other eleven are decoded by the same grammar and none of them has been heard.
 - **The per-tick pad (4,855 µs) is FITTED to the `s_Princess` capture**, and so is the segment-cost
   constant (`SEG_FIT = 7.5` cycles). Both are constant offsets, not scale factors — which is what says
   the pitch model itself is counted rather than tuned — but they are fits and are labelled as such in
@@ -395,8 +488,12 @@ items. All of those are downstream of Jay's ear by the dispatch's own ordering.
 
 ### 8 — Follow-up candidates
 
-- **Jay's ear on the A/B** — the gate everything else waits on.
+- **★★★ THE PLACEMENT DECISION (§3H), which now gates everything else.** The player splits into 1,186 B of
+  code and 3,231 B of wholly static data. Options, none of them chosen here: move the data to a
+  disk-resident track behind a fixed table (the route the link script itself names); move `SCENE_BASE`;
+  or relayout. **Jay's or the Orchestrator's call.**
 - **Then**: wire the twelve, cost in a hold, scenery decoupling, abort assertion, drift.
+- **Hear more than one song.** The ear gate covers `s_Princess` only.
 - **Re-capture the eleven songs with a source discriminator**, so the other ten can be validated the way
   `s_Princess` was.
 - **Exercise the call path on the target** — `s_Sumup` or a synthetic stream.
