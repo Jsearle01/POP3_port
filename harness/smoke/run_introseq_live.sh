@@ -29,7 +29,11 @@ set -u
 # a gate on pixels and timing. Beat 1 now plays s_Presents through the interpreted player,
 # so a silent run can no longer answer the question being asked of it.
 # MUTE=1 restores the old behaviour when the look is what is under inspection.
-SOUNDOPT="-sound sdl"
+# ★ MAME rejects `-sound sdl` on this build ("Value sdl not supported... falling back to
+#   auto"). Auto IS the working default, so ask for it by name rather than pass a value the
+#   emulator has to refuse -- a runner that prints a rejection every launch trains the
+#   reader to ignore its output.
+SOUNDOPT="-sound auto"
 if [ "${MUTE:-0}" = "1" ]; then SOUNDOPT="-sound none"; fi
 
 cd "$(dirname "$0")/../.." || exit 1
