@@ -677,22 +677,22 @@
   },
   {
    "beat": 3,
-   "name": "Palert",
-   "plays": 9,
-   "block": 13,
-   "sig": 42300,
-   "page": 0,
-   "resident_only": false,
-   "read": null
-  },
-  {
-   "beat": 4,
    "name": "s_Squeek",
    "plays": 10,
    "block": 13,
    "sig": 0,
    "page": 0,
    "resident_only": true,
+   "read": null
+  },
+  {
+   "beat": 4,
+   "name": "Palert",
+   "plays": 9,
+   "block": 13,
+   "sig": 42300,
+   "page": 0,
+   "resident_only": false,
    "read": null
   },
   {

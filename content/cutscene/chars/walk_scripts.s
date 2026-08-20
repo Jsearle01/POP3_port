@@ -23,9 +23,9 @@ viz_script
                 fcb     0               ; hold
 pri_script
                 fdb     pri_stand
-                fcb     116
+                fcb     126
                 fdb     pri_alert
-                fcb     180
+                fcb     170
                 fdb     pri_back
                 fcb     63
                 fdb     pri_slump

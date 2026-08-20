@@ -126,7 +126,32 @@ _G._n = emu.add_machine_frame_notifier(function()
                     jits, n - 1, 100.0 * jits / math.max(1, n - 1)))
             f:write(string.format("   periods > 25%% off the previous   %d  (%.1f%%)\n",
                     big, 100.0 * big / math.max(1, n - 1)))
-            f:write(string.format("   worst single deviation           %.1f%%\n#\n", worst))
+            f:write(string.format("   worst single deviation           %.1f%%\n", worst))
+
+-- ★★★ AND THE SAME DEVIATIONS IN ABSOLUTE MICROSECONDS, WHICH IS WHAT DISTINGUISHES THE
+-- REMAINING CAUSES. After P4.29 the blitter masks for ONE ROW at a time -- roughly 90-290
+-- cycles, so 50-160 us at 1.78 MHz -- against a note period near 1743 us. If the residual
+-- deviations are in that band, the row window is the whole story and narrowing it further
+-- is the lever. If they are HUNDREDS of microseconds or more, something else is holding the
+-- interrupt off and narrowing the blit window would not touch it. A percentage cannot tell
+-- those apart; microseconds can.
+            local abs = {}
+            for i = 2, n do abs[#abs + 1] = math.abs(p[i] - p[i - 1]) end
+            table.sort(abs)
+            local function q(x) return abs[math.max(1, math.floor(#abs * x))] end
+            f:write(string.format("   |delta| median  %8.1f us\n", q(0.50)))
+            f:write(string.format("            90th    %8.1f us\n", q(0.90)))
+            f:write(string.format("            99th    %8.1f us\n", q(0.99)))
+            f:write(string.format("            max     %8.1f us\n", abs[#abs]))
+            local band, big = 0, 0
+            for i = 1, #abs do
+                if abs[i] <= 200.0 then band = band + 1 end
+                if abs[i] > 1000.0 then big = big + 1 end
+            end
+            f:write(string.format("   within 200 us (one masked row)   %d  (%.1f%%)\n",
+                    band, 100.0 * band / #abs))
+            f:write(string.format("   over 1000 us (NOT the blitter)   %d  (%.1f%%)\n#\n",
+                    big, 100.0 * big / #abs))
         end
     end
 

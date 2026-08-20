@@ -28,12 +28,12 @@ cel_plan
                 fcb     5,$0D
                 fdb     $0000
                 fcb     0,0,0           ; beat 2  (hold)       plays 5     pinned-only
-                fcb     9,$0D
-                fdb     $A53C
-                fcb     0,0,0           ; beat 3  Palert       plays 9   
                 fcb     10,$0D
                 fdb     $0000
-                fcb     0,0,8           ; beat 4  s_Squeek     plays 10    pinned-only
+                fcb     0,0,8           ; beat 3  s_Squeek     plays 10    pinned-only
+                fcb     9,$0D
+                fdb     $A53C
+                fcb     0,0,0           ; beat 4  Palert       plays 9   
                 fcb     5,$0D
                 fdb     $0000
                 fcb     0,0,0           ; beat 5  (hold)       plays 5     pinned-only

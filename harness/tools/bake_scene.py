@@ -273,7 +273,6 @@ TERMINAL_STEPS = 60
 PLAN = [("p", "Pstand", 2),       # play 2 [SUBS.S:665-668]
         ("song", "s_Princess", 761),   # ★ THE CUE, HERE [SUBS.S:669-671]
         ("-", "", 5),             # play 5 — she waits, no re-jump [SUBS.S:672]
-        ("p", "Palert", 9),       # she hears the door and turns
         # ★★★ s_Squeek — THE DOOR. Jay, on the P4.29 build: "i don't hear the door squeak".
         # It was never in the PLAN. `PlayCut0` makes SIX PlaySongI calls [SUBS.S:658-755] and
         # this table carried four; `lda #s_Squeek / ldx #0 / jsr PlaySongI ;door squeaks...`
@@ -284,7 +283,24 @@ PLAN = [("p", "Pstand", 2),       # play 2 [SUBS.S:665-668]
         # PlayCut0's arm) and its next `sta SPEED` at 916 — and since PlaySongI BLOCKS, that
         # write IS the frame the block ended. The existing rows had to subtract N plays at an
         # estimated frames-per-play; this one did not [oracle_pstand_lead.lua].
+        # ★★★ AND IT SITS BEFORE HER TURN, NOT AFTER — A DELIBERATE DIVERGENCE (P4.31).
+        # The oracle turns her FIRST and squeaks the door second. Jay, having heard the
+        # faithful order: "even though the squeak sound matches the tiing of the oracle, can
+        # it be moved to before the princess turn , i feel like it would fit better."
+        #
+        # ★★ CLAUDE.md §2I GOVERNS AND THIS NEEDS NO FURTHER DEFENCE: "The mandate is that
+        # the port LOOKS right and FEELS right to play. It is not that the port works the way
+        # the oracle works... A divergence that preserves visual output and play feel is
+        # legitimate and needs no justification beyond measurement." The oracle's order is
+        # evidence about how to achieve the effect, not a requirement in itself, and §2.1
+        # makes Jay the authority on whether the result feels right. He has heard both.
+        #
+        # ★ IT COSTS NOTHING STRUCTURALLY. A "song" row is a HOLD — no jumpseq — so she goes
+        # on standing through the 69 frames and Palert then turns her. The row COUNT is
+        # unchanged, so SCENERY's keys do not move and the scene's length is identical; only
+        # the order of a hold and a jump swaps.
         ("song", "s_Squeek", 69),
+        ("p", "Palert", 9),       # ...and NOW she turns, having heard it
         ("-", "", 5),             # play 5 — both hold after the SPEED change
         ("v", "Vwalk", 7),        # Vapproach: he enters from the right (oracle 6, +1)
         ("v", "Vstop", 4),        # ...and STOPS, at CharX 185 against the oracle's 186
