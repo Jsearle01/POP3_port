@@ -133,6 +133,54 @@ def scan_sets(paths):
     return sorted(used_hm), sorted(used_mv), seen
 
 
+# ---------------------------------------------------------------------------
+# ★★★ ENV_OVERRIDE — THE ONE PLACE THE PORT'S MUSIC DATA IS NOT THE ORACLE'S.
+#
+# Jay, across P4.29-P4.43: the cutscene's music is "fuzzy", "dirty", and -- the observation
+# that cracked it -- "the sound seems corect everywhere except the princess song, why only
+# there". If ten of eleven songs are right, the PLAYER is right, and seven measurements of
+# the player all came back clean because it is.
+#
+# WHY ONLY s_PRINCESS [P4.41]: it is the ONLY song in the game that uses envelope 5, and
+# envelope 5 is the only one in use whose pattern ends on a HIGH value --
+#
+#     envelopes 0,1,3,4   ... 01 00 FF   -> "$FF = hold the last amplitude" holds SILENCE
+#     envelope 5           01 0B 0D FF   -> holds $0D, 13 of a maximum 14
+#
+# so it sustains near maximum where every other song fades to nothing.
+#
+# MEASURED, both machines, same song [P4.42/P4.43]:
+#     oracle   mean pulse width 15.7 us   (its own songs run 11.2 .. 23.6)
+#     port     mean pulse width 21.3 us   with 89% of pulses at the maximum
+# The port is 36% louder on this song and sits near the top of the oracle's whole range
+# where the oracle's own s_Princess is mid-range.
+#
+# ★★ AND THE PORT IS NOT MISCOMPUTING ANYTHING. VS_AMP is 3, which is $0D >> 2, which is
+# what voice command 01's LSR/LSR transform specifies; scale_widths clamps at 255 and never
+# approaches it. The chain implements the oracle's spec exactly. What differs is how much
+# TIME is spent at the held value, and that is not something a faithful port can fix by
+# being more faithful.
+#
+# ★★★ SO THIS IS A §2I DIVERGENCE, TAKEN ON JAY'S RULING: "lets try the envelope change for
+# 5." The mandate is that the port SOUNDS right, the oracle's data is evidence rather than a
+# requirement, and §2.1 makes his ear the authority.
+#
+# WHAT THE CHANGE IS, AND WHY THIS SHAPE: the amplitude transform is an integer >> 2, so it
+# quantises hard -- 12..15 -> 3, 8..11 -> 2. There is exactly ONE step available below the
+# present value, and it is a 33% reduction, which is the size of the 36% excess measured.
+# Dropping the sustain from $0D to $0B keeps the attack (silent -> 2) and lowers only what
+# is HELD, which is the part that plays for the rest of every note.
+#
+#     oracle   01 0B 0D FF    ->  amp 0, 2, 3, hold 3
+#     port     01 0B FF       ->  amp 0, 2,    hold 2
+#
+# ★ REVERSIBLE BY DELETING THREE LINES, and the emitted table says so at its head. If Jay's
+# ear prefers the oracle's value, this dict goes away and nothing else changes.
+ENV_OVERRIDE = {
+    5: [0x01, 0x0B, 0xFF],
+}
+
+
 def emit(path, songs_path, music, sets):
     used_hm, used_mv, seen = scan_sets(sets)
     out = []
@@ -249,13 +297,20 @@ def emit(path, songs_path, music, sets):
     w("")
 
     # ---- MV (envelope) patterns --------------------------------------------
+    w("* ★★★ ONE ENVELOPE IS DELIBERATELY NOT THE ORACLE'S — see ENV_OVERRIDE in")
+    w("* gen_msys_tables.py for the measurement and the ruling. Every other pattern is")
+    w("* MUSIC.SET1's own bytes.")
     w("* msys_env — the 16 envelope patterns [MSYS.S:43-59]. $7F = sustain until the")
     w("* note is nearly over; bit 7 = end, hold the last amplitude.")
     w("* ★ ALL SIXTEEN. The shipped sets reach %d of them (%s); the rest are emitted"
       % (len(used_mv), ",".join(str(i) for i in used_mv)))
     w("*   anyway — see scan_sets for why a trim was tried and withdrawn.")
     for i in range(len(M.MV)):
-        w("msys_mv%-8d fcb     %s" % (i, ",".join("$%02X" % b for b in M.MV[i])))
+        pat = ENV_OVERRIDE.get(i, M.MV[i])
+        if i in ENV_OVERRIDE:
+            w("* ★★★ ENVELOPE %d IS OVERRIDDEN — see ENV_OVERRIDE. Oracle: %s"
+              % (i, ",".join("$%02X" % b for b in M.MV[i])))
+        w("msys_mv%-8d fcb     %s" % (i, ",".join("$%02X" % b for b in pat)))
     w("msys_envtbl")
     for i in range(len(M.MV)):
         w("                fdb     msys_mv%d" % i)
