@@ -14,7 +14,7 @@ pre-existing untracked `docs/ground-truth/*.pdf`, `nvram/`, `.vscode/` and the m
 | | |
 |---|---|
 | **the count** | **★★★ FIVE songs, not eleven.** Four wired here; one was already wired. |
-| **the other six** | **★★★ NO CALL SITE EXISTS.** ids 7-12 are the cutscene's and nothing plays them. |
+| **the other six** | **NO CALL SITE EXISTED** — ids 7-12 are the cutscene's. **★★★ FOUR are now wired, §3F.** |
 | **★★★ a bug Jay heard** | **`s_Sumup` was one beat late** — on the title reprise instead of Prolog2. **Fixed.** |
 | **the wiring itself** | **deleting two instructions.** No new mechanism, no per-song data, no second call site. |
 | **flame cadence** | `cel_scene_done` at **frame 7945** — same as the one-song build and the silent control |
@@ -143,6 +143,58 @@ cel_scene_done: cleared by the scene yes, then set at frame 7945
 **Frame 7945 — identical to the one-song build AND to the silent control.** Not one frame of drift with five
 songs playing, which is what §3 item 5 asked for.
 
+#### 3F — ★★★ THE CUTSCENE'S SONGS, ADDED AFTER THE GATE PASSED
+
+**Jay, after ruling: *"let's add the cutscene sound."*** §3A had called this a design step, and it was a
+smaller one than that — **because the PLAN already carried the fact:**
+
+```python
+("song", "s_Princess", 761)   ("song", "s_Vizier", 358)
+("song", "s_Buildup", 394)    ("song", "s_Magic", 113)
+```
+
+**Those rows already became beats of their own traced length, and `cel_plan.s` already printed the song's
+NAME — in a COMMENT.** So the schedule knew which beat was a cue and nothing could act on it. ★ *A fact
+present in a generated artifact but only as prose is a fact the machine does not have.*
+
+| where | what changed |
+|---|---|
+| `bake_scene.py` | `song_at()` reads the SAME PLAN row the beat came from, so a cue cannot drift from its beat. Ids quoted from `MASTER.S:112-126`, not remembered. |
+| `cel_plan.s` | a 7th byte per row — beat 1 → 7, beat 6 → 9, beat 10 → 10, beat 14 → 11 |
+| `char_draw.s` | `PLAN_STRIDE` 6 → 7; `vb_apply` plays byte 6 when non-zero |
+| `cutscene_room.s` | `msys_stop` at `room_return` |
+
+**★★ START ONLY, NEVER STOP PER BEAT.** A song outlives its own beat by design — the PLAN converts its traced
+duration into a hold and the following beats animate over it, which is what the oracle does. **Stopping on a
+0 would cut every song after one beat.** The tear-down is `room_return`, the only place that knows the scene
+is over; a scene returning with a live FIRQ hands the intro an interrupt it does not know about.
+
+**★ FOUR, NOT SIX.** The PLAN has no `s_Squeek` or `s_StTimer` beat — the port's scene does not contain those
+moments (the vizier's entrance was cut at P3.72i for the bank wall). **Reported, not invented.**
+
+**★★★ AND THE BUILD'S OWN STRIDE ASSERTION CAUGHT THE ROW CHANGE ON THE BUILD THAT MADE IT:**
+
+```
+FAIL cel_plan is 140 B linked but 20 rows x 6 B is 120 B (off by +20) — a row emitted the wrong number of bytes
+```
+
+**Three copies of the row length exist** — `bake_scene.py`, `char_draw.s`, `bundle_offsets_check.py` — **and
+the check exists because they can disagree.** All three updated; it now reads
+`ok cel_plan 20 rows x 7 B = 140 B linked`.
+
+**MEASURED — and one number got WORSE, which is the point of measuring:**
+
+| | before | after |
+|---|---|---|
+| scene FIRQ rate | 2.26 /frame | **6.32 /frame** — it genuinely sounds |
+| **`cel_scene_done`** | **frame 7945** | **frame 7977** |
+
+**★★ THE SCENE IS 32 FRAMES (0.53 s) LONGER, ~2.3% on a ~23 s scene.** §3E and P4.22 both measured **zero**
+drift there — **but the scene was silent then.** The FIRQ takes cycles and the room loop occasionally misses
+its due frame. **Reported for Jay's ear, not tuned:** whether 2.3% on the cutscene is acceptable is his call
+under §2I, and tuning against a number he has not heard is how a pace gets optimised into something nobody
+asked for.
+
 ### 4 — Verification (AC-by-AC)
 
 - **AC1 all twelve songs wired, from the PLAN's own mapping** — **★ NOT AS WRITTEN, AND THE PLAN IS WHY.**
@@ -224,8 +276,11 @@ dispatch's scope** — nor §4's retirements, which are gated on a pass that has
   in it from P3.52, with a CORRECT source citation attached to the WRONG row, and nothing caught it because
   until P4.21 no beat made a sound. **The other four rows are cited the same way and have the same standing.**
   Jay has now heard beats 1-6 in sequence once, with one fault found; **that is the only check they have had.**
-- **★★ THE CUTSCENE IS SILENT AND WILL LOOK CORRECT WHILE BEING WRONG.** Six songs, no call site. A viewer
-  who does not know the oracle plays music there will not notice.
+- **★★ THE CUTSCENE'S 32-FRAME LENGTHENING IS UNRULED** (§3F). It is the first drift this project has
+  introduced into the scene, and the run Jay saw it in lasted 127 s — **which ends INSIDE the cutscene**, so
+  he heard `s_Princess` and probably `s_Vizier` but likely not `s_Buildup`, `s_Magic`, or the return.
+- **★ `s_Squeek` and `s_StTimer` have no beat in the port's scene** (§3F) and are therefore unreachable —
+  not a defect, but the scene is four-sixths of the oracle's cue list.
 - **★ THE COST TABLE IN §3D PRE-DATES §3B's SWAP.** The per-beat figures are correct for the beats as they
   then stood; `s_Sumup` has since moved from a 720-frame window to a 1,767-frame one, so its per-frame cost
   will be lower and its total higher. **Not re-measured** — the worst case (11.78%, beat 2) is unaffected.
