@@ -64,8 +64,9 @@ echo "[run_introseq_live]          -> prologue 1 -> prologue 2 -> title reprise 
 # date -- a runner that describes a run it no longer performs teaches its reader to skip it.
 echo "[run_introseq_live] 27.6 s of drive-engaged time before the first picture (measured)."
 echo "[run_introseq_live]   14.0 s of that is the CUTSCENE's eight cel pages, read here since"
-echo "[run_introseq_live]   P4.25 so the cutscene does not stall on them: its first musical cue"
-echo "[run_introseq_live]   went from +12.4 s to +2.4 s. The cost is this longer black boot."
+echo "[run_introseq_live]   P4.25 so the cutscene does not stall on them. Its last three reads"
+echo "[run_introseq_live]   moved to the TOP OF BEAT 4 at P4.25b; the first musical cue went"
+echo "[run_introseq_live]   +12.4 s -> +2.4 s -> +0.9 s. The cost is this longer black boot."
 echo "[run_introseq_live] close the window when you are done."
 
 export P_BIN="$BIN"
