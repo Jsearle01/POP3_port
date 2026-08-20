@@ -176,9 +176,18 @@ def scan_sets(paths):
 #
 # ★ REVERSIBLE BY DELETING THREE LINES, and the emitted table says so at its head. If Jay's
 # ear prefers the oracle's value, this dict goes away and nothing else changes.
-ENV_OVERRIDE = {
-    5: [0x01, 0x0B, 0xFF],
-}
+# ★★★ TRIED AND REVERTED (P4.45). The softened sustain was MEASURABLY REAL and AUDIBLY
+# NOTHING: it moved the port's mean pulse width on s_Princess from 21.3 us to 16.4 us --
+# within 4% of the oracle's own 15.7 -- and Jay's verdict on the result was "doesnt sound
+# any different". So amplitude is NOT what he is hearing as fuzzy, and that is worth more
+# than the fix would have been: it is the one elimination in this arc made by the ear
+# rather than by an instrument.
+#
+# ★★ AND A §2I DIVERGENCE HAS TO BUY SOMETHING. This one bought nothing, so the oracle's
+# bytes go back. The mechanism stays here, empty, because the NEXT candidate will want it
+# and because the measurement above should not have to be re-derived to know that this
+# lever was pulled and did not move.
+ENV_OVERRIDE = {}
 
 
 def emit(path, songs_path, music, sets):
