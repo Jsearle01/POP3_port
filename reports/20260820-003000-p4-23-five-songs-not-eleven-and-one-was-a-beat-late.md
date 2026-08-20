@@ -20,7 +20,8 @@ pre-existing untracked `docs/ground-truth/*.pdf`, `nvram/`, `.vscode/` and the m
 | **flame cadence** | `cel_scene_done` at **frame 7945** — same as the one-song build and the silent control |
 | **cost** | worst beat **11.78%** of the VBL budget; **beat 6 exactly 0.00%**, which validates the control |
 | **suites** | ALL PASS, 128 KB first, `integ` included |
-| **★★★ Jay's gate** | **PASSED** — *"everything looks and sounds pretty good between the oracle and the port."* |
+| **★★★ Jay's gate (intro)** | **PASSED** — *"everything looks and sounds pretty good between the oracle and the port."* |
+| **the cutscene** | wired (§3F) — **and its cues are 12.4 s LATE, measured (§3G). Gate FAILED there.** |
 
 ### 2 — Files modified
 
@@ -195,6 +196,78 @@ its due frame. **Reported for Jay's ear, not tuned:** whether 2.3% on the cutsce
 under §2I, and tuning against a number he has not heard is how a pace gets optimised into something nobody
 asked for.
 
+#### 3G — ★★★ THE CUTSCENE'S CUES ARE 12.4 s LATE, AND IT IS ONE FAULT
+
+**Jay, on the wired cutscene:**
+
+> ***"the sound for the beginning of the cutscene is just wrong. his entry music is wring. the hourgalss
+> appearance sound decent, but it way to late in the sequence"***
+
+**Three observations. ONE fault.** `harness/tools/cue_times.lua` taps the write to `msys_index` — `msys_play`'s
+first act, once per call, carrying the id — and reports each start against the scene's own window
+(`cel_scene_done`), so the offsets are directly comparable with the oracle's PlayCut0-relative call times:
+
+| song | port | oracle | delta |
+|---|---|---|---|
+| `s_Princess` | **12.6 s** | 0.2 s | **+12.4 s** |
+| `s_Squeek` | **never fires** | 14.1 s | **MISSING** |
+| `s_Vizier` | 27.2 s | 16.7 s | +10.5 s |
+| `s_Buildup` | 37.1 s | 26.3 s | +10.8 s |
+| `s_Magic` | 48.0 s | 34.9 s | +13.1 s |
+| `s_StTimer` | **never fires** | 42.7 s | **MISSING** |
+
+**★★ THE FIRST CUE IS 12.4 s LATE AND EVERY LATER ONE INHERITS THE OFFSET.** Not four errors — one, carried
+forward. That is exactly the shape of his report: *"the beginning is just wrong"* is 12.6 s of silence;
+*"his entry music is wrong"* is 10.5 s late; *"way too late"* is 13.1 s late.
+
+**★★★ AND THE FIRST INSTRUMENT WAS BROKEN.** It read-tapped the entry table's `msys_play` slot on the theory
+that a `jsr` there shows up as a read. It reported **198 cues, all at one frame, all inside the INTRO** —
+opcode fetches, not calls. ★ *It announced itself by being absurd, which is worth more than a subtly wrong
+number.* The correction was to **tap STATE, not control flow**: one write, once per call, carrying the id,
+and it cannot fire on anything else.
+
+**WHERE THE 12.4 s GOES — nine track reads before beat 0 ticks:**
+
+```
++0.00s  READ track 11 -> $6A00      +6.11s  READ track 16 -> $F200
++1.30s  READ track 12 -> $D200      +7.31s  READ track 20 -> $FE00
++2.50s  READ track 13 -> $E000      +8.71s  READ track 21 -> $F200
++3.70s  READ track 14 -> $F200     +10.11s  READ track 29 -> $FE00
++4.91s  READ track 15 -> $FE00     +12.57s  ★ CUE s_Princess
+```
+
+**The oracle has no such gap** — it batch-loaded its stage before `PlayCut0`, so the scene animates and plays
+immediately. **The port loads the scene's assets AT the scene's start.**
+
+#### 3H — Jay chose to move the loading earlier; here is what that actually costs
+
+Offered four options; he chose **B, move the scene's asset loading into the intro's opening batch.**
+Measuring it first turned "expensive" into a specification:
+
+| reads | destination | during the intro | movable |
+|---|---|---|---|
+| tracks 11-16, 20-21 — the cel pages | GIME bank `$0C-$0F` | **not used by the framebuffers** (§2K: they are `$10`/`$14`, aliasing to `$00`/`$08`) | **YES — ~8.7 s** |
+| track 29 — `princess_room.lz` | draw window `$FE00` | **the intro's own screens live there** | **NO** |
+
+**So B recovers ~8.7 s of the 12.4, leaving ~3.7 s.**
+
+**★★ AND IT HAS ONE COST THAT ONLY APPEARED ON MEASUREMENT.** The intro caches the splash in that same bank
+[`intro_seq.s:1089`, `bank_valid`]. Loading cel pages at start-up destroys the cache immediately, so the
+splash re-read beat 6 already performs would be needed earlier too — **one extra track read, for 8.7 s.**
+
+**★ AND THE WORK IS NOT "MOVE A CALL".** The page-fill code lives in `cutscene_room.s`, which is read to
+`$2500` and **does not exist yet** when the intro's opening batch runs. B is therefore either reading the
+scene program earlier and calling a fill entry through its table, or lifting the fill into `intro_seq.s`.
+**Both touch the MMU.**
+
+**NOT IMPLEMENTED IN THIS DISPATCH, AND THE REASON IS STATED RATHER THAN IMPLIED:** this is a bank/MMU change,
+which is where this project's most expensive bugs have lived — P3.10's block `$18` was *"fine on 512 KB and
+fatal on 128 KB"* — and **three of my inference-driven changes this session were wrong**, each caught only by
+measuring afterwards (§3G's first instrument, P4.21's `$FF92` read-back, P4.22's TINS hypothesis). Starting an
+MMU change at the end of a long session and verifying it with a suite pass is the P3.10 shape. **Recommended
+to Jay as the next dispatch's first item, with `cue_times.lua` already in the tree so its first act can be to
+watch the 12.6 s drop.**
+
 ### 4 — Verification (AC-by-AC)
 
 - **AC1 all twelve songs wired, from the PLAN's own mapping** — **★ NOT AS WRITTEN, AND THE PLAN IS WHY.**
@@ -244,8 +317,10 @@ asked for.
 
 **25.2 bundled-artifact grep:** N/A — no sibling-import artifact.
 
-**25.3 operator-runtime-smoke:** **★★★ PASSED — Jay, live-disk, RGB, 128 KB, sound on, cold boot, WITH THE
-ORACLE RUNNING ALONGSIDE.** His words, verbatim:
+**25.3 operator-runtime-smoke — TWO SEPARATE GATES, RULED SEPARATELY.**
+
+**THE INTRO: ★★★ PASSED — Jay, live-disk, RGB, 128 KB, sound on, cold boot, WITH THE ORACLE RUNNING
+ALONGSIDE.** His words, verbatim:
 
 > ***"everything looks and sounds pretty good between the oracle and the port."***
 
@@ -254,6 +329,15 @@ not as a failed attempt. The second, after the fix, is the ruling. **Launch path
 sound on, throttled (`run_introseq_live.sh`), 175 s — past the cutscene at 132.6 s and the intro's completion
 at 169.1 s. The oracle ran alongside (`run_oracle_live.sh`, `apple2e` + `cffa202`, 137 s), so the comparison
 was against the thing being ported.
+
+**THE CUTSCENE: ★★★ FAILED.** Added after the intro's gate passed, on Jay's instruction, and ruled
+separately:
+
+> ***"the sound for the beginning of the cutscene is just wrong. his entry music is wring. the hourgalss
+> appearance sound decent, but it way to late in the sequence"***
+
+**Attributed (§3G) and NOT fixed** — the cause is a scene-startup load order and the fix is a memory-map
+change (§3H). ★ **The intro's pass does not carry to the cutscene and is not claimed to.**
 
 ### 6 — Reactive deviations and route accounting
 
@@ -276,11 +360,16 @@ dispatch's scope** — nor §4's retirements, which are gated on a pass that has
   in it from P3.52, with a CORRECT source citation attached to the WRONG row, and nothing caught it because
   until P4.21 no beat made a sound. **The other four rows are cited the same way and have the same standing.**
   Jay has now heard beats 1-6 in sequence once, with one fault found; **that is the only check they have had.**
-- **★★ THE CUTSCENE'S 32-FRAME LENGTHENING IS UNRULED** (§3F). It is the first drift this project has
-  introduced into the scene, and the run Jay saw it in lasted 127 s — **which ends INSIDE the cutscene**, so
-  he heard `s_Princess` and probably `s_Vizier` but likely not `s_Buildup`, `s_Magic`, or the return.
-- **★ `s_Squeek` and `s_StTimer` have no beat in the port's scene** (§3F) and are therefore unreachable —
-  not a defect, but the scene is four-sixths of the oracle's cue list.
+- **★★★ THE CUTSCENE'S GATE FAILED** (§3G) and the cause is attributed but NOT fixed. The intro's gate
+  (§4 AC3) stands on its own — the two were run and ruled separately.
+- **★★ TWO NUMBERS I REPORTED WRONG, BOTH CORRECTED HERE.** ★ The scene is **57.6 s** (frames 4523-7977),
+  not the ~23 s I assumed when calling §3F's +32-frame drift "2.3%" — **it is 0.9%**. ★ And §3F said the
+  cutscene work was a "small step"; it was, but the cue TIMING it exposed is not.
+- **★ `s_Squeek` and `s_StTimer` have no beat in the port's scene** and are therefore unreachable. `s_Squeek`
+  belongs between the princess turning and the vizier approaching — **the port has a silent 5-play hold at
+  exactly that position** (`("-", "", 5)`, beat 3), so adding it is a one-row PLAN change. `s_StTimer` falls
+  after the scene's current end. **Neither is a defect; the scene is four-sixths of the oracle's cue list.**
+- **★ THE +32-FRAME SCENE DRIFT IS STILL UNRULED** and now measured against the right denominator (0.9%).
 - **★ THE COST TABLE IN §3D PRE-DATES §3B's SWAP.** The per-beat figures are correct for the beats as they
   then stood; `s_Sumup` has since moved from a 720-frame window to a 1,767-frame one, so its per-frame cost
   will be lower and its total higher. **Not re-measured** — the worst case (11.78%, beat 2) is unaffected.
@@ -291,8 +380,10 @@ dispatch's scope** — nor §4's retirements, which are gated on a pass that has
 
 ### 8 — Follow-up candidates
 
-- **★★★ A CALL SITE FOR THE CUTSCENE'S SIX SONGS** (§3A). The scene's beat schedule already has the notion of
-  a "song hold" as a duration; what it lacks is a trigger. **This is a design step, not a widening.**
+- **★★★ MOVE THE CEL-PAGE READS INTO THE INTRO'S OPENING BATCH** (§3H) — Jay's choice B, now specified:
+  eight of nine reads, ~8.7 s recovered, one extra splash read as the cost, and the page-fill code has to
+  reach the intro somehow. **The next dispatch's first item.**
+- **★★ ADD `s_Squeek` TO THE PLAN** — a one-row change at beat 3's existing silent hold (§7).
 - **★★ THE RETIREMENT LIST, held until the gate passes** — so it is not lost: the capture song files
   (`song_a.s`, `song_b.s`, `song_princess.s`), `pack_song.py`'s latency/pulse-overhead constants, `SP_DITHER`
   and table B, `song_probe.s`'s table walk, the `$6C00` and `$7268` buffer arrangements, the peel-silent
