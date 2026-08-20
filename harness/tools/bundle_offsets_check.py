@@ -41,7 +41,11 @@ PAIRS = {"BLIT_TAB": "blit_tab", "CHARS_TAB": "chars_tab",
 # assemble, link, boot or run.
 #
 #   (start symbol, end symbol, bytes per row, how many rows)
-STRIDES = [("cel_plan", "cel_plan_end", 6, lambda m: len(m["schedule"]) + 1),
+# ★ cel_plan's row grew to 7 at P4.23 when the SONG column was added — plays, block,
+#   sig(2), read, scenery, song. This number and bake_scene.py's PLAN_STRIDE and
+#   char_draw.s's PLAN_STRIDE are three copies of one fact; the check exists precisely
+#   because they can disagree, and it caught this change on the build that made it.
+STRIDES = [("cel_plan", "cel_plan_end", 7, lambda m: len(m["schedule"]) + 1),
            ("cel_page_tab", "cel_page_tab_end", 2, lambda m: len(m["pages"]))]
 
 

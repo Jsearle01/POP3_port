@@ -187,6 +187,12 @@ FLAME_BASE      equ     $3000
 * the flames link: it reads these `equ`s out of this file, reads blit_tab/chars_tab out of
 * build/obj/flames.map, and FAILS THE BUILD if they disagree. A clean link and a good boot
 * were never the check — both passed while these were wrong.
+* ★★ THE MUSIC PLAYER, reached at fixed offsets exactly as the bundle's own entry points
+* are. Read to $0A00 by intro_seq.s at start-up; nothing in the scene's map touches that
+* region (scene program $2500, bundle $3000, SAVE_BUF $5400, peels $6C00).
+MSYS_BASE       equ     $0A00
+msys_stop       equ     MSYS_BASE+6
+
 BLIT_TAB        equ     FLAME_BASE+40           ; blit_cel / blit_save / blit_erase
 CHARS_TAB       equ     FLAME_BASE+46           ; chars_frame (piece D), +2 = chars_due
 CELS_TAB        equ     FLAME_BASE+50           ; cel_load_startup, +2 = cel_service_read
@@ -646,6 +652,15 @@ rl_fwrap
 *                wants the same; left as they are.
 * ---------------------------------------------------------------
 room_return
+* ★★★ THE SONG DIES WITH THE SCENE (P4.23). The scene's beats START songs and never stop
+* them -- a song outlives its own beat by design -- so this is the only place that knows
+* the scene is over. A scene returning with a live FIRQ hands the intro an interrupt it
+* does not know about, and the intro's next beat would then be sharing the GIME's timer
+* with a song nobody is listening to.
+* ★ Idempotent and safe when no song ever played, which is why it is unconditional. It is
+* also correct on the STANDALONE path below: room_dead holds forever, and holding with the
+* speaker live is worse than holding silent.
+                jsr     msys_stop
                 lda     rs_called
                 beq     room_dead               ; standalone: nothing to return to, hold
 * THE MODE, BACK TO THE INTRO'S. set_mode clears both buffers and re-maps the window, so it

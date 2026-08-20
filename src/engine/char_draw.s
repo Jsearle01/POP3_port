@@ -1756,7 +1756,18 @@ vm_scenery      fcb     0               ; byte 5 of the beat row — the hourgla
 * The PHASES are why there are two bakes and not one: 38*4 = 152 and the glass wants
 * 153, so its stream is built --phase 1 and is 7 bytes wide where the source is 6. The
 * flow lands byte-aligned and stays 2. build.bat is the authority on both.
-PLAN_STRIDE     equ     6               ; plays, block, sig(2), read, scenery
+PLAN_STRIDE     equ     7               ; plays, block, sig(2), read, scenery, song
+
+* ★★★ THE CUTSCENE'S SONGS, SINCE P4.23. Until then the scene had NO WAY TO PLAY ONE: the
+* PLAN carried `("song", "s_Princess", 761)` rows and cel_plan.s printed the name in a
+* COMMENT, so the schedule knew which beat was a cue and nothing could act on it.
+* ★★ THE PLAYER IS REACHED THROUGH ITS ENTRY TABLE, at fixed offsets, exactly as this
+* bundle's own entry points are reached from cutscene_room.s. It is read to $0A00 by
+* intro_seq.s at start-up and nothing in the scene's map touches that region — the scene
+* program is at $2500, this bundle at $3000, SAVE_BUF at $5400, the peels at $6C00.
+MSYS_BASE       equ     $0A00
+msys_play       equ     MSYS_BASE+3     ; A = song id
+msys_stop       equ     MSYS_BASE+6
 SC_GLASS0       equ     $01
 SC_FLOW         equ     $02
 SC_GLASS1       equ     $04
@@ -2194,6 +2205,20 @@ vb_apply
                 std     cel_pg_sig
                 lda     5,u                     ; the scenery this beat shows (P3.85)
                 sta     vm_scenery
+* ★★★ AND THE SONG, IF THIS BEAT STARTS ONE (P4.23). Byte 6 is the oracle's own song id or
+* 0, put there by bake_scene.py from the SAME PLAN row that decided the beat's length — so
+* a cue cannot drift from the beat it belongs to.
+* ★★ START ONLY, NEVER STOP. A song outlives its own beat by design: the PLAN converts its
+* traced duration into a hold, but the following beats keep animating over it, which is
+* what the oracle does — `PlaySongI` blocks the oracle's foreground while the port's FIRQ
+* plays underneath. Stopping on a 0 here would cut every song after one beat.
+* ★ The tear-down is the scene's exit, which is the only place that knows the scene is
+* over. A scene that returned with a live FIRQ would hand the intro an interrupt it does
+* not know about.
+                lda     6,u
+                beq     vb_nosong
+                jsr     msys_play               ; returns at once; the FIRQ does the rest
+vb_nosong
                 lda     4,u
                 beq     vb_norq
                 sta     cel_rd_req              ; a page arrives during this beat
