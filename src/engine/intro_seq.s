@@ -158,15 +158,15 @@ msys_stop       equ     MSYS_BASE+6
 msys_playing    equ     MSYS_BASE+9
 MSYS_SIG        equ     $7E             ; the entry table opens with a JMP
 
-* ★ P4.21 WIRES ONE SONG, DELIBERATELY. Jay: "let's just wire in the first and verify I
-* hear and see it, and then we'll have the formula for the rest." Every other beat's
-* BEAT_SONG is left to play silence until this path is gated, so a fault in the wiring
-* shows up in ONE place rather than five. Widening it is deleting the comparison below.
-* ★ Overridable so a dispatch can BISECT: -DMSYS_WIRED_SONG=6 reads and inits the player
-*   but matches no beat, which separates "the read/init broke it" from "playback broke it".
-                ifndef  MSYS_WIRED_SONG
-MSYS_WIRED_SONG equ     S_PRESENTS
-                endc
+* ★★ THE INTRO CARRIES FIVE SONGS, NOT TWELVE — read off the beat table below, which is
+* the PLAN and the only home for the mapping:
+*     beat 1 s_Presents   beat 2 s_Byline   beat 3 s_Title
+*     beat 4 s_Prolog     beat 5 BEAT_SONG 0 (the PrincessScene gap)   beat 6 s_Sumup
+* ★★★ THE OTHER SIX (ids 7-12) ARE THE CUTSCENE'S AND HAVE NO CALL SITE ANYWHERE. The
+* player holds them and its entry table resolves them, but neither cutscene_room.s nor
+* char_draw.s's beat schedule ever plays one: "song hold" in those files names a DURATION
+* the disk reads are scheduled inside, not a song trigger. Wiring them is a mechanism that
+* does not exist yet, not a widening of this one.
 
 * --- runtime RAM, all of it ABOVE the LOADM image on purpose. DECB's DBUF0
 * --- ($0600), DBUF1 ($0700), FAT ($0800) and FCBs ($094A) sit under $0A00, and
@@ -952,11 +952,23 @@ bk_block_end
 * ★ `msys_stop` RUNS ON EVERY PATH, including the silent one and including a beat whose
 * song was never started. It is idempotent, and a hold that returned with a live FIRQ
 * would hand the next beat an interrupt it does not know about.
+* ★★★ ALL FIVE OF THE INTRO'S SONGS, SINCE P4.23. The scaffolding comparison that held
+* this to `s_Presents` alone is gone — it existed so that P4.21's two defects would surface
+* in ONE place rather than five, and both did: the shared-latch hang and the x7 rest
+* multiplier. Neither is per-song, so neither can come back one song at a time.
+* ★★ NOTE WHAT DID NOT CHANGE: no new mechanism, no per-song data, no second call site.
+* The player already carries all thirteen songs and its entry table resolves the id, so
+* widening this was DELETING two instructions.
 play_song
                 tsta
                 beq     ps_hold         ; A = 0 — a designed pause, not a song
-                cmpa    #MSYS_WIRED_SONG
-                bne     ps_hold         ; not wired yet (P4.21 proves one path first)
+* ★ -DMSYS_SILENT builds the CONTROL for the cost measurement: every beat runs its exact
+*   code path with no song. It is the only way to attribute spins to the music rather than
+*   to whatever else differs between two beats (P4.21 measured beat 1 against beat 5 and
+*   got a meaningless 30%).
+                ifdef   MSYS_SILENT
+                bra     ps_hold
+                endc
                 pshs    x
                 jsr     msys_play       ; returns at once; the FIRQ does the rest
                 puls    x
