@@ -64,12 +64,12 @@ cel_plan
                 fcb     13,$0E
                 fdb     $A64D
                 fcb     0,0,0           ; beat 14 Pback        plays 13  
-                fcb     5,$0E
+                fcb     5,$0F
+                fdb     $A75E
+                fcb     0,9,11           ; beat 15 s_Magic      plays 5     glass0  flash
+                fcb     16,$0F
                 fdb     $0000
-                fcb     0,9,0           ; beat 15 (hold)       plays 5     pinned-only  glass0  flash
-                fcb     16,$0E
-                fdb     $0000
-                fcb     0,3,11           ; beat 16 s_Magic      plays 16    pinned-only  glass0  flow
+                fcb     0,3,0           ; beat 16 (hold)       plays 16    pinned-only  glass0  flow
                 fcb     17,$0F
                 fdb     $A75E
                 fcb     0,6,0           ; beat 17 Vexit        plays 17    glass1  flow
@@ -80,8 +80,8 @@ cel_plan
                 fdb     $A86F
                 fcb     0,6,0           ; beat 19 Pslump       plays 28    glass1  flow
                 fcb     51,$0D
-                fdb     $A86F
-                fcb     0,6,12           ; beat 20 s_StTimer    plays 51    glass1  flow
+                fdb     $0000
+                fcb     0,6,12           ; beat 20 s_StTimer    plays 51    pinned-only  glass1  flow
                 fcb     0,$0D
                 fdb     $0000
                 fcb     0,6,0           ; beat 21 Vstand       plays 0     pinned-only  glass1  flow

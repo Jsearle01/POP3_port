@@ -316,13 +316,39 @@ PLAN = [("p", "Pstand", 2),       # play 2 [SUBS.S:665-668]
         #   running through them. Landing Vraise alone would flick to a pose the scene
         #   then cannot continue from, which is why these two are one edit and not two.
         ("p", "Pback", 13),       # she backs away; his arms finish rising underneath
-        ("-", "", 5),             # play 5 — the hourglass beat: the glass appears, the
-        #                           flash runs, SPEED goes to 12. TRACED P3.85: 41 frames
-        #                           for these five plays, and `lightning` steps 5→0 once
-        #                           per play at 8-frame spacing, so the flash is FIVE
-        #                           STEPS, one level each — not the five raw frames the
-        #                           `lda #5 / sta lightning` reads like.
-        ("song", "s_Magic", 113),      # TRACED P3.85 — see below
+        # ★★★ THE CUE MOVES ONTO THE GLASS'S OWN BEAT — A DELIBERATE DIVERGENCE (P4.34).
+        #
+        # MEASURED on the port before changing anything [glass_vs_cue.lua]:
+        #     +39.90 s  GLASS0+FLASH   the glass appears
+        #     +40.64 s  GLASS0+FLOW    the sand starts
+        #     +40.64 s  CUE id 11      s_Magic — the SAME FRAME as the sand
+        # so the sound landed with the SAND, 0.73 s after the glass. That is faithful: the
+        # oracle's `sta psandcount` and its `jsr PlaySongI` are adjacent instructions
+        # [SUBS.S:715-745], with `addglass1` a whole play earlier.
+        #
+        # ★★ JAY, HAVING HEARD BOTH: "yes it sounds late in the orcle too, i think that
+        # beacuse if the limtation of the apple ii. I'd like to try and sync the landing of
+        # the hourglass with tis sound." §2I is explicit that the oracle's mechanism is
+        # evidence rather than a requirement, and §2.1 makes his ear the authority — so this
+        # is recorded as a decision, not argued as a deviation.
+        #
+        # ★ EVERY PLAY COUNT IS PRESERVED; ONLY WHICH ROW CARRIES THE SONG MOVES. A "song"
+        # row's number is FRAMES (÷ SONG_FPS 7 by to_walk); a "-" row's is PLAYS. So the
+        # five-play glass beat becomes `("song", …, 35)` = round(35/7) = 5 plays, and the
+        # sixteen-play sand beat becomes `("-", "", 16)` = the same 16 plays the 113 frames
+        # converted to. 21 plays before and after, so the scene's length does not move —
+        # the cue simply fires five plays earlier, on the frame the glass arrives.
+        #
+        # THE FLAGS STAY ON THEIR OWN BEATS: glass+flash on the first, sand on the second.
+        # Only SCENERY's NAME assertions swap, because the row types did.
+        ("song", "s_Magic", 35),  # 5 plays — the hourglass beat: the glass appears, the
+        #                           flash runs, SPEED goes to 12, AND the cue fires.
+        #                           TRACED P3.85: 41 frames for these five plays, and
+        #                           `lightning` steps 5→0 once per play at 8-frame spacing,
+        #                           so the flash is FIVE STEPS, one level each — not the
+        #                           five raw frames the `lda #5 / sta lightning` reads like.
+        ("-", "", 16),            # the sand's own beat: 16 plays, which is what s_Magic's
+        #                           TRACED 113 frames converted to at SONG_FPS. P3.85.
         ("v", "Vexit", 17),       # he turns and walks out; Vexit ends `goto Vwalk2`
         ("-", "", 12),            # play 12
         ("p", "Pslump", 28),      # she slumps against the wall
@@ -395,8 +421,11 @@ SC_FLASH  = 0x08           # `lda #5 / sta lightning` — five steps, one level 
 # was two. The names are the guard: if a key is wrong the assertion below names the beat it
 # actually found, which is how this edit is checkable rather than trusted.
 SCENERY = {
-    15: ("(hold)",  SC_GLASS0 | SC_FLASH),   # the glass appears, with the flash over it
-    16: ("s_Magic", SC_GLASS0 | SC_FLOW),    # ...and the sand runs through the cue
+    # ★ THE NAMES SWAPPED AT P4.34, NOT THE FLAGS. The cue moved onto the glass's own beat,
+    # so beat 15 is now the song row and 16 the plain hold; the hourglass still appears with
+    # the flash on 15 and the sand still starts on 16.
+    15: ("s_Magic", SC_GLASS0 | SC_FLASH),   # the glass appears, flash over it, AND the cue
+    16: ("(hold)",  SC_GLASS0 | SC_FLOW),    # ...and the sand starts, five plays later
     17: ("Vexit",   SC_GLASS1 | SC_FLOW),    # addglass1 X=1 [SUBS.S:745]
     18: ("(hold)",  SC_GLASS1 | SC_FLOW),
     19: ("Pslump",  SC_GLASS1 | SC_FLOW),
