@@ -219,6 +219,13 @@ SCENE_BASE      equ     $2500
                 ifndef  SCENE_CALL_OFF
 SCENE_CALL_OFF  equ     11
                 endc
+* ★ THE FETCH-ONLY ENTRY (P4.25b). cutscene_room.s asserts this offset against its own
+* label at build time — the two units never link together, so the shared number is checked
+* rather than trusted. See run_scene and sq_pre below.
+                ifndef  SCENE_PRELOAD_OFF
+SCENE_PRELOAD_OFF equ   14
+                endc
+SCENE_SIG       equ     $7E             ; SCENE_BASE opens `jmp room_start`, like MSYS_SIG
 SAVE_MAX        equ     6144            ; the TITLE patch is 5,361 pixel bytes --
 *                                       ; 7x the captions', and this buffer has to
 *                                       ; hold the largest of them, not the last.
@@ -519,10 +526,38 @@ sq_beat
 * front-to-back copy through the spare MMU slots would be faster, and is the
 * obvious move if this ever happens in front of the player. It does not: both
 * reads finish before the first beat is visible.
+* -- ★★★ THE SCENE'S ASSETS, FETCHED AT THE TOP OF THE BEAT BEFORE IT (P4.25b) ------
+* The scene runs at the END of this beat. Everything it used to read at its own start is
+* read HERE instead, in the same stall beat 4's own picture read already occupies, against
+* beat 3's cleared title screen and before beat 4's music begins.
+*
+* WHY THIS BEAT AND NOT EARLIER: beat 3 was the last user of the captions at $3000, and the
+* scene's fetch expands its bundle straight over them. Before beat 3's repair, both this
+* read (which overruns $2500..$36FF — a whole track for a 1,196-byte program) and the
+* expand would destroy a caption the intro still has to show. After it, nothing needs them
+* until beat 6, which gets a fresh copy from run_scene's post-scene reload.
+*
+* NEITHER FAILURE IS CHECKED HERE, AND THAT IS DELIBERATE. run_scene tests SCENE_BASE for
+* its `jmp` before calling, and the scene's own room_start re-reads its assets when the
+* fetch left no receipt. Both degrade to exactly the pre-P4.25b behaviour, so an error path
+* here would add bytes to a routine with 25 of them to buy nothing.
+                lda     probe_beat
+                cmpa    #SCENE_AFTER_BEAT
+                bne     sq_pre_done
+                ldx     #SCENE_BASE
+                lda     #DISK_SCENE_TRK
+                ldb     #SECS_PER_TRACK
+                jsr     load_tracks
+                bne     sq_pre_done     ; no program -> no fetch; run_scene will decline
+                jsr     SCENE_BASE+SCENE_PRELOAD_OFF
+sq_pre_done
+
                 lda     beat_track
                 beq     sq_nobase
                 jsr     load_screen
-                bne     seq_disk_fail
+                lbne    seq_disk_fail   ; LONG: the beat-4 fetch above pushed this past
+*                                       ;   8-bit range, the same way the sweep pushed the
+*                                       ;   second-base branch at P3.9
                 lda     beat_wipe
                 beq     sq_flip_in
 * The picture SWEEPS in, the way DblExpand does. wipe_in consumes the pre-hold and
@@ -669,12 +704,23 @@ sq_pal          lda     ,x+
 * intro reaches this point exactly once, so caching it would be state to get wrong for no
 * gain.
 * ---------------------------------------------------------------
+* ★★★ THE READ THAT USED TO OPEN THIS ROUTINE IS GONE — IT HAPPENS AT THE TOP OF BEAT 4
+* NOW (P4.25b), together with the scene's own two asset reads. Jay, on P4.25's build:
+* *"still too late"*. He was right against a number that said +2.4 s, because the number
+* started inside the stall: the interval he sits through is the SCENE PROGRAM read, then
+* the FLAME BUNDLE read, then the ROOM BLOB read, and `cue_times.lua` only opens its window
+* at the second of those. Measured end to end it was 6.4 s of static prolog1 with the music
+* already finished. All three reads moved; what is left here is the call.
+*
+* ★★ AND THE CHECK IS THE IMAGE'S OWN FIRST BYTE, NOT A FLAG THE READ SET. `SCENE_BASE`
+* opens with `jmp room_start`, so a $7E there means a scene program arrived — the same test
+* the opening batch already makes on the music player (`cmpa #MSYS_SIG`). A failed read
+* therefore still leaves the intro running rather than calling into whatever is at $2500,
+* which is what the old `bne rs_out` bought and this keeps without a byte of state.
 run_scene
-                ldx     #SCENE_BASE
-                lda     #DISK_SCENE_TRK
-                ldb     #SECS_PER_TRACK
-                jsr     load_tracks
-                bne     rs_out          ; a failed read leaves the intro running
+                lda     SCENE_BASE
+                cmpa    #SCENE_SIG
+                bne     rs_out          ; no scene program — leave the intro running
                 jsr     SCENE_BASE+SCENE_CALL_OFF
 * ---------------------------------------------------------------
 * ★★★ THERE IS NO SPLASH CACHE TO INVALIDATE ANY MORE, AND THE REASON IS THE OLD ONE.

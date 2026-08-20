@@ -252,7 +252,63 @@ SCENE_CALL_OFF  equ     11
                 fail    "room_call moved: intro_seq.s's SCENE_CALL_OFF no longer points at it"
                 endc
 
+* ---------------------------------------------------------------
+* ★★★ room_preload — THE SCENE'S ASSETS, FETCHED BEFORE THE SCENE (P4.25b).
+*
+* Jay, on P4.25's build: ***"still too late"*** — and he was right against a measurement that
+* said +2.4 s, because that measurement started INSIDE the stall. The trace:
+*
+*     frame 5120  -3.84s  track 24 -> $2500   the SCENE PROGRAM    1.9 s
+*     frame 5237  -1.89s  track 30 -> $5800   the FLAME BUNDLE     1.9 s
+*     frame 5350  +0.00s  track 29 -> $5800   the ROOM BLOB        1.8 s
+*     frame 5504  +2.57s  ★ CUE s_Princess          unpack+mirror ~0.8 s
+*
+* `cue_times.lua` opens its window on `cel_scene_done`, which THIS FILE clears inside
+* `cel_load_startup` — two reads late. The interval the viewer actually sits through is
+* frames 5120..5504: **6.4 s** of static prolog1 with the music finished.
+*
+* SO THE LAST TWO READS MOVE, and this entry is how. The intro calls it at the TOP of beat
+* 4, where beat 4's own picture read already stalls against beat 3's cleared title screen,
+* and where three things are simultaneously true for the first time:
+*
+*   * THE CAPTIONS ARE DEAD. beat 3 was the last to patch one, and beat 6's copy comes from
+*     run_scene's post-scene reload — the intro re-reads them anyway. So bundle_expand may
+*     write $3000..$4883 here rather than at scene start. (beat_patch_check.py asserts
+*     beats 4 and 5 carry no patch; that assertion is now load-bearing for this, too.)
+*   * SAVE_BUF IS FREE. $5400..$68F1 held the TITLE patch's 5,361 B until beat 3's repair
+*     finished; nothing writes it again before the scene. That is what lets ROOM_BLOB sit at
+*     $5800 from here until the scene unpacks it.
+*   * $5800 CAN BE USED TWICE. The packed bundle lands there, expands to $3000, and the blob
+*     then lands on the space it vacated — which is the SAME two-step room_start has always
+*     done, simply performed earlier.
+*
+* ★★ IT TAKES NO ARGUMENTS AND CHECKS NOTHING BACK, BY DESIGN. A failure here leaves
+* rs_pre_ok unset and room_start does the reads itself exactly as it always did. The
+* degradation is the old behaviour, so the caller needs no error path and this needs no
+* contract beyond "try".
+*
+* ★ IT MUST NOT TOUCH THE STACK OR THE MACHINE. Unlike room_call this is not an entry into
+* the scene — it is a fetch on the intro's behalf, run between two of the intro's beats. The
+* HAL is up, disk_read_init has run, and the caller is mid-beat: sys/gfx/time init all
+* belong to room_common and none of them may happen here.
+* ---------------------------------------------------------------
+room_preload    jmp     room_preloaded  ; +E   fetch-only entry — see above
+                ifndef  SCENE_PRELOAD_OFF
+SCENE_PRELOAD_OFF equ   14
+                endc
+                ifne    room_preload-room_entry-SCENE_PRELOAD_OFF
+                fail    "room_preload moved: intro_seq.s's SCENE_PRELOAD_OFF no longer points at it"
+                endc
+
 ROOM_MAGIC      equ     $4B00
+* ★★ THE RECEIPT LIVES IN THIS IMAGE, NOT IN THE CONSTANT PAGE, AND THAT IS THE WHOLE
+* SAFETY ARGUMENT. cel_load_startup's comment records what $FE02+ costs: those bytes are
+* ordinary power-on RAM that no image initialises, which is why four of them have to be
+* cleared by hand. `rs_pre_ok` is an `fcb` inside the scene program — and the scene program
+* is READ FROM DISK before anything calls this — so it is guaranteed zero at the moment the
+* question is first asked. A sixteen-bit magic rather than a flag for the same reason the
+* cel guard uses one: the answer must be wrong 1-in-65536 times, not 1-in-2.
+ROOM_PRE_MAGIC  equ     $5B08
 
 
 * room_called — entered by `jsr` from the intro. Keeps the caller's stack and remembers it,
@@ -332,22 +388,38 @@ room_common
 * now lives by the time the blob is read. FLAME_LOAD is free the instant bundle_expand has
 * run — it is where the PACKED bundle sat — and the slow path's second unpack reads it
 * from there too.
+* ★★★ ...UNLESS BEAT 4 ALREADY DID IT (P4.25b). room_preload above performs exactly the
+* three steps below — flame read, expand, blob read — at the top of beat 4, and leaves
+* ROOM_PRE_MAGIC in rs_pre_ok when all of it landed. Both tests read the SAME receipt, so
+* the two halves cannot disagree; the cel pages sit between them because room_load_cels
+* still has to run (it owns the scene's state, and P4.25 split its reads out for the same
+* reason this splits these).
+                ldd     rs_pre_ok
+                cmpd    #ROOM_PRE_MAGIC
+                beq     rs_have_bundle
                 ldx     #FLAME_LOAD
                 lda     #DISK_FLAME_TRK
                 ldb     #DISK_FLAME_SEC
                 jsr     load_tracks
                 lbne    room_failed
                 jsr     bundle_expand           ; the bundle is live from here on
+rs_have_bundle
 
 * THE CEL PAGES — eight tracks, and every one of them against a black screen.
+* ★ Since P4.25 those eight are read in the intro's opening batch and this call finds them
+* already resident; what it still does unconditionally is initialise the scene's state.
                 jsr     room_load_cels
 
 * THE ROOM PICTURE, read LAST and into the space the packed bundle has just vacated.
+                ldd     rs_pre_ok
+                cmpd    #ROOM_PRE_MAGIC
+                beq     rs_have_blob
                 ldx     #ROOM_BLOB
                 lda     #DISK_ROOM_TRK
                 ldb     #DISK_ROOM_SEC
                 jsr     load_tracks
                 lbne    room_failed
+rs_have_blob
 
 * THE CEL IMAGE, AND IT BELONGS HERE WITH THE OTHER TWO — MOVED UP AT P3.72f.
 *
@@ -1121,6 +1193,33 @@ bundle_expand
 * reads exactly like a disk problem and is not one. A routine defined immediately below
 * its own caller is a fall-through waiting for the first path that does not branch away.
 * ---------------------------------------------------------------
+* ---------------------------------------------------------------
+* room_preloaded — the body of the room_preload entry. See that entry for the argument.
+*
+* Fetch only: the flame bundle, its expand, and the room blob. No stack, no machine init,
+* no state beyond the receipt. Returns nothing — a failure simply leaves rs_pre_ok clear and
+* room_start does these three steps itself, which is exactly what it did before P4.25b.
+* ---------------------------------------------------------------
+room_preloaded
+                ldx     #FLAME_LOAD
+                lda     #DISK_FLAME_TRK
+                ldb     #DISK_FLAME_SEC
+                jsr     load_tracks
+                bne     rp_out
+                jsr     bundle_expand           ; $5800 is free again from here
+                ldx     #ROOM_BLOB
+                lda     #DISK_ROOM_TRK
+                ldb     #DISK_ROOM_SEC
+                jsr     load_tracks
+                bne     rp_out
+* ★ THE RECEIPT IS WRITTEN LAST AND ONLY ON THE WHOLE JOB. Both of room_start's tests read
+* it, so a partial fetch must read as "no fetch" — otherwise the blob would be skipped on
+* the strength of a bundle that arrived.
+                ldd     #ROOM_PRE_MAGIC
+                std     rs_pre_ok
+rp_out
+                rts
+
 room_load_cels
                 ldy     #load_tracks            ; the bundle has no HAL and no room; the
                 ldu     #disk_read_motor_off    ;   disk arrives as arguments
@@ -1237,6 +1336,10 @@ rl_now          fdb     0               ; the frame count this iteration read
 * thereafter.
 rs_called       fcb     0               ; 1 = entered through room_call
 rs_saved_s      fdb     0               ; the caller's S, captured after its jsr
+* ★ ROOM_PRE_MAGIC once room_preload has fetched the bundle AND the blob. `fdb 0` here and
+* not a constant-page byte: this word is part of the disk image, so the read that puts the
+* scene program at $2500 initialises it — see ROOM_PRE_MAGIC's note at the entry table.
+rs_pre_ok       fdb     0
 
 * ---------------------------------------------------------------
 * Torch data and state

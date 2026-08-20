@@ -613,8 +613,8 @@ if errorlevel 1 goto :error
 if errorlevel 1 goto :error
 "%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\intro_seq.bin INTROSEQ.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
-"%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\cutscene_room.bin ROOM.BIN --ftype=binary --ascii=binary
-if errorlevel 1 goto :error
+REM ROOM.BIN IS PUT LAST OF ALL, AFTER THE RAW TRACKS ARE RESERVED (P4.25b) -- see the
+REM block below the reservations. It is the only file that has ever reached granule 18.
 echo --- Raw intro assets onto whole tracks ---
 REM The screen is NOT a DECB file. disk_read_range reads whole tracks and knows
 REM nothing about directories, and a program at $0200 cannot LOADM past one
@@ -666,6 +666,54 @@ REM exactly its job: free-of-assets and free are different questions, and only o
 REM was asked.
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/scene_prog.raw --track 24 --tracks 1 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
+
+REM ======================================================================
+REM ROOM.BIN, PUT HERE AND NOT WITH THE OTHER FILES (P4.25b)
+REM
+REM THE FILES ARE ALLOCATED FROM GRANULE 0 UPWARD AND THE RAW ASSETS ARE NOT.
+REM PROBE+MODE+ANIM+INTRO+INTROSEQ fill granules 0..17, which is tracks 0..8 -- and the
+REM first raw asset track is 9, which IS granules 18,19. ROOM.BIN is the sixth file and
+REM the first one ever to reach that far: at P4.25b the scene program grew by 55 bytes,
+REM cutscene_room.bin crossed 2,304 into a second granule, and ROOM.BIN landed on 18,19.
+REM
+REM ★ THE RAW WRITE THEN WON, SILENTLY. raw_tracks.py wrote prolog1.lz over track 9 and
+REM reserved it; ROOM.BIN's directory entry still pointed there. `imgtool get ROOM.BIN`
+REM returned 2,102 bytes of packed screen starting 78 00 13 48 -- not even a DECB header --
+REM and nothing in the build said a word. The asset was fine; the FILE was destroyed.
+REM
+REM ★★ SO THE ORDER IS THE FIX, NOT A BIGGER DISK. Reserving first marks those granules
+REM $C9 and DECB's allocator skips them, which is precisely what --reserve is for; it had
+REM simply never been exercised at the boundary because no file had reached it. Putting
+REM ROOM.BIN after the reservations lets it land in the first genuinely free span.
+REM
+REM ★★★ AND IT IS VERIFIED BY READ-BACK, NOT BY THE PUT'S EXIT CODE -- the exit code was 0
+REM for the corrupt one. disk_file_readback_check.py compares every DECB file on the image
+REM against the artefact it came from, and runs below.
+REM
+REM ★★★ AND MOVING THE PUT WAS NOT ENOUGH -- MEASURED, NOT ASSUMED. With ROOM.BIN put
+REM AFTER every reservation, the read-back check still found it on granules 18,19: imgtool's
+REM RS-DOS allocator does NOT skip $C9 entries. raw_tracks.py's header says reserving means
+REM "DECB never allocates over them", and that had never been exercised at the boundary
+REM because no file had ever reached it. It is a claim about DECB, not about imgtool.
+REM
+REM ★★ SO THE FILE SET IS THE PROBLEM, AND IT IS ARITHMETIC RATHER THAN ORDER:
+REM     PROBE 1 + MODE 1 + ANIM 1 + INTRO 13 + INTROSEQ 2 = 18 granules = 0..17 = tracks 0..8
+REM     the first raw asset track is 9, which IS granules 18,19
+REM ROOM.BIN's two granules are the overflow, and WHICH file overflows is arbitrary -- the
+REM SET needs 20 where 18 exist.
+REM
+REM ★ ROOM.BIN IS THE ONE TO DROP, AND JAY ALREADY RULED ON WHY. It boots the STANDALONE
+REM room, whose suites were retired at P3.103 ("walk and room should be deprecated anyway.
+REM they have been gated in the intro sequence"). integ_test.lua's own header records that
+REM the integrated scene is reached by a `jsr` from the intro, NOT by LOADM"ROOM" -- so
+REM nothing that still runs reads this file. P3.103's caution that removing a file "moves
+REM the tracks" does not apply: it was the LAST put, so nothing follows it to move.
+REM
+REM build\cutscene_room.bin IS STILL BUILT and still map-checked; it is simply not placed on
+REM this image. Anyone wanting the standalone room can put it on a scratch disk.
+REM ======================================================================
+REM "%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\cutscene_room.bin ROOM.BIN --ftype=binary --ascii=binary
+
 echo --- The SPLIT cel image: pinned page + rotating pages (P3.78) ---
 REM Two-pass, and driven from content/cutscene/chars/cel_pack.json rather than from a
 REM page count written here. The count is what the packer is allowed to change when the
@@ -704,6 +752,28 @@ REM ======================================================================
 python harness\tools\map_overlap_check.py build/obj/introseq.map build/obj/interp.map build/obj/scene.map build/obj/room.map build/obj/song.map
 if errorlevel 1 (
     echo *** BUILD BLOCKED: linked sections collide or sit below the LOADM floor ***
+    exit /b 1
+)
+
+REM ======================================================================
+REM DISK FILE READ-BACK (P4.25b) -- the check the exit codes could not be
+REM
+REM map_overlap_check above asks whether the LINKED IMAGES collide in the CPU's address
+REM space. This asks the same question one layer down, about the DISK: do the DECB files
+REM and the raw asset tracks collide in GRANULES?
+REM
+REM They did, and nothing noticed. `imgtool put ROOM.BIN` returned 0, the directory listing
+REM showed a plausible size, and raw_tracks.py had already overwritten the granules that
+REM entry pointed at. The file on the shipped image was 2,102 bytes of packed prolog1.
+REM
+REM ★ SO THIS COMPARES BYTES, NOT EXIT CODES, and it runs on every build for the same
+REM reason the HAL-sync check does: a check that has to be remembered enforces nothing.
+REM ======================================================================
+python harness\tools\disk_file_readback_check.py --dsk build/probe.dmk --imgtool "%IMGTOOL%" ^
+    PROBE.BIN=build/loop_probe.bin MODE.BIN=build/mode_probe.bin ANIM.BIN=build/anim_probe.bin ^
+    INTRO.BIN=build/intro_splash.bin INTROSEQ.BIN=build/intro_seq.bin
+if errorlevel 1 (
+    echo *** BUILD BLOCKED: a file on the disk image is not what the build produced ***
     exit /b 1
 )
 

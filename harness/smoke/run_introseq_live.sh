@@ -58,7 +58,14 @@ echo "[run_introseq_live]   splash -> \"Broderbund Software Presents\" -> clear"
 echo "[run_introseq_live]          -> \"A Game by Jordan Mechner\" -> clear"
 echo "[run_introseq_live]          -> \"Prince of Persia\" -> clear"
 echo "[run_introseq_live]          -> prologue 1 -> prologue 2 -> title reprise -> clear, then holds"
-echo "[run_introseq_live] 17.2 s of it is disk (measured); 11.2 s of that is before the first picture."
+# ★ MEASURED, and re-measured at P4.25 rather than carried: the drive-engaged census in
+# build/tmp/suite_introseq.log, reads 1..11 (the batch plus beat 1's splash) against the
+# frame `1_base` is captured on. The old line here said 11.2 s and was two dispatches out of
+# date -- a runner that describes a run it no longer performs teaches its reader to skip it.
+echo "[run_introseq_live] 27.6 s of drive-engaged time before the first picture (measured)."
+echo "[run_introseq_live]   14.0 s of that is the CUTSCENE's eight cel pages, read here since"
+echo "[run_introseq_live]   P4.25 so the cutscene does not stall on them: its first musical cue"
+echo "[run_introseq_live]   went from +12.4 s to +2.4 s. The cost is this longer black boot."
 echo "[run_introseq_live] close the window when you are done."
 
 export P_BIN="$BIN"
