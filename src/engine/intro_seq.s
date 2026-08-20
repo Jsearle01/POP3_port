@@ -1178,7 +1178,20 @@ beat_table
 *                                        ;              here is the PrincessScene
 *                                        ;              cutscene, which is not built
                 fdb     1564             ; BEAT_HOLD    f5753 - f7317
-                fcb     0               ; BEAT_SONG    NO SONG -- the oracle's gap here is the PrincessScene cutscene, not built
+* ★★★ S_SUMUP BELONGS HERE, AND IT WAS ON BEAT 6 UNTIL P4.23. Jay heard it: "something is
+* wrong at prolog 2, there is no music for a long time and then it move to the second
+* title screen and then plays music."
+* ★★ THE ORACLE'S OWN ORDER SETTLES IT [MASTER.S:690-707]:
+*       jsr Prolog1        -> s_Prolog
+*       jsr PrincessScene  -> the cutscene
+*       jsr SetupDHires
+*       jsr Prolog2        -> s_Sumup      <- MASTER.S:882-884, INSIDE Prolog2
+*       jsr SilentTitle    -> nothing      <- and its NAME says so
+* ★ The old comment reasoned that beat 5's gap WAS the unbuilt cutscene, and concluded it
+*   must therefore be silent. The cutscene is a SEPARATE call between Prolog1 and Prolog2;
+*   beat 5 IS Prolog2, and Prolog2 plays. Beat 6's row even cited MASTER.S:882-884 — the
+*   citation was right and the assignment was one beat off.
+                fcb     S_SUMUP         ; BEAT_SONG    its song [MASTER.S:882-884, jmp -- a TAIL CALL, X=250]
 
                 fcb     DISK_SCREEN_TRK ; BEAT_TRACK   RE-ESTABLISH the splash. It is
 *                                       ; not resident anywhere -- P3.4 put the
@@ -1193,7 +1206,10 @@ beat_table
                 fdb     178             ; BEAT_PRE     f7501 - f7317 = 184, less the
 *                                       ; ~6 frames the title patch takes to draw
                 fdb     310             ; BEAT_HOLD    f7811 - f7501
-                fcb     S_SUMUP         ; BEAT_SONG    its song [MASTER.S:882-884, jmp -- a TAIL CALL, X=250]
+* ★★ SILENT, AND THE ORACLE NAMED IT: the routine is `SilentTitle` [MASTER.S:705]. It
+*    carried S_SUMUP until P4.23, which put Prolog2's song one beat late — audible as a
+*    long silence over the prologue and then music over the title reprise.
+                fcb     0               ; BEAT_SONG    NO SONG -- SilentTitle plays nothing
 
                 ifdef   OBJTARGET
                 endsection
