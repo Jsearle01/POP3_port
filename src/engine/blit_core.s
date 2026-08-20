@@ -418,6 +418,40 @@ bc_row_done
                 ldx     bc_clip_hi
                 leax    FB_STRIDE,x
                 stx     bc_clip_hi
+
+* ---------------------------------------------------------------
+* ★★★ THE UNMASK WINDOW (P4.29) — TWO INSTRUCTIONS, ONCE PER ROW.
+*
+* `blit_cel` masks IRQ **and FIRQ** at entry because S becomes the blast destination. That
+* is necessary and stays. What was NOT necessary is holding it for the whole cel: P4.28
+* measured this routine masking for a MEDIAN OF 15.1 ms — 2.5 times the music's note period
+* — across 82.5% of the cutscene's wall clock, and Jay heard the result: "terribly low
+* quality, sounds muffled and indistinct not like the oracle".
+*
+* ★★ S IS ALREADY THE REAL STACK HERE, so this needs no `lds`/`sts` at all. The only two
+* regions where S is a framebuffer pointer are `leas a,x` -> bc_blast_back and
+* `lds #bc_scratch_end` -> bb_clip_back, and BOTH already end with `lds bc_saved_s`
+* immediately — "PUT THE REAL STACK BACK, IMMEDIATELY", the rule P3.78d was caught by.
+* The row-end bookkeeping above walks X. So the window costs SIX CYCLES, not the eighteen a
+* save/restore pair would.
+*
+* ★ AND IT MUST SIT BEFORE `dec bc_rows`, NOT AFTER: these instructions write CC directly,
+* so putting them between the `dec` and its `lbne` would destroy the loop's own Z flag.
+*
+* ★★ THE FIRQ HANDLER IS SAFE TO TAKE HERE, CHECKED RATHER THAN ASSUMED. A 6809 FIRQ stacks
+* only PC and CC, so a handler that clobbered a register would corrupt this loop; msys's
+* pushes `a,b,x,y,u` at entry and restores them before `rti` [msys_player.s:200,237].
+*
+* ★★★ PRECONDITION, STATED BECAUSE IT IS A REAL ONE: `andcc` sets the mask absolutely, so
+* this ENABLES interrupts rather than restoring what the caller had. Every caller reaches
+* here through room_loop, which runs with IRQs on (`andcc #$EF` at scene entry) and the
+* music FIRQ live. A caller that blitted with interrupts deliberately masked would have them
+* turned on under it. There is no such caller today; if one appears, this must become a
+* restore of the caller's CC — which is on the stack at `,s`, pushed by the `pshs cc` at
+* entry — at a cost of 13 cycles instead of 6.
+                andcc   #$AF                    ; the window: IRQ+FIRQ may be taken
+                orcc    #$50                    ; ...and closed again
+
                 dec     bc_rows
                 lbne    bc_row
 
