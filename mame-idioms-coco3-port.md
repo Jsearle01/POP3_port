@@ -1333,6 +1333,46 @@ switches. If an interrupt can see it half-written, mask it.
 *Established:* P2.9, after three disproven theories. Fixed in `gfx.s gfx_map_blocks`;
 karateka unaffected (binary byte-identical, service gated off).
 
+### 22a. The MMU registers `$FFA0-$FFA7` are **READABLE** — so a borrow can save/restore (P4.25)
+
+**A routine that needs the window for a moment does not have to know what was there.** The
+Task-0 bank registers read back the block they hold, so the shape is the ordinary one:
+
+```
+                lda     $FFA6
+                anda    #$3F            ; the top two bits are NOT part of the answer
+                sta     save
+                ...borrow the window...
+                lda     save
+                sta     $FFA6
+```
+
+**Ground truth, not inference:** *"These registers can also be read to determine what
+palettes are set but **like the MMU registers, the upper 2 bits must be masked out**"*
+[`docs/ground-truth/SockmasterGime.md:243`; the same file lists `$FFA0-$FFA7` as the Task-0
+bank registers at line 188]. A block number is six bits, so masking is what turns the read
+into a value; the GIME ignores bits 6-7 on the write back either way.
+
+**WHY IT MATTERS HERE.** `$FFA6/$FFA7` are HAL-private while anything is drawing — `gfx.s`
+says a caller must never learn a buffer address — but `intro_seq.s cel_preload` has to point
+them at the cutscene's cel bank for eight track reads and then hand them back. Reading them
+is what lets it do that **without importing a HAL-private constant.** Verified end to end by
+`harness/tools/preload_fb_diff.lua`, which diffs the whole 32,256-byte draw window across the
+borrow: **0 bytes differ.**
+
+**★ THE OTHER HALF OF THE RULE, WHICH IS NOT SYMMETRIC:** `$FF90-$FF9F` are a different
+story — §20c already records that `$FF92` needs VBORD *armed* before a poll means anything,
+and `SockmasterGime.md:78` says the timer registers are write-only outright. **"GIME
+register" is not one readability class.** Check the register, not the chip.
+
+**★★ AND A SAVE/RESTORE IS NOT ALWAYS THE ANSWER:** `HAL_gfx_swap` ends in
+`gfx_map_blocks`, which rewrites **all four** window registers unconditionally, so anything
+holding a borrowed mapping across a flip loses it — that is P3.68, and it is why
+`cutscene_room.s` wraps the swap in `room_present` rather than re-mapping at each call site.
+Save/restore covers a borrow **between** frames; it does not survive one.
+
+*Established:* P4.25. Tool: `harness/tools/preload_fb_diff.lua`.
+
 ---
 
 ## 23. `LOADM` at `$0200` dies as soon as it needs a SECOND granule (P3.3)

@@ -229,33 +229,62 @@ SAVE_MAX        equ     6144            ; the TITLE patch is 5,361 pixel bytes -
 * --- inside the primitive). CLAUDE.md §2G calls this rule PROVISIONAL, carried
 * --- from karateka; POP is the first project to exercise it for real.
 DSKREG          equ     $FF40           ; FDC control latch (write-only)
-* --- THE SPLASH BANK (P3.11) -------------------------------------
-* The Broderbund splash is wanted four times -- twice at beat 1 and twice again at
-* beat 6, because a caption beat needs its base in BOTH buffers and the prologue
-* pictures take both in between. At 9 s a read that was 36 s of stalling for one
-* picture the machine has plenty of room to keep.
+* --- THE $FFA2 SCRATCH SLOT --------------------------------------
+* ★★★ THIS WAS THE SPLASH BANK (P3.11) UNTIL P4.25, AND THE BANK IS GONE. It cached the
+* Broderbund splash in GIME blocks $3C-$3F so that beat 1's second base copy — a caption
+* beat needs its picture in BOTH buffers — cost 95 ms instead of a 2.6 s re-read.
 *
-* Blocks $3C-$3F are free at BOTH ram sizes, and for the same reason: sys.s boots
-* $FFA0-$FFA7 = $38-$3F, so $3C-$3F IS the CPU's $8000-$FFFF at boot -- and
-* HAL_gfx_set_mode then replaces $FFA4-$FFA7 with the framebuffer, leaving those
-* four blocks referenced by nothing. On 128 KB they alias to $0C-$0F (physical
-* $18000), clear of the CPU map at $08-$0B and both buffers at $00-$07.
+* ★★ IT HAD TO GO BECAUSE ITS BLOCKS ARE THE CUTSCENE'S CEL BANK AT 128 KB, and P4.25
+* moved the cel pages into the opening batch. run_scene's own comment already recorded the
+* aliasing in the other direction ("BANK_BLOCK is $3C ... on a STOCK 128 KB machine those
+* are $0C,$0D,$0E,$0F — and those are precisely the scene's cel bank"); once the cel pages
+* are read BEFORE the first beat, beat 1's bank fill would land on top of them. P3.105
+* measured all four free blocks at 128 KB as the scene's, so there is no second home: the
+* bank and an early cel load are mutually exclusive on the target machine.
 *
-* The bank is reached through $FFA2 (CPU $4000-$5FFF), ONE block at a time. That
-* slot normally holds part of the asset bundle and the patch save buffer -- but
-* remapping does not destroy anything, it only changes what is addressable, and a
-* base copy touches neither. $FFA0/$FFA1/$FFA3 are untouched, so the DP band, this
-* code, the kernel and the stack all stay put.
+* ★★★ AND THE REPLACEMENT IS CHEAPER THAN EITHER, WHICH IS WHY THIS IS NOT A SACRIFICE.
+* The bank existed to avoid re-READING a picture the machine already had — in the FRONT
+* buffer. `fb_copy_front` copies front -> back directly through this same $FFA2 window, so
+* the second base costs one 95 ms memory copy and NO disk read and NO 32 KB of storage.
+* It is also more general than the bank was: the bank only ever held DISK_SCREEN_TRK, so
+* beat 4's and beat 5's second base would have been re-read had they carried captions.
+* (HAL_gfx_mirror does exactly this job and REFUSES here — it needs both buffers mapped at
+* once and a 16-colour framebuffer is 30,720 B, which takes the whole window. gfx.s:600.)
+*
+* The slot is $FFA2 (CPU $4000-$5FFF), ONE block at a time. That slot normally holds part
+* of the asset bundle and the patch save buffer -- but remapping does not destroy anything,
+* it only changes what is addressable, and a base copy touches neither. $FFA0/$FFA1/$FFA3
+* are untouched, so the DP band, this code, the kernel and the stack all stay put.
 *
 * NOT the HAL's $FFA4-$FFA7: those are HAL-private (gfx.s says callers must never
 * learn a buffer address) and this needs no knowledge of them -- it copies to and
 * from HAL_gfx_draw_base like any other drawing code.
-BANK_BLOCK      equ     $3C             ; 4 blocks = 32 KB, one screen + 2 KB spare
 BANK_MMU        equ     $FFA2           ; the borrowed slot
 BANK_MMU_HOME   equ     $3A             ; what sys.s left in it ($FFA0-$FFA7 = $38-$3F)
 BANK_WINDOW     equ     $4000           ; CPU address a bank block appears at
 BANK_CHUNK      equ     $2000           ; 8 KB per block
 BANK_TAIL       equ     30720-3*BANK_CHUNK   ; the 4th block is only part used
+
+* --- THE CUTSCENE'S CEL PAGES, READ HERE (P4.25) ------------------
+* ★★★ THE SCENE'S EIGHT CEL TRACKS ARE READ IN THE OPENING BATCH, NOT AT SCENE START.
+* Measured at P4.23/P4.24: the scene's opening reads put its first musical cue 12.4 s late,
+* and 10.1 s of that is these eight tracks. Jay: "I already watched it and it is not synced
+* well enough." The reads have to happen; the only question is WHERE, and the opening batch
+* is the one window in the whole intro that is already black and already silent.
+*
+* ★★ THE LOADER CANNOT MOVE, SO THE READS MOVE WITHOUT IT. P4.24 §3C found the blocker:
+* `cel_load_startup` lives IN THE FLAME BUNDLE, which expands to $3000 over the captions —
+* so the code that performs the reads cannot run until the captions are finished, which is
+* the very thing moving the reads was meant to escape. What moves here is the RAW READS.
+* `cel_load_startup` keeps the state initialisation, sees the pages already in place (it
+* tests the pinned page's magic) and skips its own reads. Two units, one fact each.
+*
+* ★ THE TABLE IS THE SAME GENERATED FILE THE BUNDLE READS — included at the tail of this
+* source, not copied. CEL_VARBASE's note in build.bat covers the shape: two objects that
+* never link together share a constant by including the same generated text.
+CEL_MMU         equ     $FFA6           ; $C000-$DFFF; +1 is $E000-$FDFF. HAL-private
+*                                       ; while the intro draws, borrowed here between
+*                                       ; beats — saved and restored around the batch.
 
 SAM_SLOW        equ     $FFD8
 SAM_FAST        equ     $FFD9
@@ -338,6 +367,17 @@ seq_start
                 cmpa    #MSYS_SIG
                 bne     seq_disk_fail
                 jsr     msys_init
+
+* --- the CUTSCENE's cel pages, in the SAME burst ------------------
+* ★★★ EIGHT TRACKS, AND EVERY ONE OF THEM AGAINST BLACK. This is the 10.1 s that used to
+* run between the cutscene's first frame and its first musical cue. Nothing is on screen
+* yet (set_mode cleared both buffers), no song is playing, and the batch already exists —
+* so the reads add no second pause anywhere the oracle has none. They land in GIME blocks
+* $0C-$0F, which nothing else in the intro touches now that the splash bank is gone.
+* LAST IN THE BATCH on purpose: the bundle and the player are what a failure here should
+* not have wasted, and the MMU borrow is over before anything else runs.
+                jsr     cel_preload
+                bne     seq_disk_fail
 
 * --- the artwork's palette, now that it is in memory --------------
 * set_mode installs a diagnostic palette (P2.5); this screen needs the Apple DHR
@@ -496,17 +536,20 @@ sq_beat
                 bra     sq_nobase
 sq_flip_in
                 jsr     HAL_gfx_swap
-* The SECOND read exists only so the caption machinery has a clean copy on the
-* hidden page to repair from. A beat with no caption never repairs anything, so it
-* reads its picture ONCE -- which matters a great deal here: a 7-track read is ~9.2 s
-* and the prologue beats were paying it twice, stalling on the previous screen for
-* 18 seconds where the oracle (which batch-loads the whole stage up front) takes
-* none at all.
+* The SECOND base exists only so the caption machinery has a clean copy on the hidden
+* page to repair from. A beat with no caption never repairs anything, so it pays nothing
+* here -- which matters a great deal: the prologue beats were once reading their picture
+* twice and stalling on the previous screen for 18 seconds where the oracle (which
+* batch-loads the whole stage up front) takes none at all.
+* ★★★ IT IS A COPY, NOT A READ, AND NOT A CACHE (P4.25). The swap above has just put this
+* beat's picture in the FRONT buffer; fb_copy_front brings it back into the hidden one for
+* 95 ms. The splash bank did the same job for beat 1 only, out of 32 KB of GIME blocks the
+* cutscene now needs — see the constants block. Copying from the buffer that is already
+* showing the picture needs no storage at all, and works for any beat rather than for the
+* one track the bank happened to hold.
                 ldd     beat_patch
                 beq     sq_nobase
-                lda     beat_track
-                jsr     load_screen
-                lbne    seq_disk_fail   ; LONG: the sweep pushed this past 8-bit range
+                jsr     fb_copy_front
 sq_nobase
 
 * -- hold the clean base ------------------------------------------
@@ -634,25 +677,26 @@ run_scene
                 bne     rs_out          ; a failed read leaves the intro running
                 jsr     SCENE_BASE+SCENE_CALL_OFF
 * ---------------------------------------------------------------
-* ★★★ THE SPLASH CACHE IS GONE, AND IT IS A 128 KB FACT.
+* ★★★ THERE IS NO SPLASH CACHE TO INVALIDATE ANY MORE, AND THE REASON IS THE OLD ONE.
 *
-* BANK_BLOCK is $3C and the bank is four blocks — $3C,$3D,$3E,$3F. The GIME masks a block
-* number to the RAM actually installed [gfx.s:406], so on a STOCK 128 KB machine those are
-* $0C,$0D,$0E,$0F — and those are precisely the scene's cel bank: CEL_RES_BLOCK $0C pinned
-* plus $0D/$0E/$0F rotating (P3.105 §3B measured that all four free blocks are the
-* scene's). The scene overwrites every one of them.
+* This is where `clr bank_valid` lived. The bank was four GIME blocks $3C-$3F; the GIME
+* masks a block number to the RAM actually installed [gfx.s:406], so on a STOCK 128 KB
+* machine those are $0C,$0D,$0E,$0F — precisely the scene's cel bank (CEL_RES_BLOCK $0C
+* pinned plus $0D/$0E/$0F rotating; P3.105 §3B measured that all four free blocks are the
+* scene's). The scene overwrote every one of them, so beat 6 had to be told to go to disk.
 *
-* So beat 6, which re-establishes the splash, must NOT take it from the bank: bank_valid
-* is cleared and the read goes to disk. One extra read, and the alternative is beat 6
-* copying cel data onto the screen.
+* ★★ P4.25 RESOLVED THE COLLISION BY REMOVING ONE SIDE OF IT RATHER THAN SEQUENCING IT.
+* The cel pages are now read in the opening batch and must survive the whole intro, so the
+* bank cannot exist at all — and it did not need to: fb_copy_front gets the second base
+* from the front buffer for 95 ms and no storage. Nothing here is stale, so nothing here
+* is cleared.
 *
-* ★★ 512 KB WOULD NOT HAVE CAUGHT THIS. There, $3C-$3F and $0C-$0F are different physical
-* blocks and the cache survives. CLAUDE.md §2K: "512 KB can pass while a masking assumption
-* is wrong; the reverse does not happen." introseq's reprise check found it at 128 KB —
-* "19717 bytes differ; first at row 0 col 10" — which is the whole reason the suites run
-* on the target machine first.
+* ★ 512 KB WOULD NOT HAVE CAUGHT THE ORIGINAL EITHER. There, $3C-$3F and $0C-$0F are
+* different physical blocks and the cache survives. CLAUDE.md §2K: "512 KB can pass while a
+* masking assumption is wrong; the reverse does not happen." introseq's reprise check found
+* it at 128 KB — "19717 bytes differ; first at row 0 col 10" — which is the whole reason
+* the suites run on the target machine first.
 * ---------------------------------------------------------------
-                clr     bank_valid      ; the scene used the bank's blocks as its cel bank
 * THE CAPTIONS, BACK. The scene expanded its bundle over all three of them.
                 ldx     #BUNDLE
                 lda     #DISK_BUNDLE_TRK
@@ -673,19 +717,11 @@ rs_out
 * Returns Z set on success. Clobbers: A, B, X, U
 * ---------------------------------------------------------------
 load_screen
-* The splash comes from the BANK once the bank holds it; everything else, and the
-* splash the very first time, comes from the disk. The first read is unavoidable --
-* something has to put the picture in the bank -- so this saves three of the four.
-                cmpa    #DISK_SCREEN_TRK
-                bne     ls_from_disk
-                tst     bank_valid
-                beq     ls_from_disk
-                lda     #1              ; bank -> back buffer, ~95 ms, no disk
-                jsr     bank_copy
-                clra                    ; Z set = success
-                rts
-ls_from_disk
-                pshs    a               ; keep the track: the bank test needs it after
+* ★ EVERY PICTURE COMES FROM THE DISK NOW (P4.25). The bank's shortcut is gone with the
+* bank; what replaced it is fb_copy_front at the ONE call site that wanted a second copy,
+* which is a better place for it — this routine's job is "put track A on the hidden page",
+* and it no longer carries a special case for one particular track.
+                pshs    a               ; the track, kept across the read
                 ldx     HAL_gfx_draw_base
                 leax    LZ_LOAD_OFF,x   ; the packed blob lands high in the window,
                 ldb     #DISK_SCREEN_SEC ; above the picture it is about to become
@@ -694,14 +730,6 @@ ls_from_disk
                 ldx     HAL_gfx_draw_base
                 leau    LZ_LOAD_OFF,x   ; U -> the blob; the module has no constant
                 jsr     lz_unpack       ; and expands down over itself
-                lda     ,s              ; was that the splash, and is the bank empty?
-                cmpa    #DISK_SCREEN_TRK
-                bne     ls_done
-                tst     bank_valid
-                bne     ls_done
-                clra                    ; back buffer -> bank, once, for free
-                jsr     bank_copy
-                inc     bank_valid
 ls_done
                 leas    1,s
                 clra                    ; Z set = success
@@ -710,6 +738,107 @@ ls_failed
                 leas    1,s
                 lda     #1              ; Z clear = failure, as load_tracks reported
                 tsta
+                rts
+
+* ---------------------------------------------------------------
+* cel_preload — the cutscene's cel pages, read here instead of at scene start (P4.25).
+*
+* Returns Z set on success, as load_tracks does. Clobbers: A, B, X, U.
+*
+* ★★★ WHAT IT DOES AND WHAT IT DELIBERATELY DOES NOT. It performs the eight track reads
+* `cel_load_startup` used to perform and NOTHING ELSE — no state, no publication, no
+* window left anywhere in particular. The state (`cel_rd_left`, `cel_pg_sig`,
+* `cel_scene_done`, `cel_res_block`) stays in the bundle, where the scene reads it, and
+* runs when the scene starts. Two units, one fact each; splitting the state out to here
+* would put the scene's own bookkeeping in the intro, 90 seconds before the scene exists.
+*
+* ★★ THE MMU BORROW IS SAVED AND RESTORED, AND IT IS TWO BYTES. $FFA6/$FFA7 are the HAL's
+* while the intro draws — set_mode has just pointed them at the back buffer, and
+* load_screen reads a packed screen to draw_base+$5A00, i.e. $DA00, straight through both.
+* This routine points them at the cel bank for the duration of the batch and puts them back
+* before returning. Nothing runs in between that reads $C000-$FDFF: load_tracks writes only
+* the destination it is given, the VBL handler lives in the DP band and the kernel, and the
+* disk driver's own NMI vector and flags are at $FE00-$FEFF, which MC3=1 holds CONSTANT
+* through every remap — that is the property they were put there for.
+*
+* ★ THE READS ARE ALL-OR-NOTHING, WHICH IS WHAT MAKES THE BUNDLE'S GUARD ONE TEST. A
+* failure anywhere returns Z clear and seq_start stops on it, so the scene can never meet a
+* partial preload: either the pinned page's magic is at $C000 and all eight tracks landed,
+* or the intro never got past the batch.
+*
+* ★ TWO CALLS PER PAGE, THE SECOND SKEWED, exactly as cel_read_page does it in the bundle
+* — a page is up to 7,680 B and a whole-track read is 4,608, so track B is laid out on disk
+* to END where the window ends ($EC00 + 4,608 = $FE00) and the two overlap by 1,536 bytes
+* carrying identical data. A plain two-track read to $E000 would write through the constant
+* page and then through the GIME. char_draw.s's cel_read_page carries the full argument.
+* ---------------------------------------------------------------
+cel_preload
+* ★★ THE MMU REGISTERS ARE READABLE, AND THE TOP TWO BITS ARE NOT PART OF THE ANSWER.
+* [SockmasterGime.md:243 — "like the MMU registers, the upper 2 bits must be masked out";
+* $FFA0-$FFA7 are the Task-0 bank registers and a block number is six bits.] Masking is not
+* required for the write-back — the GIME ignores those bits on write — but an unmasked
+* value is not a block number, and this one is stored in a variable another reader could
+* believe. Save what the register MEANS, not what the bus happened to return.
+                lda     CEL_MMU
+                anda    #$3F
+                sta     cp_sav6
+                lda     CEL_MMU+1
+                anda    #$3F
+                sta     cp_sav7
+                clr     cp_err
+                lda     #CEL_RES_BLOCK
+                sta     CEL_MMU                 ; $FFA6 -> the pinned page
+                ldx     #CEL_RES_LO
+                lda     #CEL_RES_TRK
+                ldb     #CEL_SECS
+                jsr     load_tracks
+                bne     cp_failed
+                ldx     #CEL_RES_HI
+                lda     #CEL_RES_TRK+1
+                ldb     #CEL_SECS
+                jsr     load_tracks
+                bne     cp_failed
+                clr     cp_n
+cp_next
+                lda     cp_n
+                cmpa    #CEL_N_STARTUP
+                bhs     cp_out
+                inc     cp_n
+                ldx     #cel_startup_tab
+                lda     a,x                     ; the page number this slot names
+                lsla                            ; -> its row in cel_page_tab (2 B each)
+                tfr     a,b
+                clra                            ; ★ D, NOT A: `leax a,x` is SIGNED
+                ldx     #cel_page_tab           ;   -128..+127 (idiom §20e, trap P3.65).
+                leax    d,x                     ;   Four pages cannot reach it today; a
+*                                               ;   grown table would, silently. Two bytes.
+                lda     1,x                     ; the block this page belongs in
+                sta     CEL_MMU+1               ; ...and bring it in, BEFORE the read
+                lda     ,x                      ; track A
+                sta     cp_trk
+                ldb     #CEL_SECS
+                ldx     #CEL_PAGE_LO
+                jsr     load_tracks
+                bne     cp_failed
+                lda     cp_trk
+                inca                            ; track B, the skewed one
+                ldb     #CEL_SECS
+                ldx     #CEL_PAGE_HI
+                jsr     load_tracks
+                beq     cp_next
+cp_failed
+                com     cp_err
+cp_out
+* PUT THE WINDOW BACK, and mask it: between the two writes the window is half cel bank and
+* half framebuffer, which is the multi-register update idiom §22 names.
+                pshs    cc
+                orcc    #$50
+                lda     cp_sav6
+                sta     CEL_MMU
+                lda     cp_sav7
+                sta     CEL_MMU+1
+                puls    cc
+                tst     cp_err                  ; Z set = every track landed
                 rts
 
 * ---------------------------------------------------------------
@@ -749,13 +878,10 @@ wipe_in
                 std     wp_col
                 lda     #WIPE_COLS
                 sta     wp_nleft
-* The front buffer is the one HAL_gfx_cur_back does NOT name.
-                lda     HAL_gfx_cur_back
-                bne     wi_front_a
-                lda     #FB_B_BLOCK
-                bra     wi_front_set
-wi_front_a      lda     #FB_A_BLOCK
-wi_front_set    sta     wp_front
+* The front buffer is the one HAL_gfx_cur_back does NOT name — derived in front_block,
+* which fb_copy_front needs as well.
+                jsr     front_block
+                sta     wp_front
 wi_frame
                 ldd     wp_acc
                 addd    #WIPE_COLS
@@ -835,11 +961,22 @@ wc_next
 
 
 * ---------------------------------------------------------------
-* bank_copy — A = 0 copies the back buffer INTO the bank, A != 0 copies the bank
-* into the back buffer. 30,720 bytes either way, four blocks through $FFA2.
+* fb_copy_front — copy the DISPLAYED buffer into the hidden one. 30,720 bytes, four
+* blocks through $FFA2, ~95 ms.
 *
-* ~95 ms against a 9-second disk read: 95x, and the difference between an intro
-* that stalls for 36 seconds and one that does not.
+* ★★★ THIS IS THE SPLASH BANK'S JOB WITHOUT THE SPLASH BANK (P4.25). The bank held a
+* private 32 KB copy of one picture; this reads the copy the machine already has, in the
+* front buffer, and needs no storage at all. It also has no cache to invalidate — which is
+* the whole of what run_scene used to do about it — and no track it is specific to.
+*
+* ~95 ms against a 2.6 s disk read: 27x, and the difference between an intro that stalls
+* after every caption beat's reveal and one that does not.
+*
+* THE SOURCE BLOCK IS DERIVED, NOT STORED: the front buffer is the one HAL_gfx_cur_back
+* does not name, exactly as wipe_in derives it, so this cannot go stale across a swap.
+* HAL_gfx_mirror is the HAL's version of this and REFUSES in 16-colour, where a 30,720 B
+* framebuffer needs the whole window; going one block at a time is what makes it possible
+* here [gfx.s:595-604].
 *
 * Interrupts are masked only around the MMU writes themselves (idiom §22 — a
 * multi-register hardware update is a critical section), not across the copy: the
@@ -847,9 +984,8 @@ wc_next
 * here, so it is free to run.
 * Clobbers: everything
 * ---------------------------------------------------------------
-bank_copy
-                sta     bk_dir
-                lda     #BANK_BLOCK
+fb_copy_front
+                bsr     front_block
                 sta     bk_blk
                 ldd     HAL_gfx_draw_base
                 std     bk_fb
@@ -859,7 +995,7 @@ bk_block
                 pshs    cc
                 orcc    #$50
                 lda     bk_blk
-                sta     BANK_MMU        ; this bank block now answers at $4000
+                sta     BANK_MMU        ; this FRONT-buffer block now answers at $4000
                 puls    cc
 
                 ldy     #BANK_CHUNK
@@ -870,21 +1006,12 @@ bk_block
 bk_len_ok
                 ldx     #BANK_WINDOW
                 ldu     bk_fb
-                tst     bk_dir
-                bne     bk_to_fb
-bk_to_bank
-                ldd     ,u++            ; framebuffer -> bank
-                std     ,x++
-                leay    -2,y
-                bne     bk_to_bank
-                bra     bk_block_end
 bk_to_fb
-                ldd     ,x++            ; bank -> framebuffer
+                ldd     ,x++            ; front -> back
                 std     ,u++
                 leay    -2,y
                 bne     bk_to_fb
-bk_block_end
-                stu     bk_fb           ; U advanced over the framebuffer either way
+                stu     bk_fb           ; U advanced over the framebuffer
 
                 pshs    cc
                 orcc    #$50
@@ -895,6 +1022,17 @@ bk_block_end
                 inc     bk_blk
                 dec     bk_n
                 bne     bk_block
+                rts
+
+* front_block — A = the DISPLAYED buffer's first GIME block.
+* ONE HOME for the derivation: wipe_in wants it too, and two copies of "the front buffer is
+* the one HAL_gfx_cur_back does not name" is one copy too many.
+front_block
+                lda     HAL_gfx_cur_back
+                bne     fb_front_a
+                lda     #FB_B_BLOCK
+                rts
+fb_front_a      lda     #FB_A_BLOCK
                 rts
 
 * ---------------------------------------------------------------
@@ -1086,8 +1224,6 @@ seq_beat        fdb     0               ; the beat under way. Held in a variable
 *                                       ; made every routine in between part of the
 *                                       ; contract, and debugging that cost more
 *                                       ; than the two bytes this costs.
-bank_valid      fcb     0               ; the bank holds the splash
-bk_dir          fcb     0
 bk_blk          fcb     0
 bk_n            fcb     0
 bk_fb           fdb     0
@@ -1108,6 +1244,21 @@ pb_nruns        fcb     0
 pb_len          fcb     0
 pb_dst          fdb     0
 pb_save         fdb     0
+cp_sav6         fcb     0               ; the HAL's $FFA6/$FFA7, across the cel preload
+cp_sav7         fcb     0
+cp_err          fcb     0
+cp_n            fcb     0
+cp_trk          fcb     0
+
+* ---------------------------------------------------------------
+* THE CEL PAGES' DISK MANIFEST — the SAME generated file the flame bundle includes.
+*
+* ★ NOT A COPY. bake_scene.py writes it once from cel_pack.json and build.bat places the
+* very same tracks, so the disk, the bundle's loader and this preload cannot disagree
+* without the build being re-run. char_draw.s includes it for cel_read_page; this object
+* includes it for cel_preload; the two never link together, so the labels do not collide.
+* ---------------------------------------------------------------
+                include "content/cutscene/chars/cel_pages.s"
 
 * ---------------------------------------------------------------
 * THE INTRO, AS DATA

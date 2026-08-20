@@ -370,28 +370,44 @@ local function tick()
                 --   6  prolog2                                          tracks 18-19
                 --   7  ★★ the splash AGAIN, for beat 6's reprise         tracks 27-28
                 --
-                -- ★★★ SEVEN, AND THE SEVENTH IS A 128 KB FACT. The splash used to be read
-                -- ONCE and served from the bank thereafter. The bank is BANK_BLOCK $3C, four
+                -- ★★★ SEVEN, AND THE SEVENTH WAS A 128 KB FACT. The splash used to be read
+                -- ONCE and served from the bank thereafter. The bank was BANK_BLOCK $3C, four
                 -- blocks $3C-$3F — and the GIME masks a block number to installed RAM, so on
                 -- a stock 128 KB machine those ARE $0C-$0F, which is exactly the scene's cel
-                -- bank ($0C pinned, $0D/$0E/$0F rotating). The scene overwrites the cached
-                -- splash, so run_scene clears bank_valid and beat 6 re-reads it.
+                -- bank ($0C pinned, $0D/$0E/$0F rotating). The scene overwrote the cached
+                -- splash, so run_scene cleared bank_valid and beat 6 re-read it.
                 --
-                -- ★ At 512 KB the two do not collide and the sixth read would be enough —
-                -- which is why this suite runs at 128 KB first (CLAUDE.md §2K).
+                -- ★ At 512 KB the two did not collide and the sixth read would have been
+                -- enough — which is why this suite runs at 128 KB first (CLAUDE.md §2K).
                 -- ★★ EIGHT SINCE P4.21, and the eighth is the MUSIC PLAYER. It is read to
                 -- $0A00 in the same opening burst as the captions, because the LOADM
                 -- ceiling binds only on what must be resident at handover (CLAUDE.md §2L)
                 -- and 4,456 bytes of player does not belong in that image. Raising this
                 -- number is the one honest response to a read that was deliberately added;
                 -- what it must NOT become is a number nobody can account for, so the list
-                -- below names all eight.
-                check("disk_reads_completed", rd8(ENGINE + 8) == 8,
-                      string.format("probe_loads = %d (want 8: bundle + THE MUSIC PLAYER "
-                                    .. "+ splash + prolog1 + the scene's program + the "
-                                    .. "captions again + prolog2 + the splash again, the "
-                                    .. "bank having been overwritten by the scene; "
-                                    .. "WD1773 status $%02X",
+                -- below names every one.
+                --
+                -- ★★★ SIXTEEN SINCE P4.25, AND THE EIGHT NEW ONES ARE THE CUTSCENE'S CEL
+                -- PAGES — moved out of the scene and into the intro's opening batch, because
+                -- reading them at scene start put the cutscene's first musical cue 12.4 s
+                -- late (P4.23/P4.24) and Jay ruled that unacceptable. They are the pinned
+                -- page (tracks 11-12) plus three startup pages, two tracks each:
+                --
+                --   9,10   the pinned page   CEL_RES_TRK 11, then 12, into block $0C
+                --   11,12  startup page 0    tracks 13,14  -> block $0D
+                --   13,14  startup page 1    tracks 15,16  -> block $0E
+                --   15,16  startup page 2    tracks 20,21  -> block $0F
+                --
+                -- ★★ AND THE COUNT IS THE PROOF THAT THE MOVE COST NO EXTRA DISK. Removing
+                -- the splash bank — whose blocks ARE those cel blocks at 128 KB — could have
+                -- forced beat 1 to re-read its second base, a ninth 2.6 s read. It did not:
+                -- fb_copy_front takes that base from the FRONT buffer instead. 8 + 8 = 16,
+                -- exactly, and a 17th here would mean the bank's removal was not paid for.
+                check("disk_reads_completed", rd8(ENGINE + 8) == 16,
+                      string.format("probe_loads = %d (want 16: bundle + THE MUSIC PLAYER "
+                                    .. "+ EIGHT CEL-PAGE TRACKS + splash + prolog1 + the "
+                                    .. "scene's program + the captions again + prolog2 + "
+                                    .. "the splash again; WD1773 status $%02X",
                                     rd8(ENGINE + 8), rd8(ENGINE + 9)))
                 check("image_cannot_contain_screen", BIN_BYTES < 30720,
                       string.format("INTROSEQ.BIN is %d B; the framebuffer it put on "

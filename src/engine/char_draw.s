@@ -2611,6 +2611,33 @@ cel_load_startup
                 lda     #CEL_RES_BLOCK
                 sta     cel_res_block           ; published for the room's re-map
                 sta     CEL_MMU                 ; $FFA6 -> the pinned page
+* ★★★ THE READS ARE SKIPPED WHEN THE PAGES ARE ALREADY HERE (P4.25). intro_seq.s's
+* `cel_preload` performs these same eight track reads in the intro's opening batch, against
+* a black screen, because doing them here cost 10.1 s between the cutscene's first frame
+* and its first musical cue — measured at P4.23, and Jay: "I already watched it and it is
+* not synced well enough."
+*
+* ★★ WHAT MOVED IS THE READS. THE STATE ABOVE STAYS, and that is the whole reason this
+* routine is not simply deleted: cel_rd_left, cel_rd_req, cel_pg_sig, cel_scene_done and
+* cel_res_block live in the constant page as ORDINARY power-on RAM, nothing else
+* initialises them, and the scene needs them set at the moment the scene starts — not 90
+* seconds earlier. So the state init runs unconditionally and only the disk work is
+* conditional.
+*
+* ★★ THE GUARD IS THE PAGE'S OWN CONTENT, NOT A FLAG. $FFA6 now shows the pinned block, so
+* cel_res.s's magic either answers at CEL_RES_LO or it does not. A flag would be a second
+* fact to keep true across two link units that never see each other; the magic is the fact.
+* And one test covers all eight tracks because cel_preload is all-or-nothing — a failure
+* anywhere stops the intro in its opening batch, so a half-loaded bank cannot reach here.
+*
+* ★ IT IS ALSO WHAT KEEPS THIS ROUTINE STANDING ALONE. If the preload is ever removed, or a
+* future caller reaches the scene without running the intro, the magic is absent and these
+* reads happen exactly as they always did. Nothing here depends on having been preloaded.
+* ★ THE SAME TEST cel_walk_addr ALREADY MAKES, and the same two constants: CEL_MAGIC is
+* CEL_BASE and CEL_MAGIC_VAL is $C35A. No new fact enters this file.
+                ldd     CEL_MAGIC
+                cmpd    #CEL_MAGIC_VAL
+                beq     cs_first                ; already resident — state only
 * TWO CALLS, THE SECOND SKEWED — see cel_read_page below for the whole reason.
                 ldx     #CEL_RES_LO
                 lda     #CEL_RES_TRK
