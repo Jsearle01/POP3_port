@@ -29,6 +29,12 @@
 #   Measured at P3.72d: her turn is f3487-f3530, his approach a steady 6 frames/step.
 set -u
 
+# ★★★ SOUND ON BY DEFAULT SINCE P4.22. This runner passed `-sound none` because the port
+# had no audio and the comparison was a visual one. The port now plays s_Presents, so the
+# oracle has to be audible for the comparison to be a comparison. MUTE=1 for a look only.
+SOUNDOPT="-sound auto"
+if [ "${MUTE:-0}" = "1" ]; then SOUNDOPT="-sound none"; fi
+
 cd "$(dirname "$0")/../.." || exit 1
 
 MAME="${MAME:-/c/mame/mame.exe}"
@@ -72,4 +78,4 @@ echo "[oracle_live] close the window when you are done."
     -sl7 cffa202 \
     -hard1 "$(pwd -W)/$SCRATCH" \
     -window -nomaximize -prescale 3 \
-    -sound none
+    $SOUNDOPT
