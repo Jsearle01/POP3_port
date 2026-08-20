@@ -26,7 +26,7 @@ nk.in_use = true
 local state, t0 = "boot", nil
 local function launch(fn)
     if state == "boot" and fn >= 300 then
-        nk:post('LOADM"INTROSEQ"\n')
+        nk:post('LOADM"LOADER"\n')
         log("# posted LOADM at frame " .. fn)
         state, t0 = "loadm", fn
     elseif state == "loadm" and fn > t0 + 500 then

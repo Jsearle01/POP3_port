@@ -84,7 +84,7 @@ _G._n = emu.add_machine_frame_notifier(function()
     local fn = scr:frame_number()
     if reported then return end
     if state == "boot" then
-        if fn >= 300 then nk:post('LOADM"INTROSEQ"\n'); state, t0 = "loadm", fn end
+        if fn >= 300 then nk:post('LOADM"LOADER"\n'); state, t0 = "loadm", fn end
         return
     end
     if state == "loadm" then
@@ -117,7 +117,7 @@ _G._n = emu.add_machine_frame_notifier(function()
     reported = true
 
     log("# THE INTEGRATED SEQUENCE — intro, scene, intro. Launch: live-disk,")
-    log('# LOADM"INTROSEQ" + EXEC off a mounted floppy (CLAUDE.md §4).')
+    log('# LOADM"LOADER" + EXEC off a mounted floppy (CLAUDE.md §4).')
     log(string.format("# intro entry $%04X, scene $%04X, cel_scene_done $%04X",
                       ENTRY, SCENEB, DONEF))
     log("")

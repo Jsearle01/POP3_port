@@ -47,7 +47,7 @@
 -- into the back buffer itself. What is left to LOADM is 1,369 bytes: one granule,
 -- ending below $0600, which DECB carries without complaint.
 --
--- So this script drives LOADM"INTROSEQ" + EXEC, and the interesting check is not
+-- So this script drives LOADM"LOADER" + EXEC, and the interesting check is not
 -- that a picture appears but that it appears AT ALL: the loaded file provably
 -- does not contain it.
 --
@@ -238,6 +238,10 @@ end
 -- The five states, in order. Each is (status, phase) -> capture tag.
 -- probe_status now identifies the BEAT (2 = first, 3 = second, 4 = finished) and
 -- probe_phase the point within it (0 base held, 1 caption up, 2 caption cleared).
+-- how many swaps happen before the intro sequencer is entered at all. The stage-1
+-- loader (src/boot/loader.s) draws the "loading" word and swaps once to show it.
+local LOADER_SWAPS = 1
+
 local WANT = {
     -- the beat is entered BEFORE its screen is read, so this one also waits
     -- for the reads to land; otherwise it captures an empty framebuffer.
@@ -246,7 +250,11 @@ local WANT = {
     -- (Third time this gate has moved. It tracks how the base ARRIVES, which is
     -- exactly what these dispatches keep changing -- so it is gated on the
     -- arrival mechanism each time, never on a count that stands in for it.)
-    { st = 2, ph = 0, tag = "1_base", swaps = 1 },  -- gate on the SWAP, not on a
+    -- ★ P4.46: the stage-1 loader puts the "loading" word up with a swap of its own
+    -- BEFORE the intro is entered, so the intro's first swap is now the second the HAL
+    -- counts. Named rather than bumped to 2, because a bare number is what made this
+    -- gate move three times: the fact is "one swap belongs to the loader".
+    { st = 2, ph = 0, tag = "1_base", swaps = LOADER_SWAPS + 1 },  -- gate on the SWAP, not on a
     -- read count: the count was only ever a proxy for "the base is on screen",
     -- and the splash bank (P3.11) changed how many reads that takes. The swap
     -- is the thing the proxy stood for, so gate on it directly.
@@ -272,6 +280,7 @@ local WANT = {
 local want_i = 1
 
 local state, loaded_at, started = "boot", nil, nil
+local intro_due, intro_ok = nil, false   -- P4.46: the stage-1 loader's hand-off
 local loads_seen, last_load = 0, nil
 local held = 0
 local last_st, last_ph = -1, -1
@@ -282,7 +291,7 @@ local function tick()
 
     if state == "boot" then
         if fn >= BOOT_FRAME then
-            nk:post('LOADM"INTROSEQ"\n')
+            nk:post('LOADM"LOADER"\n')
             log(string.format("# disk: posted LOADM\"INTROSEQ\" at frame %d", fn))
             state = "loadm"
         end
@@ -293,7 +302,13 @@ local function tick()
         if nk.empty and not loaded_at then
             loaded_at = fn
         elseif loaded_at then
-            local all_in, bad = (rd8(ENGINE) == 0x7E), nil
+            -- ★★★ P4.46: THE LOADM TARGET IS THE STAGE-1 LOADER, NOT THE INTRO. The intro is
+            -- no longer a DECB file -- the loader reads its program off a raw track and jumps
+            -- to `intro_seq_boot`, past the `set_mode` whose buffer-clear would wipe the
+            -- "loading" screen. So this stage cannot test $2000 for a JMP: nothing is there
+            -- yet. LOADER.BIN's own segment table is the check here, and the intro is verified
+            -- separately once EXEC has let the loader fetch it (`intro_arrived`, below).
+            local all_in, bad = true, nil
             if all_in and SEGS then
                 for _, sg in ipairs(SEGS) do
                     local g0, g1 = rd8(sg.addr), rd8(sg.addr + sg.len - 1)
@@ -312,6 +327,13 @@ local function tick()
                 nk:post('EXEC\n')
                 state = "running"
                 started = fn
+                -- ★★ THE INTRO'S ARRIVAL IS ITS OWN CHECK, AND IT IS THE ONE THAT WOULD
+                -- CATCH A BAD HAND-OFF. The loader draws its screen, reads the intro's
+                -- program off track 33 and jumps to intro_seq_boot; if that read fails or
+                -- the entry offset drifts, $2000 never becomes a JMP and everything after
+                -- this is garbage. Without this the failure would present as beats that
+                -- never happen, which reads as a rendering bug.
+                intro_due = fn + 900
             elseif fn >= loaded_at + SETTLE then
                 check("loadm_from_disk", false,
                       string.format("$%04X = %02X after %d frames; %s", ENGINE, rd8(ENGINE),
@@ -323,6 +345,22 @@ local function tick()
     end
 
     if state == "running" then
+        -- P4.46: did the loader actually fetch the intro and hand over?
+        if not intro_ok then
+            if rd8(ENGINE) == 0x7E then
+                intro_ok = true
+                check("intro_arrived", true,
+                      string.format("$%04X = 7E at frame %d -- the loader read it off"
+                                    .. " its track and jumped to intro_seq_boot", ENGINE, fn))
+            elseif intro_due and fn >= intro_due then
+                check("intro_arrived", false,
+                      string.format("$%04X = %02X, %d frames after EXEC -- the loader did"
+                                    .. " not deliver the intro", ENGINE, rd8(ENGINE),
+                                    fn - started))
+                finish("the loader did not hand over")
+                return
+            end
+        end
         local st, ph = rd8(ADDR_STATUS), rd8(ADDR_PHASE)
         -- time each disk read as it lands. The load cost is a number this task
         -- owes, not something to eyeball from when the picture turns up.

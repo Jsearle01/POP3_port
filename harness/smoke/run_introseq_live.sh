@@ -41,7 +41,7 @@ cd "$(dirname "$0")/../.." || exit 1
 MAME="${MAME:-/c/mame/mame.exe}"
 MAME_ROMS="${MAME_ROMS:-C:/mame/roms}"
 MONITOR="${MONITOR:-rgb}"
-BIN="build/intro_seq.bin"
+BIN="build/loader.bin"
 SRC_DSK="build/probe.dmk"
 DSK="build/run_introseq_live.dmk"
 
@@ -53,7 +53,9 @@ cp -f "$SRC_DSK" "$DSK" || exit 1
 . "$(dirname "$0")/ramsize.sh"
 
 echo "[run_introseq_live] POP CoCo3 — the static intro, normal speed, $MONITOR${MAME_RAM:+, $MAME_RAM}"
-echo "[run_introseq_live] boot, LOADM\"INTROSEQ\", EXEC — then six beats, every asset off disk:"
+echo "[run_introseq_live] boot, LOADM\"LOADER\", EXEC — the stage-1 loader puts the \"loading\""
+echo "[run_introseq_live]   word up FIRST (P4.46), then reads the intro off raw track 33 and"
+echo "[run_introseq_live]   hands over. INTROSEQ is no longer a DECB file."
 echo "[run_introseq_live]   splash -> \"Broderbund Software Presents\" -> clear"
 echo "[run_introseq_live]          -> \"A Game by Jordan Mechner\" -> clear"
 echo "[run_introseq_live]          -> \"Prince of Persia\" -> clear"

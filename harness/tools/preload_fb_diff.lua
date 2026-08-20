@@ -65,7 +65,7 @@ _G._n = emu.add_machine_frame_notifier(function()
     local fn = scr:frame_number()
     if done then return end
     if state == "boot" then
-        if fn >= 300 then nk:post('LOADM"INTROSEQ"\n'); state, t0 = "loadm", fn end
+        if fn >= 300 then nk:post('LOADM"LOADER"\n'); state, t0 = "loadm", fn end
         return
     end
     if state == "loadm" then

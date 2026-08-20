@@ -325,6 +325,39 @@ probe_wipes     fcb     0               ; $020A  completed sweeps — the harnes
 *                                       ; a wiped beat never calls HAL_gfx_swap
 
 * ---------------------------------------------------------------
+* ★★★ intro_seq_boot — THE ENTRY THE STAGE-1 LOADER USES (P4.46).
+*
+* The loader has already drawn the "loading" screen, and `seq_start`'s `HAL_gfx_set_mode`
+* CLEARS BOTH BUFFERS — so entering there would wipe it at the hand-off and leave the
+* ~27 s of batch reads black, which is the whole thing the screen exists to cover.
+*
+* ★★ SO THE MACHINE IS ALREADY UP WHEN THIS IS ENTERED. The loader owns the canonical boot
+* prefix, the video mode and the palette; this resumes at the disk reader, with the screen
+* on display and both stacks already the same $7F00.
+*
+* ★ IT SITS AFTER THE PROBE BLOCK, NOT BEFORE IT. Every harness reads those bytes as
+* offsets from `intro_seq_entry` — probe_status at +3, probe_magic at +6 — so an entry
+* ahead of them would move all seven and re-point five files to save nothing. Same
+* reasoning, same placement, as the scene's `room_call` at +B.
+*
+* AND THE OFFSET IS ASSERTED RATHER THAN DOCUMENTED: the loader jumps to
+* INTRO_BASE+INTRO_BOOT_OFF and cannot see this label — the two are separate link units.
+* Both take the number from the same -D, so a drift becomes a build error instead of a jump
+* into the middle of probe_magic.
+* ---------------------------------------------------------------
+intro_seq_boot  jmp     seq_after_mode  ; +B   the loader's entry — machine already up
+                ifndef  INTRO_BOOT_OFF
+INTRO_BOOT_OFF  equ     11
+                endc
+                ifne    intro_seq_boot-intro_seq_entry-INTRO_BOOT_OFF
+                fail    "intro_seq_boot moved: the loader's INTRO_BOOT_OFF no longer points at it"
+                endc
+* ---------------------------------------------------------------
+* (probe_wipes' own note, kept with the byte it describes:)
+*                                       ; the base capture on THIS, not on swaps:
+*                                       ; a wiped beat never calls HAL_gfx_swap
+
+* ---------------------------------------------------------------
 seq_start
                 orcc    #$50            ; mask while the machine comes up
                 lds     #STACK_TOP      ; stack OFF the remapped draw window
@@ -341,6 +374,11 @@ seq_start
 * --- the mode the ORACLE uses for the intro, not gameplay's ------
                 lda     #GFX_MODE_320x192x16
                 jsr     HAL_gfx_set_mode        ; clears both buffers, maps back @ draw_base
+
+* ★ THE STAGE-1 LOADER RESUMES HERE (P4.46), past the boot prefix and past the set_mode
+* whose buffer-clear would erase the "loading" screen it has just put up. Everything above
+* this label the loader has already done.
+seq_after_mode
 
 * --- the disk reader ---------------------------------------------
 * AFTER HAL_sys_init, which is what puts the GIME in MC3=1 and so makes

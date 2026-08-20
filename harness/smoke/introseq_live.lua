@@ -49,7 +49,7 @@ local state, t0 = "boot", nil
 local function tick()
     local fn = manager.machine.screens:at(1):frame_number()
     if state == "boot" and fn >= BOOT2 then
-        nk:post('LOADM"INTROSEQ"\n')
+        nk:post('LOADM"LOADER"\n')
         log("# posted LOADM at frame " .. fn)
         state = "loadm"; t0 = fn
     elseif state == "loadm" and fn > t0 + 500 then

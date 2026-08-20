@@ -1,0 +1,42 @@
+; link/pop_boot.link — the STAGE-1 LOADER (P4.46).
+;
+; ---------------------------------------------------------------------------
+; WHY $0E00, AND WHY IT IS A FLOOR RATHER THAN A PREFERENCE
+; ---------------------------------------------------------------------------
+; DECB's own storage sits below: DBUF0 $0600, DBUF1 $0700, the FAT $0800, the FCBs $094A.
+; A program loaded under those is written over BY THE LOADER THAT IS LOADING IT, and P3.4
+; measured the edge -- $0D00 loads and RUNS with silently damaged data, $0E00 is clean.
+; map_overlap_check.py asserts the $0E00 floor on every build for exactly that reason.
+;
+; ★ THE LOADER IS TRANSIENT AND ITS SPACE IS REUSED. The intro later reads its 4,504-byte
+; music player to $0A00..$1B97, straight over this code -- which is correct: by then the
+; loader has jumped away and will not be re-entered. Nothing here needs to survive.
+;
+; ---------------------------------------------------------------------------
+; WHY THE KERNEL IS LINKED IN AND WHY THAT COSTS NOTHING
+; ---------------------------------------------------------------------------
+; `code` is the same hal_build.o at the same $7900 the intro links. So when the loader
+; hands over, the intro finds its kernel ALREADY RESIDENT and never reads one -- the same
+; relationship link/pop_scene.link has with the scene, where the staged image's kernel
+; segment is dropped because re-reading it while it executes the read would overwrite the
+; routine mid-transfer. Here the intro's program is read WITHOUT its kernel segment for the
+; same reason, and kernel_identical_check.py is what turns "identical by construction" into
+; a checked fact.
+;
+; ---------------------------------------------------------------------------
+; THE MAP AT LOADER TIME
+; ---------------------------------------------------------------------------
+;   $0E00-$1FFF   this loader + the screen's patch and palette   (4,608 B available)
+;   $2000-$24FA   the intro's program, read here off a raw track
+;   $6A00-$6A06   the disk driver's parameter block (DR_VARBASE)
+;   $7800-$78FF   trace ring buffer
+;   $7900-$7D43   the HAL kernel
+;   $7F00         stack top — the same one the intro uses, so the hand-off needs no switch
+;   $8000-$FDFF   the draw window; the "loading" screen lives in a framebuffer and
+;                 therefore survives the hand-off, which a screen in RAM would not
+; ---------------------------------------------------------------------------
+
+section prog load 0E00
+section code load 7900
+
+entry boot_entry

@@ -33,7 +33,12 @@ MAME_ROMS="${MAME_ROMS:-C:/mame/roms}"
 
 SRC_DSK="build/probe.dmk"
 DSK="build/run_introseq.dmk"
-BIN="build/intro_seq.bin"
+# ~~ P4.46: the LOADM target is now the STAGE-1 LOADER, not the intro. The intro is no
+# ~~ longer a DECB file at all -- the loader reads its program off a raw track and jumps
+# ~~ to intro_seq_boot, past the set_mode whose buffer-clear would wipe the "loading"
+# ~~ screen. So the segment check below verifies LOADER.BIN landed, and a second check
+# ~~ after EXEC verifies the intro itself arrived at $2000.
+BIN="build/loader.bin"
 MAP="build/obj/introseq.map"
 LOG="build/introseq_test.log"
 PASS="build/introseq_test_PASS"

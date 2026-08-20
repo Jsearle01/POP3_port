@@ -74,7 +74,7 @@ local done = false
 _G._n = emu.add_machine_frame_notifier(function()
     local fn = scr:frame_number()
     if done then return end
-    if fn == 300 then nk:post('LOADM"INTROSEQ"\n') end
+    if fn == 300 then nk:post('LOADM"LOADER"\n') end
     if fn == 1200 then nk:post('EXEC\n') end
     local d = mem:read_u8(DONEB)
     if prev ~= nil and prev ~= 0 and d == 0 and scene0 == nil then scene0 = fn end

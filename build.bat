@@ -137,6 +137,12 @@ REM here so there is one home; cutscene_room.s asserts that room_call really is 
 REM SCENE_BASE+SCENE_CALL_OFF and fails the build otherwise, because intro_seq.s calls that
 REM address and cannot see the label.
 set SCENE_BASE=0x2500
+REM ★ Where the intro's program lives on disk, and the offset of the entry the stage-1
+REM loader jumps to (P4.46). Both the loader and intro_seq.s take these from here, and
+REM intro_seq.s asserts that intro_seq_boot really is at INTRO_BOOT_OFF -- so a drift is a
+REM build error rather than a jump into the middle of probe_magic.
+set INTRO_TRK=33
+set INTRO_BOOT_OFF=11
 set SCENE_CALL_OFF=11
 REM The window the bundle is expanded inside: FLAME_BASE up to (not into) the disk
 REM driver's parameter block. Loading through DR_VARBASE while the driver is using it
@@ -181,7 +187,7 @@ if errorlevel 1 goto :error
 call :size build/obj/intro_splash.o
 
 echo --- Assemble: P3.3 intro sequencer (both credits, one mechanism) ---
-lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DSCENE_BASE=%SCENE_BASE% -DSCENE_CALL_OFF=%SCENE_CALL_OFF% -I . -o build/obj/intro_seq.o src/engine/intro_seq.s
+lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DSCENE_BASE=%SCENE_BASE% -DSCENE_CALL_OFF=%SCENE_CALL_OFF% -DINTRO_BOOT_OFF=%INTRO_BOOT_OFF% -I . -o build/obj/intro_seq.o src/engine/intro_seq.s
 
 if errorlevel 1 goto :error
 
@@ -611,8 +617,16 @@ REM time. An instrument that perturbs its neighbours is not an instrument.
 if errorlevel 1 goto :error
 "%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\intro_splash.bin INTRO.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
-"%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\intro_seq.bin INTROSEQ.BIN --ftype=binary --ascii=binary
-if errorlevel 1 goto :error
+REM ★★★ INTROSEQ.BIN IS NO LONGER A DECB FILE (P4.46). The stage-1 loader reads the
+REM intro's PROGRAM off a raw track and jumps to it, so nothing LOADMs it any more. Two
+REM things follow, both wanted:
+REM   * the disk's file area drops from 18 granules to 17 and comes off the boundary it
+REM     was sitting on -- 18 was exactly tracks 0..8, and the next granule IS track 9's
+REM     raw asset span, which is how ROOM.BIN got silently overwritten at P4.29.
+REM   * the kernel segment is never read at all: the loader's own $7900 is the same
+REM     hal_build.o at the same address, so the intro finds it already resident.
+REM build/intro_seq.bin is still BUILT and still map-checked; only the prog SEGMENT of it
+REM reaches the disk, as build/assets/intro_prog.raw below.
 REM ROOM.BIN IS PUT LAST OF ALL, AFTER THE RAW TRACKS ARE RESERVED (P4.25b) -- see the
 REM block below the reservations. It is the only file that has ever reached granule 18.
 echo --- Raw intro assets onto whole tracks ---
@@ -714,6 +728,48 @@ REM this image. Anyone wanting the standalone room can put it on a scratch disk.
 REM ======================================================================
 REM "%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\cutscene_room.bin ROOM.BIN --ftype=binary --ascii=binary
 
+REM ======================================================================
+REM THE STAGE-1 LOADER AND ITS "loading" SCREEN (P4.46)
+REM
+REM ★★★ IT RUNS HERE, AFTER THE BUNDLE, BECAUSE THE LETTERS COME OUT OF THE BUNDLE. The
+REM word is set in the game's own byline face: gen_loading.py lifts the glyphs from the
+REM byline caption in build/assets/intro_bundle.raw every build, so the artwork is the one
+REM home for the letterforms and there is no second copy to drift (CLAUDE.md §2F). `l` and
+REM `i` are the font's own `j` stem at ascender and x height -- dotless and without j's top
+REM terminal, both on Jay's ruling after seeing them rendered.
+REM
+REM ★★ AND IT IS A SEPARATE BINARY BECAUSE THE SCREEN'S DATA MUST BE RESIDENT BEFORE THE
+REM FIRST DISK READ -- that is what a loading screen is -- so it cannot come off a track
+REM like the captions do. Measured: 263 B of patch plus a 16-byte palette plus the code is
+REM ~486 B of prog, and link/pop_engine.link's ceiling note is explicit that the intro has
+REM nowhere to put it ("prog ending $2487 boots; $2535 image corrupted... treat $2480 as the
+REM practical limit"), with the intro's prog already ending $24FA.
+REM ======================================================================
+python harness/tools/gen_loading.py --bundle build/assets/intro_bundle.raw --out build/gen/loading_data.s
+if errorlevel 1 goto :error
+
+lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DINTRO_BASE=0x2000 -DINTRO_TRK=%INTRO_TRK% ^
+      -DINTRO_SEC=18 -DINTRO_BOOT_OFF=%INTRO_BOOT_OFF% -I . -o build/obj/loader.o src/boot/loader.s
+if errorlevel 1 goto :error
+
+lwlink --decb --script=link/pop_boot.link --entry=boot_entry --map=build/obj/loader.map ^
+       -o build/loader.bin build/obj/loader.o build/obj/hal_build.o
+if errorlevel 1 goto :error
+call :size build/loader.bin
+
+REM ★ THE INTRO'S PROGRAM ONLY -- the kernel segment is dropped. The loader's own $7900 is
+REM the same hal_build.o at the same address, so re-reading it would at best be wasted and
+REM at worst overwrite the routine performing the read. link/pop_scene.link makes the same
+REM cut for the same reason, and kernel_identical_check.py is what makes it a checked fact
+REM rather than an assumption.
+python harness/tools/decb_to_raw.py --bin build/intro_seq.bin --out build/assets/intro_prog.raw --base 0x2000 --span-end 0x7900
+if errorlevel 1 goto :error
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/intro_prog.raw --track %INTRO_TRK% --tracks 1 --reserve --imgtool "%IMGTOOL%"
+if errorlevel 1 goto :error
+
+"%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\loader.bin LOADER.BIN --ftype=binary --ascii=binary
+if errorlevel 1 goto :error
+
 echo --- The SPLIT cel image: pinned page + rotating pages (P3.78) ---
 REM Two-pass, and driven from content/cutscene/chars/cel_pack.json rather than from a
 REM page count written here. The count is what the packer is allowed to change when the
@@ -771,7 +827,7 @@ REM reason the HAL-sync check does: a check that has to be remembered enforces n
 REM ======================================================================
 python harness\tools\disk_file_readback_check.py --dsk build/probe.dmk --imgtool "%IMGTOOL%" ^
     PROBE.BIN=build/loop_probe.bin MODE.BIN=build/mode_probe.bin ANIM.BIN=build/anim_probe.bin ^
-    INTRO.BIN=build/intro_splash.bin INTROSEQ.BIN=build/intro_seq.bin
+    INTRO.BIN=build/intro_splash.bin LOADER.BIN=build/loader.bin
 if errorlevel 1 (
     echo *** BUILD BLOCKED: a file on the disk image is not what the build produced ***
     exit /b 1
