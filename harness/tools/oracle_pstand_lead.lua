@@ -59,7 +59,7 @@
 -- mame-idioms-apple2e-oracle.md rather than left as a puzzle for the next dispatch.
 -- Booting to the arm costs ~45 s emulated, which is ~4 s of wall clock at 1200%.
 local OUT   = os.getenv("P_OUT") or "build/tmp/oracle_pstand_lead.log"
-local SECS  = tonumber(os.getenv("P_SECS") or "12")
+local SECS  = tonumber(os.getenv("P_SECS") or "12")  -- seconds after the arm
 
 local cpu = manager.machine.devices[":maincpu"]
 local mem = cpu.spaces["program"]
@@ -92,6 +92,10 @@ _G._tm = mem:install_read_tap(MUSICON, MUSICON, "mon", function(off, data, mask)
     if f0 == nil then return data end
     local pc = cpu.state["PC"].value
     pcs[pc] = (pcs[pc] or 0) + 1
+    -- ★ ONLY THE REAL PlaySongI. $031A has other readers -- P4.26b's histogram showed
+    -- $E479 firing once against $0CAE 292 times (the play loop, Y=100/255). The histogram
+    -- below still reports every PC unfiltered, so this filter is visible and checkable.
+    if pc ~= 0xE479 then return data end
     if ncue < 40 then
         ncue = ncue + 1
         cues[ncue] = { f = fn() - f0, pc = pc, y = cpu.state["Y"].value }
@@ -105,8 +109,18 @@ _G._t1w = mem:install_write_tap(PAGE1, PAGE1, "p1w", function(o, d, m) note_flip
 _G._t2w = mem:install_write_tap(PAGE2, PAGE2, "p2w", function(o, d, m) note_flip(2, "w"); return d end)
 
 -- THE ARM. A write of 12 to SPEED is PlayCut0 announcing itself; nothing else can set f0.
+-- ★★ SPEED WRITES ARE PlayCut0's OWN PUNCTUATION, AND THEY BOUND THE SONG BLOCKS EXACTLY.
+-- `PlaySongI` BLOCKS while the music plays, and the oracle's very next act after s_Squeek is
+-- `lda #7 / sta SPEED` -- so that write IS the frame the block ended. Measuring the boundary
+-- beats deriving it from a frames-per-play estimate, which is what the existing song rows in
+-- bake_scene.PLAN had to do (761 and 358 were both "measured interval minus N plays at ~6 f").
+local speeds, nsp = {}, 0
 _G._ts = mem:install_write_tap(SPEED, SPEED, "speed", function(o, d, m)
-    if f0 == nil and d == 12 then f0 = fn() end
+    if f0 == nil and d == 12 then f0 = fn(); return d end
+    if f0 ~= nil and nsp < 40 then
+        nsp = nsp + 1
+        speeds[nsp] = { f = fn() - f0, v = d }
+    end
     return d
 end)
 
@@ -145,6 +159,11 @@ _G._n = emu.add_machine_frame_notifier(function()
     f:write("#\n# --- PC histogram for the $031A tap (unfiltered) -----------------\n")
     for pc, c in pairs(pcs) do
         f:write(string.format("#   $%04X  x%d\n", pc, c))
+    end
+
+    f:write("#\n# --- SPEED writes: PlayCut0's punctuation, which bounds each block ---\n")
+    for i = 1, nsp do
+        f:write(string.format("  frame %5d   SPEED = %d\n", speeds[i].f, speeds[i].v))
     end
 
     f:write("#\n")

@@ -31,54 +31,60 @@ cel_plan
                 fcb     9,$0D
                 fdb     $A53C
                 fcb     0,0,0           ; beat 3  Palert       plays 9   
+                fcb     10,$0D
+                fdb     $0000
+                fcb     0,0,8           ; beat 4  s_Squeek     plays 10    pinned-only
                 fcb     5,$0D
                 fdb     $0000
-                fcb     0,0,0           ; beat 4  (hold)       plays 5     pinned-only
+                fcb     0,0,0           ; beat 5  (hold)       plays 5     pinned-only
                 fcb     7,$0D
                 fdb     $A53C
-                fcb     0,0,0           ; beat 5  Vwalk        plays 7   
+                fcb     0,0,0           ; beat 6  Vwalk        plays 7   
                 fcb     4,$0D
                 fdb     $A53C
-                fcb     0,0,0           ; beat 6  Vstop        plays 4   
+                fcb     0,0,0           ; beat 7  Vstop        plays 4   
                 fcb     51,$0D
                 fdb     $0000
-                fcb     0,0,9           ; beat 7  s_Vizier     plays 51    pinned-only
+                fcb     0,0,9           ; beat 8  s_Vizier     plays 51    pinned-only
                 fcb     4,$0D
                 fdb     $0000
-                fcb     0,0,0           ; beat 8  (hold)       plays 4     pinned-only
+                fcb     0,0,0           ; beat 9  (hold)       plays 4     pinned-only
                 fcb     29,$0D
                 fdb     $A53C
-                fcb     0,0,0           ; beat 9  Vwalk        plays 29  
+                fcb     0,0,0           ; beat 10 Vwalk        plays 29  
                 fcb     4,$0D
                 fdb     $A53C
-                fcb     0,0,0           ; beat 10 Vstop        plays 4   
+                fcb     0,0,0           ; beat 11 Vstop        plays 4   
                 fcb     56,$0D
                 fdb     $0000
-                fcb     4,0,10           ; beat 11 s_Buildup    plays 56    pinned-only  READ page 3
+                fcb     4,0,10           ; beat 12 s_Buildup    plays 56    pinned-only  READ page 3
                 fcb     1,$0E
                 fdb     $A64D
-                fcb     0,0,0           ; beat 12 Vraise       plays 1   
+                fcb     0,0,0           ; beat 13 Vraise       plays 1   
                 fcb     13,$0E
                 fdb     $A64D
-                fcb     0,0,0           ; beat 13 Pback        plays 13  
+                fcb     0,0,0           ; beat 14 Pback        plays 13  
                 fcb     5,$0E
                 fdb     $0000
-                fcb     0,9,0           ; beat 14 (hold)       plays 5     pinned-only  glass0  flash
+                fcb     0,9,0           ; beat 15 (hold)       plays 5     pinned-only  glass0  flash
                 fcb     16,$0E
                 fdb     $0000
-                fcb     0,3,11           ; beat 15 s_Magic      plays 16    pinned-only  glass0  flow
+                fcb     0,3,11           ; beat 16 s_Magic      plays 16    pinned-only  glass0  flow
                 fcb     17,$0F
                 fdb     $A75E
-                fcb     0,6,0           ; beat 16 Vexit        plays 17    glass1  flow
+                fcb     0,6,0           ; beat 17 Vexit        plays 17    glass1  flow
                 fcb     12,$0D
                 fdb     $A86F
-                fcb     0,6,0           ; beat 17 (hold)       plays 12    glass1  flow
+                fcb     0,6,0           ; beat 18 (hold)       plays 12    glass1  flow
                 fcb     28,$0D
                 fdb     $A86F
-                fcb     0,6,0           ; beat 18 Pslump       plays 28    glass1  flow
+                fcb     0,6,0           ; beat 19 Pslump       plays 28    glass1  flow
+                fcb     51,$0D
+                fdb     $A86F
+                fcb     0,6,12           ; beat 20 s_StTimer    plays 51    glass1  flow
                 fcb     0,$0D
                 fdb     $0000
-                fcb     0,6,0           ; beat 19 Vstand       plays 0     pinned-only  glass1  flow
+                fcb     0,6,0           ; beat 21 Vstand       plays 0     pinned-only  glass1  flow
                 fcb     0,0
                 fdb     0
                 fcb     0,0,0           ; terminator

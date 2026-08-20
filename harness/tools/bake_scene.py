@@ -274,6 +274,17 @@ PLAN = [("p", "Pstand", 2),       # play 2 [SUBS.S:665-668]
         ("song", "s_Princess", 761),   # ★ THE CUE, HERE [SUBS.S:669-671]
         ("-", "", 5),             # play 5 — she waits, no re-jump [SUBS.S:672]
         ("p", "Palert", 9),       # she hears the door and turns
+        # ★★★ s_Squeek — THE DOOR. Jay, on the P4.29 build: "i don't hear the door squeak".
+        # It was never in the PLAN. `PlayCut0` makes SIX PlaySongI calls [SUBS.S:658-755] and
+        # this table carried four; `lda #s_Squeek / ldx #0 / jsr PlaySongI ;door squeaks...`
+        # sits exactly here, between Palert's nine plays and the `play 5` below — whose
+        # comment "after the SPEED change" is a reference to the `lda #7 / sta SPEED` that
+        # this call returns into.
+        # ★★ 69 FRAMES IS MEASURED, NOT DERIVED. The oracle's cue lands at frame 847 (from
+        # PlayCut0's arm) and its next `sta SPEED` at 916 — and since PlaySongI BLOCKS, that
+        # write IS the frame the block ended. The existing rows had to subtract N plays at an
+        # estimated frames-per-play; this one did not [oracle_pstand_lead.lua].
+        ("song", "s_Squeek", 69),
         ("-", "", 5),             # play 5 — both hold after the SPEED change
         ("v", "Vwalk", 7),        # Vapproach: he enters from the right (oracle 6, +1)
         ("v", "Vstop", 4),        # ...and STOPS, at CharX 185 against the oracle's 186
@@ -299,6 +310,17 @@ PLAN = [("p", "Pstand", 2),       # play 2 [SUBS.S:665-668]
         ("v", "Vexit", 17),       # he turns and walks out; Vexit ends `goto Vwalk2`
         ("-", "", 12),            # play 12
         ("p", "Pslump", 28),      # she slumps against the wall
+        # ★★★ s_StTimer — THE LAST CUE, AND IT IS A TAIL CALL. Jay: "there sound be a sound
+        # after the vizier exit whith the princess hani her head. that is missing". It was
+        # missing because `PlayCut0` ends `sta SPEED / lda #s_StTimer / jmp PlaySongI`
+        # [SUBS.S:753-755] — a JMP, the routine's final act, easy to miss by reading the body
+        # and stopping at the last `jsr play`.
+        # ★★ 356 FRAMES: cue at frame 2562, and the next scene's `sta SPEED` at 2918. The
+        # oracle really does hold here — PlaySongI blocks, so the cutscene does not end until
+        # the song does, and the port's scene must not terminate under it.
+        # ★ s_StTimer = 12 [SOUNDNAMES.S:54], which is why SONG_ID gains an entry: MASTER.S's
+        # Set-1 list stops at s_Magic = 11 and does not name this one.
+        ("song", "s_StTimer", 356),
         ("v", "Vstand", 0)]       # 0 = hold; the script's last entry
 
 # ── s_Magic: TRACED AT P3.85, and the tracing is why it is here ──────────────────────
@@ -357,12 +379,18 @@ SC_FLASH  = 0x08           # `lda #5 / sta lightning` — five steps, one level 
 # was two. The names are the guard: if a key is wrong the assertion below names the beat it
 # actually found, which is how this edit is checkable rather than trusted.
 SCENERY = {
-    14: ("(hold)",  SC_GLASS0 | SC_FLASH),   # the glass appears, with the flash over it
-    15: ("s_Magic", SC_GLASS0 | SC_FLOW),    # ...and the sand runs through the cue
-    16: ("Vexit",   SC_GLASS1 | SC_FLOW),    # addglass1 X=1 [SUBS.S:745]
-    17: ("(hold)",  SC_GLASS1 | SC_FLOW),
-    18: ("Pslump",  SC_GLASS1 | SC_FLOW),
-    19: ("Vstand",  SC_GLASS1 | SC_FLOW),
+    15: ("(hold)",  SC_GLASS0 | SC_FLASH),   # the glass appears, with the flash over it
+    16: ("s_Magic", SC_GLASS0 | SC_FLOW),    # ...and the sand runs through the cue
+    17: ("Vexit",   SC_GLASS1 | SC_FLOW),    # addglass1 X=1 [SUBS.S:745]
+    18: ("(hold)",  SC_GLASS1 | SC_FLOW),
+    19: ("Pslump",  SC_GLASS1 | SC_FLOW),
+    # ★★★ s_StTimer NEEDS ITS OWN ROW HERE, AND FORGETTING IT WOULD BE INVISIBLE IN EVERY
+    # NUMBER. The flags are per-beat and do not persist: a beat without SC_GLASS1|SC_FLOW
+    # stops the sand and reverts the glass body. This cue holds for 356 frames — nearly six
+    # seconds — so omitting it would make the hourglass disappear for the whole of the last
+    # sound in the scene, and no cue table, suite or byte-diff would say a word.
+    20: ("s_StTimer", SC_GLASS1 | SC_FLOW),
+    21: ("Vstand",  SC_GLASS1 | SC_FLOW),
 }
 PLAN_STRIDE = 7            # plays, block, sig(2), read, scenery, song (P4.23)
 
@@ -370,7 +398,10 @@ PLAN_STRIDE = 7            # plays, block, sig(2), read, scenery, song (P4.23)
 # ★★★ THE SONG IDS ARE THE ORACLE'S OWN, quoted from where it defines them
 # [MASTER.S:112-126] rather than remembered — the id spaces have been a trap three times.
 SONG_ID = {"s_Presents": 1, "s_Byline": 2, "s_Title": 3, "s_Prolog": 4, "s_Sumup": 5,
-           "s_Princess": 7, "s_Squeek": 8, "s_Vizier": 9, "s_Buildup": 10, "s_Magic": 11}
+           "s_Princess": 7, "s_Squeek": 8, "s_Vizier": 9, "s_Buildup": 10, "s_Magic": 11,
+           # ★ s_StTimer is in SOUNDNAMES.S:54, NOT in MASTER.S's Set-1 list — that list
+           # stops at s_Magic = 11, which is why this id was absent until P4.30.
+           "s_StTimer": 12}
 
 
 def song_at(bi):

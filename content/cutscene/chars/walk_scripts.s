@@ -8,7 +8,7 @@
 * hears it.
 viz_script
                 fdb     viz_stand
-                fcb     130
+                fcb     140
                 fdb     viz_walk
                 fcb     7
                 fdb     viz_stop
@@ -25,7 +25,7 @@ pri_script
                 fdb     pri_stand
                 fcb     116
                 fdb     pri_alert
-                fcb     170
+                fcb     180
                 fdb     pri_back
                 fcb     63
                 fdb     pri_slump
