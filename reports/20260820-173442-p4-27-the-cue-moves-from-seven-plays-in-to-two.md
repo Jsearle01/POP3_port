@@ -164,9 +164,26 @@ The regenerated schedule:
                 fcb     0,0,0           ; beat 3  Palert       plays 9
 ```
 
-**25.3 operator-runtime-smoke: PENDING JAY — live-disk, RGB, 128 KB, `run_introseq_live.sh`, by EAR and
-EYE.** The run was launched and completed at real speed; **a completed run is not a verdict and is not
-recorded as one.** Not self-certified. The last recorded operator verdict remains the FAIL on `fe9b594`.
+**25.3 operator-runtime-smoke: OBSERVED — Jay, live-disk, RGB, 128 KB, by EAR and EYE.** Verbatim, in
+order:
+
+> ***"the timing seems good. can't really tell till the sound issue gets resolve. the animation is fine."***
+
+> ***"the sound before the hourglass drop is terribly low quality, sounds muffled and indistinct not like
+> the oracle"***
+
+> ***"you need to go back further. the first song played after the scene displays is the worst sounding"***
+
+**★★ AC4 — the princess's animation — is PASSED BY JAY** (*"the animation is fine"*). That is the thing
+P4.25b-2 broke and the thing this dispatch had to preserve, and it is now settled by his eye rather than by
+my arithmetic.
+
+**★ AC2/AC6 — the cue timing — is PROVISIONAL, and by his own qualification:** *"seems good … can't really
+tell till the sound issue gets resolved."* **Recorded as provisional, NOT as a pass.**
+
+**★★★ AND A NEW DEFECT, WHICH IS NOT THIS DISPATCH'S AND IS NOT TIMING:** the cutscene's audio QUALITY, and
+he corrected my scoping — the **worst** is `s_Princess`, the first song after the scene displays, not
+`s_Buildup`. Opened as its own item (§8).
 
 ### 6 — Reactive deviations and route accounting
 
@@ -195,6 +212,22 @@ decision.** Not touched, and not proposed as a fix.
 
 ### 8 — Follow-up candidates
 
+- **★★★ THE CUTSCENE'S AUDIO QUALITY — Jay's new finding, worst on `s_Princess`.** Two leads, one raised and
+  killed, one standing:
+  - **KILLED: the wrong music set.** P4.19's own 25.3 line records the song page as generated from
+    `MUSIC.SET1`, and the ids overlap between sets — so I expected the cutscene to be resolving against the
+    wrong table. **`MASTER.S:112-126` disproves it:** `s_Princess = 7 … s_Magic = 11` are **Set 1**, the
+    same set as the intro's. Set 2 is the epilog. The port plays the right data.
+  - **★★ STANDING: the blitter masks the music's own interrupt.** `blit_core.s:120` does `orcc #$50` —
+    **IRQ *and* FIRQ** — because `S` becomes the blast destination, and the music is FIRQ-driven
+    [`char_draw.s:2220`]. **The intro, where P4.19 gated the player, does no blitting at all**: its songs
+    play over static screens. The cutscene blits two characters and two torches every frame at the flame
+    rate, so every blit silences the speaker interrupt. A repeatedly-delayed pulse train is exactly
+    "muffled and indistinct".
+    ★ *Stated as a LEAD, not a finding: it needs the masked interval measured against the FIRQ period, and
+    it does not yet explain why `s_Princess`'s beat — a pinned-only hold where `ch_anymove` skips the peel —
+    should be the WORST rather than the cheapest. That contradiction is the next thing to resolve, not to
+    smooth over.*
 - **★★ CHECK THE OTHER CUES FOR THE SAME MERGE, which P4.26b §8 raised and this dispatch did not cover.**
   `s_Vizier` **−1.0 s** and `s_Buildup` **−0.7 s** are *early* — the opposite sign — and `s_Magic` **+2.0 s**
   is the largest error left. **One grep of `SUBS.S` per cue**, exactly as this one was found.
