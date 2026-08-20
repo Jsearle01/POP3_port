@@ -448,6 +448,39 @@ rs_have_blob
 
                 jsr     ps_savebg               ; the room under each star, once
 
+* ---------------------------------------------------------------
+* ★★★ ONE BEAT TICK BEFORE THE REVEAL — JAY'S RULING (P4.25b).
+*
+* Measured, `reveal_vs_cue.lua`: the room appeared 45 frames (0.75 s) BEFORE its music.
+* Jay: *"can we delay the scene start for that second?"* — and the answer is yes, but NOT
+* by holding anything. The chain unpack -> mirror -> present -> loop -> beat 0 -> cue is
+* SEQUENTIAL, so a hold inserted anywhere before the cue delays the cue by the same amount
+* and the gap survives unchanged. The two ends have to move toward each other.
+*
+* ★★ SO THE FIRST BEAT TICK HAPPENS HERE, WHILE THE ROOM IS STILL HIDDEN. `vm_due` is
+* `fdb 0` in the bundle's image, so beat 0 is due on the VM's first ask — the 45 frames
+* were program order, not a schedule. One `chars_frame` call fires `vb_apply`, which starts
+* the song, and draws both characters into the back buffer. THEN the mirror reveals, and
+* what it reveals already has the music playing over it.
+*
+* ★ IT ALSO REVEALS A COMPLETE FIRST FRAME, which is a fidelity gain rather than a cost:
+* the room used to appear empty and the characters popped in on the next tick.
+*
+* THE CALL IS THE LOOP'S OWN, VERBATIM — frame count in U, buffer parity in A, draw base
+* in X (rl_draw). The bundle links without the HAL, so all three arrive as arguments.
+* cel_bank_map FIRST because the characters are drawn FROM the cel bank: a 4-colour
+* framebuffer is 15,360 B and ends at $BBFF, so the bank at $C000-$FDFF does not collide
+* with it — that is the property the split relies on. HAL_gfx_mirror then takes $FFA6/$FFA7
+* for the front buffer and room_filled maps the bank back, exactly as before.
+* ---------------------------------------------------------------
+                jsr     cel_bank_map
+                jsr     HAL_time_frame_count    ; D = 16-bit frame count (race-safe)
+                tfr     d,u
+                lda     HAL_gfx_cur_back
+                anda    #1
+                ldx     HAL_gfx_draw_base
+                jsr     [CHARS_TAB]             ; chars_frame — fires beat 0's song
+
 * MIRROR BEFORE THE REVEAL, so nothing is built while the viewer waits. Jay, on the
 * first fix: "there's still a visible delay but not horrible" -- 15 frames of it,
 * which is the second LZ expand almost exactly (15,360 B at ~30 cy/byte against a
