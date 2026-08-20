@@ -111,11 +111,23 @@ _G._n = emu.add_machine_frame_notifier(function()
         f:write("# silent, so the articulation between notes is filled in with tone. Every\n")
         f:write("# pulse can still be correct in pitch, width and spectrum -- and it is -- while\n")
         f:write("# the result is a continuous buzz. This is the lead worth pursuing.\n")
-    elseif pct > 16.0 then
-        f:write("# ★ THE PORT RESTS ABOUT AS MUCH AS THE ORACLE. The silence hypothesis is\n")
-        f:write("# NOT supported and the +28% pulse rate has another explanation.\n")
     else
-        f:write("# ★ BETWEEN THE TWO. Report the number; it neither confirms nor refutes.\n")
+-- ★★★ THE COMPARISON THIS TOOL WAS BUILT TO MAKE IS NOT SOUND, AND SAYING SO IS THE POINT.
+-- The oracle's "about 22% silent" was DERIVED from its speaker capture's pulse/segment
+-- pairing -- and a silent segment emits no speaker toggle at all, so the oracle's segment
+-- COUNT is exactly the quantity that capture cannot see. The port's number is measured; the
+-- oracle's is an inference from an instrument blind to it.
+--
+-- ★★ WHAT IS SOLID IS THE RUN STRUCTURE, and it is the better fact: as many silent runs as
+-- sounding segments, mean length 1.0, is a strict ALTERNATION -- sound, silent, sound,
+-- silent. That is not articulation between notes; it is the harmonic pattern shaping the
+-- waveform, which gen_msys_tables.py names outright: "The default pattern is `1,3,128`:
+-- silent, sound". The silence is the TIMBRE mechanism working as designed.
+        f:write("# ★ THE PORT RESTS MORE THAN THE ORACLE FIGURE, NOT LESS -- so the idea that\n")
+        f:write("# it sounds where the oracle rests is REFUTED IN ITS DIRECTION. But the oracle\n")
+        f:write("# figure is derived rather than measured, so this is not a clean comparison\n")
+        f:write("# either. What IS clean: the silence alternates one-for-one, which makes it\n")
+        f:write("# the harmonic pattern rather than rests between notes.\n")
     end
     f:close()
     manager.machine:exit()
