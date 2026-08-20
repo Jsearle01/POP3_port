@@ -90,8 +90,8 @@ def main():
     d = pathlib.Path(a.dumps)
     got = {}
     for tag in ('1_base', '2_presents_up', '3_presents_clear', '4_byline_up',
-                '5_byline_clear', '6_title_up', '7_title_clear',
-                '8_prolog1', '9_prolog2', '10_title_reprise', '11_done'):
+                '5_byline_clear', '6_title_up', '7_title_held',
+                '8_prolog1', '9_prolog2', '10_title_reprise', '11_title_held'):
         p = d / f'{tag}.bin'
         if not p.exists():
             sys.exit(f"missing capture {p} — the sequence did not reach that state")
@@ -123,7 +123,9 @@ def main():
     mid = d / '1a_wipe_mid.bin'
     if mid.exists():
         m = mid.read_bytes()
-        new_fb, old_fb = base_framebuffer(pathlib.Path(a.prolog1).read_bytes(), fill), base_fb
+        # P4.47: the sweep now runs over the HELD TITLE, not over a cleared splash --
+        # beat 2 keeps its caption up, so the title screen is what prolog1 wipes away.
+        new_fb, old_fb = base_framebuffer(pathlib.Path(a.prolog1).read_bytes(), fill), ttl_fb
         # A column identical in BOTH pictures says nothing about how far the sweep
         # has got -- and there are many, because the two images share a border. Only
         # columns that differ carry information, so classify four ways and judge on
@@ -159,7 +161,11 @@ def main():
     ok &= compare("caption 2 == base + byline patch ONLY", got['4_byline_up'], byl_fb)
     ok &= compare("caption 2 removal is exact", got['5_byline_clear'], base_fb)
     ok &= compare("title == base + title patch ONLY", got['6_title_up'], ttl_fb)
-    ok &= compare("title removal is exact", got['7_title_clear'], base_fb)
+    # P4.47: the title is NOT removed any more -- it holds through beat 3's scene
+    # preload and prolog1 read, which is what Jay asked for and what BEAT_KEEP does.
+    # Asserting it still equals the TITLE screen is a STRONGER check than the old
+    # "removal is exact", because a stray repair would show up here as base_fb.
+    ok &= compare("title HOLDS through beat 3's reads", got['7_title_held'], ttl_fb)
     # the prologue beats replace the picture outright -- their own framebuffer,
     # no patch, so the check is against the converted image itself
     for tag, src in (('8_prolog1', a.prolog1), ('9_prolog2', a.prolog2)):
@@ -170,7 +176,9 @@ def main():
     # despite having got there by a completely different route.
     ok &= compare("reprise == the SAME screen as beat 3's title",
                   got['10_title_reprise'], ttl_fb)
-    ok &= compare("reprise removal is exact", got['11_done'], base_fb)
+    # P4.47: SilentTitle has no CleanScreen -- the final title is still up when the
+    # intro hands over to Demo. The old check asserted the port's own invention.
+    ok &= compare("reprise HOLDS -- SilentTitle never clears it", got['11_title_held'], ttl_fb)
 
     print("VERDICT:", "PASS" if ok else "FAIL")
     return 0 if ok else 1

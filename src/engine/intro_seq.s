@@ -103,7 +103,7 @@ dr_r_count      equ     DR_VARBASE+6
 * ---------------------------------------------------------------
 STACK_TOP       equ     $7F00           ; below the $8000 draw window, above the kernel
 FB_STRIDE       equ     160             ; 320x192x16: 2 px/byte
-BEAT_SIZE       equ     9       ; +1 for BEAT_SONG (P3.52)
+BEAT_SIZE       equ     10      ; +1 for BEAT_SONG (P3.52), +1 for BEAT_KEEP (P4.47)
 BEAT_COUNT      equ     6
 SEQ_MAGIC       equ     $5E92
 
@@ -214,7 +214,7 @@ SCENE_AFTER_BEAT equ    3               ; 0-based: beat 4, prolog1
 DISK_SCENE_TRK  equ     24              ; ★ NOT 17 — that is the RS-DOS DIRECTORY track,
 *                                       ;   which carries no asset and is not free (P3.106)
                 ifndef  SCENE_BASE
-SCENE_BASE      equ     $2500
+SCENE_BASE      equ     $2600           ; P4.47: was $2500 -- see build.bat
                 endc
                 ifndef  SCENE_CALL_OFF
 SCENE_CALL_OFF  equ     11
@@ -303,6 +303,24 @@ BEAT_PATCH      equ     2               ; sparse caption patch, in the bundle
 BEAT_PRE        equ     4               ; frames the clean base is held first
 BEAT_HOLD       equ     6               ; frames the caption stays up
 BEAT_SONG       equ     8               ; the SONG whose length this beat's hold is (0 = none)
+* ★★★ BEAT_KEEP — this beat's caption STAYS UP when its hold ends (P4.47, Jay).
+* Both beats that set it are settled from the oracle's own source, and they are settled
+* differently, which is why this is a per-beat field and not a rule:
+*
+*   beat 5, the reprise — `SilentTitle` [MASTER.S:808-822] ends
+*       `lda #delTitle / jsr DeltaExpPop / lda #160 / jmp tpause`
+*     and RETURNS to `jmp Demo`. There is no `CleanScreen`. The oracle simply never takes
+*     this one down, so clearing it was the port's own invention. Straight fidelity.
+*
+*   beat 2, the first title — `TitleScreen` [MASTER.S:823-838] DOES end `jmp CleanScreen`
+*     ("Credit line disappears"), so the port's clear was faithful to the instruction and
+*     wrong about the result. The oracle batch-loads its stage, so its cleared splash is
+*     visible for an instant; the port pays beat 3's scene preload AND prolog1's read there,
+*     and Jay watched a bare splash for the length of both. ★ CLAUDE.md §2I governs: the
+*     mandate is that it LOOKS right, not that it works the way the oracle works — and here
+*     reproducing the oracle's ACTION reproduces the opposite of the oracle's APPEARANCE.
+*     Beat 3 wipes prolog1 in over the held title, which is what DblExpand does anyway.
+BEAT_KEEP       equ     9               ; non-zero: no vanish-swap, no repair
 
 * --- the oracle's song numbers, Set 1 (title) [MASTER.S:114-121] ---------
 S_PRESENTS      equ     1
@@ -515,6 +533,17 @@ lt_done
 * buffers, so the reprise cannot inherit anything and re-establishes the splash
 * itself. It is a caption beat, so it reads twice and restores the invariant for
 * whatever follows.
+*
+* ★★★ AND BEAT_KEEP IS A THIRD CASE (P4.47). A beat with BEAT_KEEP set leaves its CAPTION
+* on the front page and the clean base on the hidden one -- so it satisfies neither "both
+* buffers clean" nor "both buffers hold the picture". Only two beats set it and each is
+* followed by something that does not care:
+*   beat 2 (title) is followed by beat 3, which reads its own picture into the hidden page
+*     and WIPES, and wipe_in leaves both buffers holding prolog1 -- the invariant is
+*     restored one beat later, by the sweep rather than by a repair.
+*   beat 5 (reprise) is the LAST beat. Nothing follows it to inherit anything.
+* ★ So the rule is not "a keep beat is safe"; it is that a keep beat must be followed by a
+* beat that rebuilds both pages, or by nothing. Both are checked above, not assumed.
 * Clobbers: everything
 * ---------------------------------------------------------------
 seq_run
@@ -555,6 +584,8 @@ sq_beat
                 std     beat_hold
                 lda     BEAT_SONG,x
                 sta     beat_song
+                lda     BEAT_KEEP,x
+                sta     beat_keep
 
 * -- this beat's screen, if it brings one --------------------------
 * Read into the back buffer, show it, read again into the other one, so both pages
@@ -571,7 +602,7 @@ sq_beat
 *
 * WHY THIS BEAT AND NOT EARLIER: beat 3 was the last user of the captions at $3000, and the
 * scene's fetch expands its bundle straight over them. Before beat 3's repair, both this
-* read (which overruns $2500..$36FF — a whole track for a 1,196-byte program) and the
+* read (which overruns $2600..$37FF — a whole track for a 1,196-byte program) and the
 * expand would destroy a caption the intro still has to show. After it, nothing needs them
 * until beat 6, which gets a fresh copy from run_scene's post-scene reload.
 *
@@ -656,12 +687,35 @@ sq_nobase
 * -- hide it, then repair the page that carries it ----------------
 * The flip is the disappearance. The repair happens afterwards, on the page nobody
 * is looking at, which is why it can take as long as it likes.
+* ★ A KEEP BEAT SKIPS BOTH HALVES, and it has to be both: the swap is the disappearance
+* and the repair is what makes the hidden page clean again. Skipping only the swap would
+* leave the caption up and then quietly erase it from the page behind it, so the next
+* swap-in from any source would show it vanishing for no reason.
+                lda     beat_keep
+                bne     sq_keep_caption
                 jsr     HAL_gfx_swap    ; the caption VANISHES, in one frame
+* ★★★ probe_phase IS SET HERE, BETWEEN THE SWAP AND THE REPAIR, AND IT MUST BE.
+* P4.47 briefly moved it below patch_blit to share one copy with the keep path and save
+* six bytes. That is six bytes for a race: the repair is the slow part of the beat, so
+* setting the phase after it leaves phase 2 alive for only the handful of frames before
+* the next beat overwrites probe_status -- and the suite caught it at once, with beat 0
+* going `status=2 phase=1` straight to `status=3 phase=2`. Phase 2 was never observable.
+* ★ The comment 30 lines up already said so ("P3.3 got lucky and P3.4 did not"); the
+* saving was only wanted because the prog was over SCENE_BASE, and raising SCENE_BASE
+* removed the reason rather than the symptom.
                 lda     #2
                 sta     probe_phase
                 lda     #1
                 sta     seq_restore
                 jsr     patch_blit      ; same runs, from the saved bytes
+                bra     sq_beat_end
+sq_keep_caption
+* The keep path skips BOTH halves -- the swap is the disappearance, the repair is what
+* makes the hidden page clean again -- but still advances the phase, because phase 2
+* means "this beat's hold is over" and that is true either way. The FRAMEBUFFER is what
+* differs, and the offline comparison now asserts it against ttl_fb rather than base_fb.
+                lda     #2
+                sta     probe_phase
                 bra     sq_beat_end
 
 sq_nopatch
@@ -732,7 +786,7 @@ sq_pal          lda     ,x+
 * ★★ NEITHER READ CAN LAND ON A PICTURE BEING BUILT, and that is the read-before-reveal
 * discipline rather than a coincidence. It has regressed twice (P3.72f, then P3.78c — Jay
 * caught the second live: "the initial disk load is occurring with the static screen
-* shown"), so the destinations are stated: $2500 is the scene's program region and $3000
+* shown"), so the destinations are stated: $2600 is the scene's program region and $3000
 * is the caption bundle. NEITHER IS A FRAMEBUFFER. What is on screen throughout is the
 * scene's own finished last frame, which is a completed picture and not a partial one —
 * the same relationship the intro's own beats already have, where load_screen reads into
@@ -753,7 +807,7 @@ sq_pal          lda     ,x+
 * ★★ AND THE CHECK IS THE IMAGE'S OWN FIRST BYTE, NOT A FLAG THE READ SET. `SCENE_BASE`
 * opens with `jmp room_start`, so a $7E there means a scene program arrived — the same test
 * the opening batch already makes on the music player (`cmpa #MSYS_SIG`). A failed read
-* therefore still leaves the intro running rather than calling into whatever is at $2500,
+* therefore still leaves the intro running rather than calling into whatever is at $2600,
 * which is what the old `bne rs_out` bought and this keeps without a byte of state.
 run_scene
                 lda     SCENE_BASE
@@ -1302,6 +1356,7 @@ beat_patch      fdb     0               ;   at beat entry. Nothing indexes the t
 beat_pre        fdb     0               ;   again for the rest of the beat.
 beat_hold       fdb     0
 beat_song       fcb     0               ; which song this beat's hold is the length of
+beat_keep       fcb     0               ; non-zero: this beat's caption stays up (P4.47)
 seq_beat        fdb     0               ; the beat under way. Held in a variable
 *                                       ; rather than re-read from 1,S after every
 *                                       ; call: the stack offset was correct but it
@@ -1377,6 +1432,7 @@ beat_table
                 fdb     99              ; BEAT_PRE
                 fdb     281             ; BEAT_HOLD
                 fcb     S_PRESENTS      ; BEAT_SONG    its song [MASTER.S:753-755, jsr PlaySongI, X=80]
+                fcb     0               ; BEAT_KEEP    PubCredit ends `jmp CleanScreen`
 
                 fcb     0               ; BEAT_TRACK   none — inherit beat 1's picture
                 fcb       0               ; BEAT_WIPE    no track — a caption over the picture already up
@@ -1384,6 +1440,7 @@ beat_table
                 fdb     96              ; BEAT_PRE
                 fdb     283             ; BEAT_HOLD
                 fcb     S_BYLINE        ; BEAT_SONG    its song [MASTER.S:795-797, jsr, X=80]
+                fcb     0               ; BEAT_KEEP    AuthorCredit ends `jmp CleanScreen`
 
                 fcb     0               ; BEAT_TRACK   none — the title is a caption too
                 fcb       0               ; BEAT_WIPE    same
@@ -1396,6 +1453,13 @@ beat_table
 *                                       ; out of the hold to land on the oracle's frame.
                 fdb     537             ; BEAT_HOLD    f1720 - f1183
                 fcb     S_TITLE         ; BEAT_SONG    its song [MASTER.S:832-834, jsr, X=140]
+* ★★★ KEEP, AND THIS IS THE ONE THAT DIVERGES FROM THE ORACLE'S INSTRUCTION (§2I).
+* TitleScreen really does `jmp CleanScreen`. But the next thing the PORT does is beat 3's
+* scene preload plus prolog1's own read, and the oracle pays neither -- so the faithful
+* clear bought a bare splash held for the length of two disk reads. Jay: "the first title
+* screen clears the title while the disk loads, i'd rather keep the title up until the
+* disk reads are done." Beat 3 wipes prolog1 in over it, which is DblExpand's own shape.
+                fcb     1               ; BEAT_KEEP    the title holds through beat 3's reads
 
                 fcb     DISK_PROLOG1_TRK ; BEAT_TRACK  its OWN picture — first beat to
                 fcb     101               ; BEAT_WIPE    measured: the oracle's edge runs x=32..524 in 81 frames
@@ -1404,6 +1468,7 @@ beat_table
 *                                        ;              the picture in over the splash
                 fdb     760              ; BEAT_HOLD    f1822 - f2582
                 fcb     S_PROLOG        ; BEAT_SONG    its song [MASTER.S:850-852, jmp -- a TAIL CALL, X=250]
+                fcb     0               ; BEAT_KEEP    no caption on a picture beat
 
                 fcb     DISK_PROLOG2_TRK ; BEAT_TRACK   the second prologue picture
                 fcb       0               ; BEAT_WIPE    NO sweep, and no invented duration:
@@ -1427,6 +1492,7 @@ beat_table
 *   beat 5 IS Prolog2, and Prolog2 plays. Beat 6's row even cited MASTER.S:882-884 — the
 *   citation was right and the assignment was one beat off.
                 fcb     S_SUMUP         ; BEAT_SONG    its song [MASTER.S:882-884, jmp -- a TAIL CALL, X=250]
+                fcb     0               ; BEAT_KEEP    no caption on a picture beat
 
                 fcb     DISK_SCREEN_TRK ; BEAT_TRACK   RE-ESTABLISH the splash. It is
 *                                       ; not resident anywhere -- P3.4 put the
@@ -1445,6 +1511,13 @@ beat_table
 *    carried S_SUMUP until P4.23, which put Prolog2's song one beat late — audible as a
 *    long silence over the prologue and then music over the title reprise.
                 fcb     0               ; BEAT_SONG    NO SONG -- SilentTitle plays nothing
+* ★★★ KEEP, AND HERE THE ORACLE SETTLES IT OUTRIGHT. SilentTitle [MASTER.S:808-822] is
+* `unpacksplash / copy1to2 / tpause 20 / DeltaExpPop delTitle / jmp tpause 160` and then
+* RETURNS -- into `jmp Demo` [MASTER.S:709]. No CleanScreen anywhere in it, where both
+* PubCredit and TitleScreen end with one. The title is still on screen when Demo starts.
+* Jay: "the final title screen clears the title, the oracle doesn't." The port's clear was
+* its own addition; this removes it.
+                fcb     1               ; BEAT_KEEP    the title is still up when the intro ends
 
                 ifdef   OBJTARGET
                 endsection

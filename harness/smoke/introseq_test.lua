@@ -263,19 +263,27 @@ local WANT = {
     { st = 3, ph = 1, tag = "4_byline_up" },
     { st = 3, ph = 2, tag = "5_byline_clear" },
     { st = 4, ph = 1, tag = "6_title_up" },
-    { st = 4, ph = 2, tag = "7_title_clear" },
     -- the prologue beats carry their OWN picture and have no caption, so phase 1
     -- means "the picture is up" rather than "a caption is up"
     -- MID-SWEEP: the only capture that can tell a wipe from a flip. Taken while
     -- beat 3's sweep is roughly half done, it must show the new picture on the left
     -- and the old one on the right with ONE boundary between them. A plain swap
     -- passes every other check in this file; it cannot pass this one.
+    -- ★ P4.47: THE HELD TITLE, and the gate is st=5 rather than st=4 for a reason.
+    -- A keep beat sets phase 2 and falls straight out of the beat, so `st=4, ph=2`
+    -- lasts no observable time at all -- the same once-per-frame race the sequencer
+    -- comment warns about. The state that DOES persist is the top of beat 3: status
+    -- has advanced, phase 2 is carried over, and the title is still on the front
+    -- buffer while the scene preload and prolog1's read run. That is precisely what
+    -- Jay asked to see, so it is what gets captured.
+    { st = 5, ph = 2, tag = "7_title_held" },
     { st = 5, ph = 2, tag = "1a_wipe_mid", wpleft = { 40, 100 } },
     { st = 5, ph = 1, tag = "8_prolog1" },
     { st = 6, ph = 1, tag = "9_prolog2" },
     -- the reprise: the splash re-established from disk, then the SAME title caption
     { st = 7, ph = 1, tag = "10_title_reprise" },
-    { st = 8, ph = 2, tag = "11_done" },
+    -- P4.47: the reprise never comes down -- SilentTitle has no CleanScreen.
+    { st = 8, ph = 2, tag = "11_title_held" },
 }
 local want_i = 1
 

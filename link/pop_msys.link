@@ -19,7 +19,7 @@
 ;   $0A00-$1B67   THE PLAYER, 4,456 B, READ from disk track 32
 ;   $1B68-$1FFF   free, 1,176 B of margin below the engine
 ;   $2000-$24FF   engine (LOADM'd)
-;   $2500-$29A6   scene program (read from disk, same mechanism)
+;   $2600-$2AA6   scene program (read from disk, same mechanism)
 ;   $3000-$52FF   caption bundle (read from disk, same mechanism)
 ;
 ; The entry symbol is nominal: this unit is a library the engine calls, not a program the

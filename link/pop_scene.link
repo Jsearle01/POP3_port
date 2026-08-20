@@ -24,17 +24,19 @@
 ; cutscene bundle does".
 ;
 ; ---------------------------------------------------------------------------
-; WHY $2500, AND WHY BEING ABOVE THE CEILING IS THE POINT RATHER THAN A VIOLATION.
+; WHY $2600, AND WHY BEING ABOVE THE CEILING IS THE POINT RATHER THAN A VIOLATION.
 ; ---------------------------------------------------------------------------
 ;   $2000..$2432   the intro's program — LOADM'd, and resident for the whole sequence
-;   $2500..$297A   THIS, read from a track after the handover
+;   $2600..$2A7A   THIS, read from a track after the handover
 ;   $3000..$4883   the scene's flames bundle, expanded
 ;   $5400..$68F1   the intro's SAVE_BUF worst case (the TITLE caption, 5,361 B)
 ;   $5800..$69FF   the scene's packed bundle — see §3 of the P3.105 report for why those
 ;                  two overlap and are still safe
 ;   $6A00          DR_VARBASE      $6C00  peel buffers      $7800  trace      $7900  kernel
 ;
-; $2500 clears the intro's code with 205 B of gap and clears $3000 by more than $600.
+; $2600 clears the intro's code with 242 B of gap and clears $3000 by more than $500.
+; ★ RAISED FROM $2500 AT P4.47: the intro prog grew past $2500 when BEAT_KEEP was added,
+; and the scene's WHOLE-TRACK read from SCENE_BASE was clipping lz_unpack's tail.
 ; NOTHING LOADMs this image, so the ceiling does not apply to it — that is the whole
 ; mechanism, and stating it here is the point of the file.
 ;
@@ -48,7 +50,7 @@
 ;
 ; Declaring `code` at $7900 makes those references resolve to the addresses the resident
 ; kernel actually occupies. The build then drops that segment (decb_to_raw --span-end) so
-; the track carries only $2500.. — because re-reading the kernel from a track WHILE THE
+; the track carries only $2600.. — because re-reading the kernel from a track WHILE THE
 ; KERNEL IS EXECUTING THE READ would overwrite the routine mid-transfer.
 ;
 ; ★ The two kernel images are byte-identical by construction: same build/obj/hal_build.o,
@@ -59,7 +61,7 @@
 ; Comments here are `;`. lwlink does NOT accept `*`, and a `$`-prefixed load value parses
 ; as ZERO with no error — both documented at length in link/pop_cels_res.link.
 
-section prog load 2500
+section prog load 2600
 section code load 7900
 
 entry room_entry

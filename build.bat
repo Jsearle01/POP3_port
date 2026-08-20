@@ -136,7 +136,14 @@ REM handover, and the offset of its CALLED entry (P3.107). Both assemblies take 
 REM here so there is one home; cutscene_room.s asserts that room_call really is at
 REM SCENE_BASE+SCENE_CALL_OFF and fails the build otherwise, because intro_seq.s calls that
 REM address and cannot see the label.
-set SCENE_BASE=0x2500
+REM ★ RAISED $2500 -> $2600 at P4.47. The scene program is read as a WHOLE TRACK -- 4608
+REM bytes for a 1,191-byte program -- so the read starts at SCENE_BASE and runs to
+REM SCENE_BASE+$1200. At $2500 that clipped the last 14 bytes of lz_unpack.o ($2480..$250D),
+REM which load_screen still needs for beats 3, 4 and 5. The intro prog grew past $2500 when
+REM BEAT_KEEP was added; the map tool LISTED the two regions overlapping and did not flag it.
+REM $2600 puts the scene at $2600..$2A54 and leaves 242 B of prog headroom, taking the free
+REM span above the scene from 1565 B to 1309 B. Nothing else moves.
+set SCENE_BASE=0x2600
 REM ★ Where the intro's program lives on disk, and the offset of the entry the stage-1
 REM loader jumps to (P4.46). Both the loader and intro_seq.s take these from here, and
 REM intro_seq.s asserts that intro_seq_boot really is at INTRO_BOOT_OFF -- so a drift is a
