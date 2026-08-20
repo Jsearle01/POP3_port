@@ -154,7 +154,18 @@ def emit(path, songs_path, music, sets):
     worst = (0.0, None)
     w("msys_period")
     for i, note in enumerate(M.NOTE):
-        mult = 7 if i < 0x19 else 1
+        # ★★★ INDEX 0 IS A REST AND TAKES MULT 1, NOT 7 — AND THIS ONE CHARACTER WAS THE
+        # CHOPPINESS. `NEWNOTE` masks the pitch bits and BRANCHES PAST the multiplier when
+        # they are zero:
+        #     AND #%11111100 / STA R+13 / BEQ MNOBC1   <- MNOBC1 is AFTER `LDA #7`
+        #     LSR / LSR / ... / CMP #$19 / BGE MNOBC1
+        #     LDA #7 / STA MLBL300+1
+        # so `pitch < $19` only reaches the multiplier when the pitch is NON-ZERO. Applying
+        # the rule by index alone gave row 0 the x7 timing: 4.905 ms per silent segment
+        # against the correct 1.258, and a rest is 28 of them.
+        # ★★ MEASURED CONSEQUENCE: s_Presents' 23 rests ran 153.7 ms instead of 46.8, which
+        # is 1.3% of the toggle pairs and 47% of the elapsed time. Jay: "very choppy."
+        mult = 7 if 0 < i < 0x19 else 1
         us = segment_us(note, mult)
         tins, div, cnt, cents = quantise(us)
         if abs(cents) > worst[0]:
