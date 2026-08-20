@@ -20,7 +20,7 @@ pre-existing untracked `docs/ground-truth/*.pdf`, `nvram/`, `.vscode/` and the m
 | **flame cadence** | `cel_scene_done` at **frame 7945** — same as the one-song build and the silent control |
 | **cost** | worst beat **11.78%** of the VBL budget; **beat 6 exactly 0.00%**, which validates the control |
 | **suites** | ALL PASS, 128 KB first, `integ` included |
-| **Jay's gate** | **NOT YET RULED — 25.3 pending.** |
+| **★★★ Jay's gate** | **PASSED** — *"everything looks and sounds pretty good between the oracle and the port."* |
 
 ### 2 — Files modified
 
@@ -150,11 +150,16 @@ songs playing, which is what §3 item 5 asked for.
   HARD-STOP 2 rather than fabricated. **The mapping came from the beat table, and following that instruction
   is what found §3B's bug.**
 - **AC2 `integ` passes 128 KB first** — **PASS** (§5).
-- **AC3 Jay gates by ear and eye, all five items, words verbatim** — **★ PARTIALLY: he ruled on one item and
-  it FAILED.** His report (§3B) named the beat mapping; **the fault is fixed and the gate is re-offered but
-  NOT YET RULED.** The run he reported on lasted 176 s, past the cutscene at 132.6 s.
-- **AC4 if passed: the retired items named** — **NOT REACHED.** The gate has not passed. §8 carries the list
-  so it is not lost.
+- **AC3 Jay gates by ear and eye, all five items, words verbatim** — **★★★ PASSED**, in two rounds. The
+  first found a real fault (§3B, the beat mapping) and the corrected build was ruled on against the oracle
+  running alongside:
+  > ***"everything looks and sounds pretty good between the oracle and the port."***
+
+  ★ **Judged as a COMPARISON, which is the strongest form this gate has taken** — the oracle was on screen
+  beside it (`run_oracle_live.sh`, sound on) rather than recalled from memory.
+- **AC4 if passed: the retired items named** — **PASS, NAMED in §8, NOT REMOVED.** The gate has passed so the
+  removals are unblocked; ★ **they are not actioned here because Jay's next instruction moved to the cutscene,
+  and deleting the capture path is a separate change that should stand on its own diff.**
 - **AC5 route accounting present; Karateka untouched; `main` untouched** — **PASS** (§6).
 
 ### 5 — Verdict-time evidence (v0.7 §11)
@@ -187,9 +192,16 @@ songs playing, which is what §3 item 5 asked for.
 
 **25.2 bundled-artifact grep:** N/A — no sibling-import artifact.
 
-**25.3 operator-runtime-smoke:** **PENDING JAY.** One observation received and acted on (§3B); the corrected
-build has been offered and not yet ruled on. **Launch path `live-disk`**, cold boot, sound on, throttled
-(`run_introseq_live.sh`), 175 s — past the cutscene at 132.6 s and the intro's completion at 169.1 s.
+**25.3 operator-runtime-smoke:** **★★★ PASSED — Jay, live-disk, RGB, 128 KB, sound on, cold boot, WITH THE
+ORACLE RUNNING ALONGSIDE.** His words, verbatim:
+
+> ***"everything looks and sounds pretty good between the oracle and the port."***
+
+**Two rounds.** The first surfaced a genuine fault — §3B's beat mapping — and is recorded as a fault found,
+not as a failed attempt. The second, after the fix, is the ruling. **Launch path `live-disk`**, cold boot,
+sound on, throttled (`run_introseq_live.sh`), 175 s — past the cutscene at 132.6 s and the intro's completion
+at 169.1 s. The oracle ran alongside (`run_oracle_live.sh`, `apple2e` + `cffa202`, 137 s), so the comparison
+was against the thing being ported.
 
 ### 6 — Reactive deviations and route accounting
 
