@@ -64,6 +64,37 @@ Confirmed clean: exit 0, 99.89% speed over a 190 s operator run. The image hashe
   the CFFA2 firmware is unavailable, but note those two `.nib` images are the artifacts that **mismatch**
   the Phase 0 reference md5s (the `.hdv` matches) — so they are not the graded oracle.
 
+### 0a. **`-state` and `-autoboot_script` DO NOT COMPOSE** — the script silently never runs (P4.26)
+
+**Measured, and it is a silent no-op rather than an error.** With `-state princess` present the Lua
+autoboot script **does not run at all**: no log file, nothing on stderr, **exit 0**. The identical command
+with the `-state` argument removed runs the same script fine and installs every tap.
+
+```bash
+#  DEAD — script never executes, exit 0, no diagnostic
+mame apple2e -sl7 cffa202 -hard1 <hdv> -state_directory build/oracle_states -state princess \
+     -video none -sound none -nothrottle -seconds_to_run 6 -autoboot_script tools/probe.lua
+#  WORKS
+mame apple2e -sl7 cffa202 -hard1 <hdv> \
+     -video none -sound none -nothrottle -seconds_to_run 6 -autoboot_script tools/probe.lua
+```
+
+**Why it matters here:** `oracle_scene.lua` writes save states precisely so a later dispatch can skip the
+~45 s boot, and the obvious way to use one is `-state <name>` plus an instrument. **That combination
+produces an empty log, which reads exactly like "the thing I was measuring never happened."**
+
+**The working alternatives**, in order of preference:
+1. **Boot and arm on the oracle's own marker** — `~45 s` emulated is **~4 s of wall clock at 1200-1400%**
+   headless, so the save state buys very little. `harness/tools/oracle_pstand_lead.lua` does this.
+2. Load the state from *inside* Lua (`manager.machine:load("princess")`) if the boot cost ever matters.
+
+**★ AND ARM ON THE WRITE, NOT ON THE VALUE.** `oracle_scene.lua`'s own `demo` entry records why: a
+value-wait fired at frame 8 on uninitialised RAM that happened to hold the right number and reported PASS
+from a machine that had not finished booting. Its `princess` entry still waits on a *value* (`SPEED == 12`);
+a `install_write_tap` on the same address costs the same and cannot do that.
+
+*Established:* P4.26. Tool: `harness/tools/oracle_pstand_lead.lua`.
+
 **Idiom worth reusing beyond this target: validate a mount headlessly before handing an operator a window.**
 ```bash
 mame apple2e -sl7 cffa202 -hard1 <hdv> -video none -sound none -nothrottle -seconds_to_run 5
