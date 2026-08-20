@@ -19,69 +19,72 @@
 * a schedule that maps block $00 and asks for page 109. Alignment goes in the
 * COMMENT, which is what a comment is for.
 cel_plan
-                fcb     7,$0D
+                fcb     2,$0D
                 fdb     $0000
-                fcb     0,0,0           ; beat 0  Pstand       plays 7     pinned-only
+                fcb     0,0,0           ; beat 0  Pstand       plays 2     pinned-only
                 fcb     109,$0D
                 fdb     $0000
                 fcb     0,0,7           ; beat 1  s_Princess   plays 109   pinned-only
-                fcb     9,$0D
-                fdb     $A53C
-                fcb     0,0,0           ; beat 2  Palert       plays 9   
                 fcb     5,$0D
                 fdb     $0000
-                fcb     0,0,0           ; beat 3  (hold)       plays 5     pinned-only
+                fcb     0,0,0           ; beat 2  (hold)       plays 5     pinned-only
+                fcb     9,$0D
+                fdb     $A53C
+                fcb     0,0,0           ; beat 3  Palert       plays 9   
+                fcb     5,$0D
+                fdb     $0000
+                fcb     0,0,0           ; beat 4  (hold)       plays 5     pinned-only
                 fcb     7,$0D
                 fdb     $A53C
-                fcb     0,0,0           ; beat 4  Vwalk        plays 7   
+                fcb     0,0,0           ; beat 5  Vwalk        plays 7   
                 fcb     4,$0D
                 fdb     $A53C
-                fcb     0,0,0           ; beat 5  Vstop        plays 4   
+                fcb     0,0,0           ; beat 6  Vstop        plays 4   
                 fcb     51,$0D
                 fdb     $0000
-                fcb     0,0,9           ; beat 6  s_Vizier     plays 51    pinned-only
+                fcb     0,0,9           ; beat 7  s_Vizier     plays 51    pinned-only
                 fcb     4,$0D
                 fdb     $0000
-                fcb     0,0,0           ; beat 7  (hold)       plays 4     pinned-only
+                fcb     0,0,0           ; beat 8  (hold)       plays 4     pinned-only
                 fcb     29,$0D
                 fdb     $A53C
-                fcb     0,0,0           ; beat 8  Vwalk        plays 29  
+                fcb     0,0,0           ; beat 9  Vwalk        plays 29  
                 fcb     4,$0D
                 fdb     $A53C
-                fcb     0,0,0           ; beat 9  Vstop        plays 4   
+                fcb     0,0,0           ; beat 10 Vstop        plays 4   
                 fcb     56,$0D
                 fdb     $0000
-                fcb     4,0,10           ; beat 10 s_Buildup    plays 56    pinned-only  READ page 3
+                fcb     4,0,10           ; beat 11 s_Buildup    plays 56    pinned-only  READ page 3
                 fcb     1,$0E
                 fdb     $A64D
-                fcb     0,0,0           ; beat 11 Vraise       plays 1   
+                fcb     0,0,0           ; beat 12 Vraise       plays 1   
                 fcb     13,$0E
                 fdb     $A64D
-                fcb     0,0,0           ; beat 12 Pback        plays 13  
+                fcb     0,0,0           ; beat 13 Pback        plays 13  
                 fcb     5,$0E
                 fdb     $0000
-                fcb     0,9,0           ; beat 13 (hold)       plays 5     pinned-only  glass0  flash
+                fcb     0,9,0           ; beat 14 (hold)       plays 5     pinned-only  glass0  flash
                 fcb     16,$0E
                 fdb     $0000
-                fcb     0,3,11           ; beat 14 s_Magic      plays 16    pinned-only  glass0  flow
+                fcb     0,3,11           ; beat 15 s_Magic      plays 16    pinned-only  glass0  flow
                 fcb     17,$0F
                 fdb     $A75E
-                fcb     0,6,0           ; beat 15 Vexit        plays 17    glass1  flow
+                fcb     0,6,0           ; beat 16 Vexit        plays 17    glass1  flow
                 fcb     12,$0D
                 fdb     $A86F
-                fcb     0,6,0           ; beat 16 (hold)       plays 12    glass1  flow
+                fcb     0,6,0           ; beat 17 (hold)       plays 12    glass1  flow
                 fcb     28,$0D
                 fdb     $A86F
-                fcb     0,6,0           ; beat 17 Pslump       plays 28    glass1  flow
+                fcb     0,6,0           ; beat 18 Pslump       plays 28    glass1  flow
                 fcb     0,$0D
                 fdb     $0000
-                fcb     0,6,0           ; beat 18 Vstand       plays 0     pinned-only  glass1  flow
+                fcb     0,6,0           ; beat 19 Vstand       plays 0     pinned-only  glass1  flow
                 fcb     0,0
                 fdb     0
                 fcb     0,0,0           ; terminator
 cel_plan_end
 * cel_plan_end exists so the stride can be CHECKED rather than trusted:
 * bundle_offsets_check.py compares (cel_plan_end - cel_plan) against
-* 6 x (beats + 1) out of the link map, and fails the build on any other
+* 7 x (beats + 1) out of the link map, and fails the build on any other
 * answer. The bug above assembled cleanly and ran; nothing but a byte count
 * could have caught it.

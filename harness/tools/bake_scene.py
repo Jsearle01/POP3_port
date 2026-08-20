@@ -242,8 +242,37 @@ TERMINAL_STEPS = 60
 #   The bank made the whole-scene-at-once approach reach much further than the bundle did;
 #   it does not reach to the end.
 
-PLAN = [("p", "Pstand", 7),       # play 2 + play 5, both standing [SUBS.S:665-672]
-        ("song", "s_Princess", 761),   # ...with the cue between them; she waits
+# ★★★ THE OPENING IS THREE ROWS, NOT TWO, AND THE SPLIT IS THE P4.27 FIX.
+#
+# It was `("p","Pstand",7)` followed by the song row — "play 2 + play 5, both standing …
+# with the cue between them". ★ THE COMMENT DESCRIBED THE RIGHT STRUCTURE AND THE DATA
+# ENCODED THE WRONG ONE. Both runs animate the same standing pose, so merging them is
+# invisible AS ANIMATION and was done deliberately; but `song_at()` reads the cue off the
+# FOLLOWING row, so the merge moved the cue from after two plays to after seven.
+#
+# MEASURED ON BOTH MACHINES (P4.26b), which is what turned this from a loading theory into
+# a table edit:
+#     oracle   PlayCut0's arm -> s_Princess = 10 frames (0.17 s), and the hires page
+#              flip lands on the SAME FRAME — the picture and the music arrive together
+#     port     the room revealed -> s_Princess = 45 frames (0.75 s)
+# The oracle's own order [SUBS.S:658-672] is `lda #2 / jsr play`, `PlaySongI`,
+# `lda #5 / jsr play`. Three steps, so three rows.
+#
+# ★★ THE TRAILING FIVE ARE A "-" ROW, NOT A SECOND Pstand. The oracle does NOT call
+# pjumpseq before that `play 5` — she is already standing — so re-jumping her sequence
+# would restart the pose. "-" is play-without-jumping, which is exactly this.
+#
+# ★ AND THE 761 ALREADY EXCLUDES THESE SEVEN PLAYS, so the scene's total length is
+# unchanged by the split: the trace note above derives it as 799 frames measured, "of
+# which play 2 + play 5 at the measured 5.38 f/play is ~38 -> 761". Only the cue moves.
+#
+# ★★★ EVERY BEAT AFTER THIS SHIFTS BY ONE INDEX. SCENERY's keys are PLAN POSITIONS and are
+# asserted against the beat NAMES below, so a missed shift fails the build loudly rather
+# than moving the hourglass to a neighbour. The read points are DERIVED (`PLAN[bi][0] ==
+# "song"`), so they follow on their own.
+PLAN = [("p", "Pstand", 2),       # play 2 [SUBS.S:665-668]
+        ("song", "s_Princess", 761),   # ★ THE CUE, HERE [SUBS.S:669-671]
+        ("-", "", 5),             # play 5 — she waits, no re-jump [SUBS.S:672]
         ("p", "Palert", 9),       # she hears the door and turns
         ("-", "", 5),             # play 5 — both hold after the SPEED change
         ("v", "Vwalk", 7),        # Vapproach: he enters from the right (oracle 6, +1)
@@ -324,13 +353,16 @@ SC_FLASH  = 0x08           # `lda #5 / sta lightning` — five steps, one level 
 
 # beat index -> flags. The indices are POSITIONS IN `PLAN` and are asserted below against
 # the beat names, so inserting a beat cannot silently move the hourglass to a neighbour.
+# ★ +1 ON EVERY KEY AT P4.27, because the opening `Pstand` split into three rows where it
+# was two. The names are the guard: if a key is wrong the assertion below names the beat it
+# actually found, which is how this edit is checkable rather than trusted.
 SCENERY = {
-    13: ("(hold)",  SC_GLASS0 | SC_FLASH),   # the glass appears, with the flash over it
-    14: ("s_Magic", SC_GLASS0 | SC_FLOW),    # ...and the sand runs through the cue
-    15: ("Vexit",   SC_GLASS1 | SC_FLOW),    # addglass1 X=1 [SUBS.S:745]
-    16: ("(hold)",  SC_GLASS1 | SC_FLOW),
-    17: ("Pslump",  SC_GLASS1 | SC_FLOW),
-    18: ("Vstand",  SC_GLASS1 | SC_FLOW),
+    14: ("(hold)",  SC_GLASS0 | SC_FLASH),   # the glass appears, with the flash over it
+    15: ("s_Magic", SC_GLASS0 | SC_FLOW),    # ...and the sand runs through the cue
+    16: ("Vexit",   SC_GLASS1 | SC_FLOW),    # addglass1 X=1 [SUBS.S:745]
+    17: ("(hold)",  SC_GLASS1 | SC_FLOW),
+    18: ("Pslump",  SC_GLASS1 | SC_FLOW),
+    19: ("Vstand",  SC_GLASS1 | SC_FLOW),
 }
 PLAN_STRIDE = 7            # plays, block, sig(2), read, scenery, song (P4.23)
 

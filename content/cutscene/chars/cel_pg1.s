@@ -13,7 +13,7 @@
 * beat schedule carries the value this beat's pointers need. A shared magic, or
 * a plausibility test, would pass on any of the five.
 *
-*   beats 11..12   block $0E   6,449 B of 7,680
+*   beats 12..13   block $0E   6,449 B of 7,680
 
                 section prog
                 export  cel_page1

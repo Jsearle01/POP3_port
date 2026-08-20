@@ -639,7 +639,7 @@
  "res_bytes": 5891,
  "reads": [
   {
-   "at_beat": 10,
+   "at_beat": 11,
    "page": 3,
    "block": 13
   }
@@ -648,7 +648,7 @@
   {
    "beat": 0,
    "name": "Pstand",
-   "plays": 7,
+   "plays": 2,
    "block": 13,
    "sig": 0,
    "page": 0,
@@ -667,6 +667,16 @@
   },
   {
    "beat": 2,
+   "name": "(hold)",
+   "plays": 5,
+   "block": 13,
+   "sig": 0,
+   "page": 0,
+   "resident_only": true,
+   "read": null
+  },
+  {
+   "beat": 3,
    "name": "Palert",
    "plays": 9,
    "block": 13,
@@ -676,7 +686,7 @@
    "read": null
   },
   {
-   "beat": 3,
+   "beat": 4,
    "name": "(hold)",
    "plays": 5,
    "block": 13,
@@ -686,7 +696,7 @@
    "read": null
   },
   {
-   "beat": 4,
+   "beat": 5,
    "name": "Vwalk",
    "plays": 7,
    "block": 13,
@@ -696,7 +706,7 @@
    "read": null
   },
   {
-   "beat": 5,
+   "beat": 6,
    "name": "Vstop",
    "plays": 4,
    "block": 13,
@@ -706,7 +716,7 @@
    "read": null
   },
   {
-   "beat": 6,
+   "beat": 7,
    "name": "s_Vizier",
    "plays": 51,
    "block": 13,
@@ -716,7 +726,7 @@
    "read": null
   },
   {
-   "beat": 7,
+   "beat": 8,
    "name": "(hold)",
    "plays": 4,
    "block": 13,
@@ -726,7 +736,7 @@
    "read": null
   },
   {
-   "beat": 8,
+   "beat": 9,
    "name": "Vwalk",
    "plays": 29,
    "block": 13,
@@ -736,7 +746,7 @@
    "read": null
   },
   {
-   "beat": 9,
+   "beat": 10,
    "name": "Vstop",
    "plays": 4,
    "block": 13,
@@ -746,7 +756,7 @@
    "read": null
   },
   {
-   "beat": 10,
+   "beat": 11,
    "name": "s_Buildup",
    "plays": 56,
    "block": 13,
@@ -756,7 +766,7 @@
    "read": 3
   },
   {
-   "beat": 11,
+   "beat": 12,
    "name": "Vraise",
    "plays": 1,
    "block": 14,
@@ -766,7 +776,7 @@
    "read": null
   },
   {
-   "beat": 12,
+   "beat": 13,
    "name": "Pback",
    "plays": 13,
    "block": 14,
@@ -776,7 +786,7 @@
    "read": null
   },
   {
-   "beat": 13,
+   "beat": 14,
    "name": "(hold)",
    "plays": 5,
    "block": 14,
@@ -786,7 +796,7 @@
    "read": null
   },
   {
-   "beat": 14,
+   "beat": 15,
    "name": "s_Magic",
    "plays": 16,
    "block": 14,
@@ -796,7 +806,7 @@
    "read": null
   },
   {
-   "beat": 15,
+   "beat": 16,
    "name": "Vexit",
    "plays": 17,
    "block": 15,
@@ -806,7 +816,7 @@
    "read": null
   },
   {
-   "beat": 16,
+   "beat": 17,
    "name": "(hold)",
    "plays": 12,
    "block": 13,
@@ -816,7 +826,7 @@
    "read": null
   },
   {
-   "beat": 17,
+   "beat": 18,
    "name": "Pslump",
    "plays": 28,
    "block": 13,
@@ -826,7 +836,7 @@
    "read": null
   },
   {
-   "beat": 18,
+   "beat": 19,
    "name": "Vstand",
    "plays": 0,
    "block": 13,
