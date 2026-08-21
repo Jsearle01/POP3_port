@@ -18,11 +18,38 @@
 # 4:3` carries the real ratio for a player that honours it.
 #
 # ---------------------------------------------------------------------------
-# THE AUDIO IS THE HALF THAT COSTS
+# ★★★ THE AUDIO NEEDS THREE FIXES BEFORE IT IS AUDIBLE AT ALL
 # ---------------------------------------------------------------------------
-# Measured on a 10-second sample: video 20 KB, audio 43 KB at 32 kbps. On near-static
-# content the picture is almost free and the soundtrack is the file. MAME records the
-# coco3 as 3-channel 48 kHz; the port drives a 1-bit DAC, so it is downmixed to mono.
+# The first cut of this script shipped a soundtrack Jay could not hear, and every check it
+# passed was a check of the wrong thing: ffprobe showed an AAC stream, the stream was
+# full-length, and it measured -15 dB RMS. All true, and all irrelevant.
+#
+#   1. MAME RECORDS THE coco3 AS 3 CHANNELS AND ONLY c0 CARRIES SIGNAL.
+#      c1 and c2 are digital silence (RMS -inf). `-ac 1` AVERAGES them, so the music was
+#      divided by three -- a silent -9.5 dB attenuation. Take c0, do not downmix.
+#
+#   2. c0 CARRIES A HUGE DC OFFSET: measured -0.2487 of full scale, i.e. -12 dB of pure
+#      0 Hz. The music sits at about -30 dB. So the recording is 18 dB of inaudible DC on
+#      top of the thing you want, which is what made -15 dB RMS look healthy. Worse, AAC
+#      then spends its budget coding the DC: the shipped 32k mono encode had a noise floor
+#      of -35 dB against music at -30 dB -- a 5 dB SNR, where the source has 20 dB.
+#      `highpass=f=20` removes it; measured DC after: 0.000023.
+#
+#   3. THE RESULT IS QUIET AND PEAKY (peak -4.8 dB over the whole run, RMS -31.9 dB, a 27 dB
+#      crest -- the peaks are clicks, not music), so a flat +1.8 dB puts the peak at -3 dBFS.
+#      Pure gain: no compression, no limiting, nothing that would edit sound Jay gated by ear
+#      on a live machine, and still LOUDER than MAME's own unity playback of c0.
+#      ★ MEASURE THE PEAK OVER THE WHOLE RUN, not a sample. +4.3 dB from a 30 s window
+#      decoded at +1.4 dBFS, because AAC overshoots transients by ~2.4 dB here.
+#
+# `lowpass=f=16000` is the one liberty taken: the port drives the DAC with PWM, so there is
+# real energy above 16 kHz (-40.9 dB against -29.1 full-band, ~7% of the total). It is above
+# the limit of hearing and it is expensive for the encoder on already-noisy content.
+#
+# ★ AND THE LESSON, because it is the same one §27 already records one level up: validating
+# the CONTAINER proves nothing about the CONTENT. "There is an audio stream, it is the right
+# length, and it has a healthy RMS" is three container facts and zero audible ones.
+#
 # Pass AUDIO=none for a silent cut when size is the only thing that matters.
 #
 # ---------------------------------------------------------------------------
@@ -49,7 +76,10 @@
 #
 #   CRF=<n>      x264 quality, lower is bigger (default 23)
 #   GOP=<n>      keyframe interval in frames (default 1200 = 20 s)
-#   ABR=<rate>   audio bitrate (default 32k)
+#   ABR=<rate>   audio bitrate (default 64k — the source is broadband PWM, not a tone)
+#   GAIN=<n>dB   post-DC-removal gain (default 1.8dB: measured peak over the WHOLE run is
+#                -4.80 dBFS, so this lands it at -3, leaving room for AAC's overshoot —
+#                +4.3dB, taken from a 30 s sample, decoded at +1.4 dBFS, i.e. clipped)
 #   AUDIO=none   drop the soundtrack
 #   OUT=<path>   output (default build/pop_intro.mp4)
 set -u
@@ -61,7 +91,8 @@ FF="${FF:-C:/Users/jayse/AppData/Local/Microsoft/WinGet/Packages/Gyan.FFmpeg_Mic
 
 CRF="${CRF:-23}"
 GOP="${GOP:-1200}"
-ABR="${ABR:-32k}"
+ABR="${ABR:-64k}"
+GAIN="${GAIN:-1.8dB}"
 AUDIO="${AUDIO:-aac}"
 OUT="${OUT:-build/pop_intro.mp4}"
 PREFIX="${PREFIX:-snap/pop_seg}"
@@ -81,8 +112,11 @@ echo "[encode] $n segment(s), $(du -ch ${PREFIX}_*.avi | tail -1 | cut -f1) raw"
 
 if [ "$AUDIO" = "none" ]; then
     AOPT="-an"
+    AF=""
 else
-    AOPT="-ac 1 -c:a $AUDIO -b:a $ABR"
+    # See the header. c0 only (never -ac 1), DC out, gain to -1 dBFS peak, PWM carrier off.
+    AOPT="-c:a $AUDIO -b:a $ABR"
+    AF="-af pan=mono|c0=c0,highpass=f=20,lowpass=f=16000,volume=${GAIN}"
 fi
 
 # One encode over the concatenated segments, so the joins are inside a single GOP structure
@@ -92,8 +126,22 @@ fi
     -c:v libx264 -preset veryslow -tune animation -crf "$CRF" -g "$GOP" \
     -pix_fmt yuv420p -profile:v high \
     -aspect 4:3 -movflags +faststart \
-    $AOPT \
+    $AF $AOPT \
     "$OUT" || exit 1
 
 echo "[encode] -> $OUT  $(stat -c%s "$OUT" | awk '{printf "%.2f MB", $1/1048576}')"
 "${FF%ffmpeg.exe}ffprobe.exe" -hide_banner "$OUT" 2>&1 | sed -n '/Duration/,$p' | sed 's/^/  /'
+
+# ★★★ THE CHECK THE FIRST CUT DID NOT DO. `there is an audio stream` is not `you can hear
+# it`. DC must be ~0, and the level must MOVE between a silent stretch and a musical one --
+# a flat level across the whole run is the DC-only signature that shipped last time.
+if [ "$AUDIO" != "none" ]; then
+    echo "[encode] audible-content check:"
+    "$FF" -hide_banner -i "$OUT" -vn -af astats=metadata=0 -f null - 2>&1 \
+        | grep -E "DC offset|Peak level|RMS level" | head -3 | sed 's/^.*\] /    /'
+    for t in 6 24 100 150; do
+        v=$("$FF" -hide_banner -ss $t -t 3 -i "$OUT" -vn -af volumedetect -f null - 2>&1 \
+            | grep -o "mean_volume: [-0-9.]*" | cut -d' ' -f2)
+        printf "    %3ds  %8s dB\n" "$t" "$v"
+    done
+fi

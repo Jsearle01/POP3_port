@@ -1616,9 +1616,41 @@ luma row tall**. Output 640x472 (x1 horizontal, x2 vertical) has a yuv420p chrom
 which is redundant rather than safer. Same 1.356:1, same `-aspect 4:3`, and the luma is 1:1
 horizontally so the pixels cannot get softer than the source.
 
-**Result:** 4.5 GB raw → **2.09 MB** (video 57 kbps + mono AAC 32k), **mean PSNR 48.2 dB luma,
+**Result:** 4.5 GB raw → **2.72 MB** (video 57 kbps + mono AAC 64k), **mean PSNR 48.2 dB luma,
 worst single frame 43.0 dB** over all 10,361 frames. Silent: **1.25 MB**.
-★ **On near-static content the SOUNDTRACK is the file** — 0.71 MB of the 2.09.
+★ **On near-static content the SOUNDTRACK is the file** — 1.39 MB of the 2.72.
+
+### 27b. ★★★ MAME's coco3 AUDIO: 3 channels of which ONE is live, and it carries a DC offset
+
+**A capture that shipped with an inaudible soundtrack, and every check it passed was a check
+of the wrong thing** — `ffprobe` showed an AAC stream, the stream was full-length, it measured
+−15 dB RMS. Three faults, compounding:
+
+1. **MAME records the coco3 as 3 channels and only `c0` carries signal.** `c1`/`c2` are
+   digital silence (RMS −inf). **`-ac 1` AVERAGES them**, so the audio was silently divided
+   by three — **−9.5 dB**. Use `pan=mono|c0=c0`, never `-ac 1`.
+2. **`c0` carries a large DC offset** — measured **−0.2487** of full scale, i.e. −12 dB of
+   pure 0 Hz, against music at about −30 dB. **18 dB of inaudible DC sitting on top of the
+   thing you want**, which is exactly why the RMS looked healthy. `highpass=f=20` clears it
+   (measured DC after: 0.000023).
+3. **AAC then spends its budget coding the DC.** The 32k mono encode came out with a noise
+   floor of −35 dB against music at −30 dB — **a 5 dB SNR where the source has 20 dB.**
+
+**THE SIGNATURE, so it is recognised in one glance: a level that does not MOVE.** RMS was
+flat at −15 dB for all 173 seconds. Real audio has silence in it — the fixed capture reads
+−91 dB over the loading screen, −21 to −33 dB through the music, −91 dB again over the final
+hold. *Measure the level in windows across the run and look for variation; a constant level
+is the DC-only tell.*
+
+**Also:** measure the peak over the **whole run**, not a sample — a gain taken from a 30 s
+window decoded at **+1.4 dBFS** (clipped), because AAC overshoots transients here by ~2.4 dB.
+And `-nothrottle` does **not** corrupt the audio: a throttled and an unthrottled capture of
+the same window were **byte-identical**, which extends §27's claim from video to sound.
+
+★ **The lesson is §27's own MJPEG trap one level down: validating the CONTAINER proves
+nothing about the CONTENT.** "There is an audio stream, it is the right length, and it has a
+healthy RMS" is three container facts and zero audible ones. `encode_run.sh` now prints the
+DC offset and a windowed level trace after every encode, so the check travels with the tool.
 
 *Established:* SQ-1 (§27), extended at the P5.1 capture.
 
