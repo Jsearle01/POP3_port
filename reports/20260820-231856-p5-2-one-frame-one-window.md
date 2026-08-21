@@ -403,5 +403,6 @@ its own reasons.*
 
 ### 11 — Commit
 
-See the commit that carries this report, pushed to `origin/wip` before reporting. **`main` was
-not moved.**
+**`5902217`** — the tools and this report, pushed to `origin/wip`; this hash stamp follows it
+on the same branch. **`main` was NOT moved and stands at `32b5fe2`**, where P5.1's last push
+left it.
