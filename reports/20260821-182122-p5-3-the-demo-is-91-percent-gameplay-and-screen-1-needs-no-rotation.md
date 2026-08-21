@@ -353,7 +353,9 @@ same task with 88 bytes of difference.*
 
 ### 10 — Commit
 
-See the commit that carries this report, pushed to `origin/wip`. **`main` was not moved.**
+**`b420ceb`** — the artifact and this report, pushed to `origin/wip`; this hash stamp follows it on
+the same branch. **`main` was NOT moved and stands at `32b5fe2`.** No `src/` file exists in either
+commit.
 
 ---
 
