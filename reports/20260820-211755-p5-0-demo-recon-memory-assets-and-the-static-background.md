@@ -435,4 +435,4 @@ to the pool (fire-and-forget).
 
 ### 11 — Commit
 
-See the commit that carries this report; pushed to `origin/wip` before reporting.
+`0aa0650` — pushed to `origin/wip` before this report.
