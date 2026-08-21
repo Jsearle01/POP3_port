@@ -58,7 +58,21 @@ def parse_framedef():
             cur = lab
             tables[cur] = {}
             continue
-        if cur is None or cur == "SWORDTAB":
+        if cur is None:
+            continue
+        if cur == "SWORDTAB":
+            # ★★★ P5.1 ADDENDUM A.3: THIS TABLE WAS SKIPPED BY CONSTRUCTION, AND IT NAMES
+            # CELS. `decodeim` is the CHARACTER decoder -- it uses only Fsword's top two bits,
+            # as bits 0-1 of the table number, and never follows the low six. Those six are an
+            # index into SWORDTAB, and SETUPSWORD [CTRLSUBS.S:1590] resolves the entry's image
+            # through `decodeswim` [CTRLSUBS.S:1050], which is three instructions:
+            #     sta FCharImage / lda #2 / sta FCharTable
+            # so EVERY sword image is table 2 = IMG.CHTAB3. Skipping the table undercounted
+            # chtable3. 192 bytes = 64 slots; 50 are defined.
+            m = re.match(r"^:(\d+)\s+db\s+\$?([0-9a-fA-F]{1,2}),(-?\d+),(-?\d+)", lab)
+            if m:
+                tables[cur][int(m.group(1))] = (int(m.group(2), 16),
+                                                int(m.group(3)), int(m.group(4)))
             continue
         m = ENTRY.match(s.strip())
         if not m:
@@ -79,6 +93,24 @@ def decodeim(fimage, fsword):
     """CTRLSUBS.S:1017-1037, in arithmetic."""
     table = (fsword >> 6) + (4 if (fimage & 0x80) else 0)
     return table, fimage & 0x7F
+
+
+def decodeswim(image):
+    """CTRLSUBS.S:1050-1053, verbatim: `sta FCharImage / lda #2 / sta FCharTable`.
+    Every sword image is table 2 -- IMG.CHTAB3."""
+    return 2, image
+
+
+def sword_cel(fsword, swordtab):
+    """SETUPSWORD [CTRLSUBS.S:1590]: `lda Fsword / and #$3f / beq ]rts` -> SWORDTAB index.
+    A zero index, or a zero image byte in the entry, means no sword for that frame."""
+    idx = fsword & 0x3F
+    if idx == 0:
+        return None
+    e = swordtab.get(idx)
+    if not e or e[0] == 0:
+        return None
+    return decodeswim(e[0])
 
 
 def main():

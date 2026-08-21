@@ -20,13 +20,16 @@ without reading the move graph. It also reported **178 tiles / 21,450 B** for th
 
 | | P5.0 | P5.1, measured | window |
 |---|---|---|---|
-| the kid | 50,890 B | **8,159 B** | mid-move, controller cannot intervene (**exact**) |
-| | | **39,523 B** | one control decision (upper bound within a routine) |
-| | | 50,800 B | fixpoint — which is where P5.0's figure actually sits |
-| the guard | 9,350 B | **3,902 B** | mid-move |
-| | | **20,446 B** | everything `GuardCtrl`/`FightCtrl`/collision can select — *and P5.0's 9,350 was an UNDERCOUNT, see §4* |
-| the dungeon tiles | 21,450 B | **7,202 B** blueprint-determined / **14,063 B** with every state-dependent image | the whole demo LEVEL, all 24 screens |
-| **all three, union** | **81,690 B** | **26,124 B** at W0 / **62,639 B** at W1 | |
+| the kid | 50,890 B | **8,219 B** | mid-move, controller cannot intervene (**exact**) |
+| | | **40,141 B** armed / 39,523 unarmed | one control decision (upper bound within a routine) |
+| | | 51,630 B | fixpoint — which is where P5.0's figure actually sits |
+| the guard | 9,350 B | **3,985 B** | mid-move |
+| | | **21,295 B** | everything `GuardCtrl`/`FightCtrl`/collision can select — *and P5.0's 9,350 was an UNDERCOUNT, see §4* |
+| the dungeon tiles | 21,450 B | **7,202 B** blueprint-determined / **14,147 B** with every state-dependent image and the meters | the whole demo LEVEL, all 24 screens |
+| **all three, union** | **81,690 B** | **26,533 B** at W0 / **64,071 B** at W1 | |
+
+★ **Every character figure here includes the SWORD cels** that P5.0's census skipped — see §4b.
+The sword adds 618 B at the binding window, which is small and is stated rather than buried.
 
 ---
 
@@ -142,17 +145,18 @@ Every figure states its window. **CoCo3 4-colour packed bytes; the kid, through 
 
 | window | what it assumes | max | median | min | worst-case node |
 |---|---|---|---|---|---|
-| **W0 mid-move** | the current frame is not one of the 36; the controller **cannot** intervene. **EXACT — no guard is unmodelled, because there is no guard.** | **8,159 B** (33 cels) | 1,294 B | 114 B | `jumphangMed` |
-| **W1 one decision** | the controller fires once; a routine's whole target set is taken | **39,523 B** (171 cels) | 18,898 B | 12,232 B | `runstop` |
-| **W2 two decisions** | W1 iterated | 50,503 B (206 cels) | 49,901 B | 49,901 B | `turn` |
-| **W∞ fixpoint** | = the whole moveset | 50,800 B (207 cels) | | | |
+| **W0 mid-move** | the current frame is not one of the 36; the controller **cannot** intervene. **EXACT — no guard is unmodelled, because there is no guard.** | **8,219 B** | 1,294 B | 114 B | `jumphangMed` |
+| **W1 one decision** | the controller fires once; a routine's whole target set is taken | **40,141 B** (185 cels) | 19,516 B | 12,232 B | `runstop` |
+| **W2 two decisions** | W1 iterated | 51,333 B (228 cels) | 50,731 B | | `turn` |
+| **W∞ fixpoint** | = the whole moveset | 51,630 B | | | |
 
-★ **W2 is already the fixpoint for practical purposes**, and W∞ (50,800) is P5.0's 50,890 minus
-the four frames no stream names. *P5.0's number was the fixpoint, correctly computed and wrongly
-labelled.*
+*(armed; the unarmed figures and the split are §4b.)*
 
-From `stand` specifically: **W0 = 1 cel / 164 B, W1 = 167 cels / 38,225 B, W2 = 206 cels /
-50,503 B.**
+★ **W2 is already the fixpoint for practical purposes**, and W∞ (51,630) is the sword-corrected
+total minus the four frames no stream names. *P5.0's number was the fixpoint, correctly computed
+and wrongly labelled.*
+
+From `stand` specifically: **W0 = 1 cel / 164 B, W1 = 38,225 B, W2 = 228 cels / 51,333 B.**
 
 **Start nodes are the kid's own states** — the intra-table closure of sequences 1-93. Sequences
 94-114 are the princess, the vizier and the mouse [`SEQDATA.S`], selected only by the cutscene's
@@ -182,13 +186,101 @@ with the kid: bumping, falling, being stabbed, dropping dead.
 | | cels | CoCo3 B |
 |---|---|---|
 | P5.0 (`ALTSET1` only) | 31 | 9,350 |
-| **everything `GuardCtrl`/`FightCtrl`/collision can select, W0-closed** | **80** | **20,446** |
-| per-start W0 | | max **3,902**, median 1,152, min 121 |
+| **everything `GuardCtrl`/`FightCtrl`/collision can select, W0-closed** | **101** | **21,295** |
+| per-start W0 | | max **3,985**, median 1,266, min 121 |
+
+★ **The guard is armed unconditionally.** `SETUPSWORD`'s own first test is `lda CharID / cmp #2 /
+bne :3 / lda CharLife / bmi :2` — *"live guard's sword is always visible"* — so the sword cels are
+in the guard's set at every window.
 
 *The correction cuts both ways: the guard's total is more than twice what P5.0 said, and its
 mid-move peak is a fifth of it.*
 
 ---
+
+## 4b. ★★★ THE SWORD, AND ARMED vs UNARMED (Addendum A.3 / A.5)
+
+**Jay, on the running oracle: the demo contains a sword fight.** That makes an omission in
+P5.0's census load-bearing.
+
+`decodeim` [`CTRLSUBS.S:1017`] is the **character** decoder. It consumes `Fimage` and uses only
+`Fsword`'s **top two bits**, as bits 0-1 of the table number. `Fsword`'s **low six bits** are a
+`SWORDTAB` index, and `SETUPSWORD` [`CTRLSUBS.S:1590`] follows them:
+
+```
+ lda Fsword / and #$3f / beq ]rts    ; no sword for this frame
+ jsr getswordframe
+ lda (framepoint),y / beq ]rts       ; entry's image byte 0 -> nothing
+ jsr decodeswim                      ; sta FCharImage / lda #2 / sta FCharTable
+```
+
+**`decodeswim` is three instructions and sends every sword image to table 2 — `IMG.CHTAB3`.**
+`demo_frame_census.py` skipped `SWORDTAB` by construction; it no longer does.
+
+`SWORDTAB` [`FRAMEDEF.S:429`] is 192 bytes = **64 slots, of which 50 are defined**, naming **34
+distinct images** (two entries, 43 and 44, carry image 0 — the kid stabbed, no sword drawn).
+
+### AC3b — `IMG.CHTAB3`'s true count
+
+| | kid (`Fdef`) | opponent (`ALTSET1`) |
+|---|---|---|
+| chtable3 named by **character** frames | 35 cels, 7,768 B | 0 |
+| chtable3 named by **sword** frames | 23 cels, 926 B | 17 cels, 692 B |
+| **overlap — already counted** | **0** | **0** |
+| **new — never counted** | **23 cels, 926 B** | **17 cels, 692 B** |
+| **chtable3 TRUE total** | **58 cels, 8,694 B** | 17 cels, 692 B |
+
+**The overlap is zero: not one sword cel was already counted.** The two decoders address
+disjoint parts of `IMG.CHTAB3`.
+
+### The restated figures, and the honest size of the correction
+
+| | P5.0 | sword-corrected |
+|---|---|---|
+| kid, `Fdef` total | 50,890 B | **51,816 B** (+926) |
+| guard, `ALTSET1` only | 9,350 B | **10,042 B** (+692) |
+| **P5.0's 60,240 union** | 60,240 B | **61,582 B** (+1,342) |
+| **P5.0's 81,690 total** | 81,690 B | **83,032 B** on P5.0's tile basis; **75,645 B** on P5.1's level-correct tiles |
+| overflow vs the recruitable 65,536 | 16,154 B | **17,496 B** on P5.0's basis; **10,109 B** on P5.1's |
+
+★ **A note that cuts against the correction's importance, and is worth making plainly (§5's
+negative-result clause): the guard's `usealtsets` correction does not move the UNION at all.**
+The extra guard cels are `Fdef` cels the kid already holds. It changes the guard's standalone
+figure and nothing that shares a bank with the kid.
+
+★ **And the sword is small.** 23 cels averaging 40 bytes: a sword is a thin sprite. **It adds
+618 B at the binding W1 window.** It was a real omission, it is now counted, and it changes no
+verdict. Saying so is the point.
+
+### AC4b — the two modes, which cannot coexist
+
+`GENCTRL` routes to `FightCtrl` only when `CharSword == 2` [`CTRL.S:678`], and `SETUPSWORD`
+draws nothing when `CharSword == 0`. So armed and unarmed are **different resident sets**:
+
+| | W1 max | W2 max | worst-case node |
+|---|---|---|---|
+| **unarmed** | **39,523 B** (171 cels) | 47,681 B (196 cels) | `runstop` / `strike` |
+| **armed** | **40,141 B** (185 cels) | 51,333 B (228 cels) | `runstop` / `turn` |
+| difference | **618 B** | 3,652 B | |
+
+The larger is the requirement; their union is only needed if the **draw/sheathe transition**
+(`engarde` / `resheathe` / `fastsheathe` / `pickupsword` / `turndraw`) cannot itself be a paging
+point. It is a natural one — those sequences are long and reach no controller for most of it.
+
+### A.2 — both halves of `DemoCtrl` run, and that is scope not measurement
+
+`DemoCtrl` [`CTRL.S:587`] branches on `CharSword`: unarmed → `:preprog jmp demo`; armed →
+`guardprog = 10 / jsr AutoCtrl / guardprog = 11` — **the guard AI driving the kid**
+[`AUTO.S`, *"control kid in demo"*]. Jay's observation means both run in one demo.
+
+★ **`demo` is a TRAMPOLINE, not a move stream.** `demo ds 3` [`GAMEEQ.S:305`] is a three-byte
+`JMP` slot inside the `dum subs` jump table at `$E000`, so `jmp demo` is an indirection, not a
+data pointer. The slot resolves to `SUBS.S:18 jmp DEMO` → `SUBS.S:1233`, which is three
+instructions: `lda #<DemoProg1 / ldx #>DemoProg1 / jmp AutoPlayback`. **So the unarmed half is a
+recorded input program replayed through `AutoPlayback`, and the armed half is the guard AI.**
+
+`AutoCtrl`'s combat logic and `AutoPlayback`'s program format are both in the arc's scope.
+**No work on either here** — recorded so the arc is planned at its real size.
 
 ## 5. Co-residency — a union, not a sum
 
@@ -197,10 +289,13 @@ figures double-counts. The bank holds a *set*.
 
 | window | kid | guard | **union** | saved to sharing |
 |---|---|---|---|---|
-| W0 | 8,159 | 3,902 | **12,061** (47 cels) | 0 |
-| W1 | 39,523 | 20,446 | **48,576** (201 cels) | 11,393 |
-| W2 | 50,503 | 20,446 | 59,556 (236 cels) | 11,393 |
-| W∞ | 50,800 | 20,446 | 59,853 (237 cels) | 11,393 |
+| W0 | 8,219 | 3,985 | **12,204** (54 cels) | 0 |
+| W1 | 40,141 | 21,295 | **49,742** (229 cels) | 11,694 |
+| W2 | 51,333 | 21,295 | 60,898 (270 cels) | 11,730 |
+| W∞ | 51,630 | 21,295 | 61,195 (271 cels) | 11,730 |
+
+★ **And the impact star.** `SETUPCOMIX` draws `starimage = $41` from `startable = 0` — chtable1
+image 65 [`GAMEBG.S:136-137`] — on a hit. No frame table names it. **+182 B at every window.**
 
 ---
 
@@ -253,6 +348,8 @@ dungeon levels**. `LEVEL0` uses far less:
 | populated screens, median | | 2,327 |
 | **whole level, union over 24 screens, blueprint-determined** | **34** | **7,202** |
 | **whole level, plus every state-dependent image its pieces unlock** | | **14,063** |
+| ★ **+ the strength meters** (`bgtable2` 8-12, drawn every frame inside `FAST`) | 5 | **14,147** |
+| *(a real level would add the text glyphs: 17,300 B — the DEMO shows none, see §10)* | | |
 | the two files (all 15 levels) | 178 | 21,450 |
 
 The upper bound adds, by name from `BGDATA.S`/`GAMEBG.S`: the gate's 16 bar frames plus
@@ -263,20 +360,101 @@ slicer's `slicertop/bot/bot2/gap/frnt`; the loose floor's `loosea/loosed/looseb`
 
 ---
 
+## 6.2 — AC5b: the demo DOES change rooms mid-play, and the compositor holds on three screens
+
+**Screen 1's left neighbour is SCREEN 2** — `MAP` [`CTRLSUBS.S:243`, `GETLEFT` reads
+`MAP-4+scrn*4`] gives screen 1 `[left 2, right 0, up 0, down 7]`. The kid starts on screen 1
+[`INFO.KidStartScrn = 1`] and Jay's observation — he moves left and fights near the left of the
+second screen — is the blueprint's screen 2.
+
+**Confirmed by watching the oracle rather than by inference.** `oracle_demo_bg.lua` now samples
+several instants in one boot (`P_AFTER` takes a comma list), and each dump is identified by
+scanning all 24 screens:
+
+| frames after `Demo` arms | best-matching screen | match |
+|---|---|---|
+| +300 | **1** | 96.54% |
+| +450 | **2** | **96.82%** |
+| +750 | 2 | 94.80% |
+| +900 | 2 | 95.24% |
+| +1200 | **4** | 95.66% |
+
+So the demo's path is **1 → 2 → … → 4**, it crosses screen boundaries **during play**, and
+`bg_compose.py` is now validated on **three** screens rather than one (P5.0 §7 flag 4, closed).
+
+Every differing byte, on all three, falls in a named category:
+
+| | screen 1 | screen 2 | screen 4 |
+|---|---|---|---|
+| gate bars (live gate position) | 45 | 21 | — |
+| torch flames (`setupflame`, animated) | 38 | 23 | 28 |
+| loose floors (`drawlooseb`/`drawloosed`) | — | 144 | 124 |
+| strength meters | 20 | 20 | 40 |
+| characters (residual, unseparated) | 163 | 36 | 141 |
+| **UNEXPLAINED background bytes** | **0** | **0** | **0** |
+
+★ **The limitation in that table, stated rather than glossed:** the character bucket is a
+*residual* — I do not have the actors' positions, so I cannot prove those bytes are characters
+rather than a compositor error. What supports it is screen 1, where the kid was at the bottom of
+the frame and **rows 24-159 were byte-identical**, and the fact that the residual is
+character-sized on all three.
+
+★ **A MAME reading gotcha, worth carrying.** POP toggles `setaux`/`setmain` constantly, and
+`mem:read_u8` reads through whichever bank is switched in. At +300 the read landed in MAIN, so
+the HGR pages were valid and `level`/`SCRNUM` read as garbage (255 / 24); at +600 it landed in
+AUX, so `level`/`SCRNUM` read correctly (0 / 2) and the HGR dump was `topctrl`'s CODE. **The two
+are anti-correlated** — a dump where the game variables look right is a dump where the screen
+does not. Identify the screen by matching it, not by reading `SCRNUM`.
+
+**And the transition itself:** `PrepCut` [`TOPCTRL.S:1039`] sets `VisScrn` and `cutplan = 1`;
+`FrameAdv` takes `DoCleanCut` [`TOPCTRL.S:891`], which draws the background on page 2, copies it
+to page 1, adds the characters and flips — **one `jsr FrameAdv`, one frame, no disk read**, with
+a black text screen shown over it. Blueprint and tile tables are already resident.
+
+---
+
+## 6.3 — AC5c: what else names images, and was unwalked
+
+`SWORDTAB` was skipped in a parser that reads four labels. Checking the same class elsewhere
+found **three more image-naming sites, all in `GAMEBG.S`, none of them indexed by a blueprint or
+a piece id** — which is exactly why the tile walk missed them:
+
+| what | source | table | bytes |
+|---|---|---|---|
+| **strength meters** — `bullet $88 / bline 89,8a,8b / blank $8c` | `GAMEBG.S:99-101` | bgtable2 8-12 | **84** |
+| **impact star (comix)** — `starimage = $41 / startable = 0` | `GAMEBG.S:136-137` | chtable1 #65 | **182** |
+| **text glyphs** — `prchar` `sbc #"/"`, `pretext` sets `TABLE = bgtable2` | `GAMEBG.S:1134,1175` | bgtable2 1-10, $12-$2B | 1,560 + 3,368 |
+
+The meters are drawn **every frame**, inside `FAST`'s `updatemeters`, and are folded into the
+tile figure above. The star fires on a hit and is folded into the character figure.
+★ **The glyphs cost the DEMO nothing**: `RESTART` suppresses the level banner at level 0
+(`lda level / beq :nomsg`) and `timerequest` is never set. For a real level they take the tile
+figure from 14,147 to **17,300 B**.
+
+**Everything else checked and clear.** `FRAMEDEF.S` has exactly four labelled tables and all four
+are now walked (`Fdef`, `ALTSET1`, `ALTSET2`, `SWORDTAB`). Every `BGDATA.S` table is walked by
+`bg_compose.py` plus `tile_working_set.py`'s `STATE_IMAGES`. The remaining `GAMEBG.S` image lists
+— `ptorchflame`, `stari`, `glassimg`, `flowimg`, `postimg`, `pmaski` — are all `chtable6`, i.e.
+the princess room, already accounted for in the cutscene arc. **No other gameplay image-naming
+table is unwalked.**
+
 ## 7. ★★★ THE COMBINED PEAK-AT-ANY-INSTANT (AC5), AND WHAT IT SETTLES
 
 Characters and tiles come from different tables, so here the union **is** the sum.
 
 | window | chars (kid ∪ guard) | tiles (level, upper) | **total** | vs bank 32,768 | vs recruited 65,536 | vs window 15,872 |
 |---|---|---|---|---|---|---|
-| **W0** mid-move | 12,061 | 14,063 | **26,124** | **FITS** (6,644 spare) | **FITS** | over by 10,252 |
-| **W1** one decision | 48,576 | 14,063 | **62,639** | over by 29,871 | **FITS** (2,897 spare) | over by 46,767 |
-| W2 | 59,556 | 14,063 | 73,619 | over by 40,851 | over by 8,083 | over by 57,747 |
-| W∞ | 59,853 | 14,063 | 73,916 | over by 41,148 | over by 8,380 | over by 58,044 |
+| **W0** mid-move | 12,386 | 14,147 | **26,533** | **FITS** (6,235 spare) | **FITS** | over by 10,661 |
+| **W1** one decision | 49,924 | 14,147 | **64,071** | over by 31,303 | **FITS** (1,465 spare) | over by 48,199 |
+| W2 | 61,080 | 14,147 | 75,227 | over by 42,459 | over by 9,691 | over by 59,355 |
+| W∞ | 61,377 | 14,147 | 75,524 | over by 42,756 | over by 9,988 | over by 59,652 |
 | *P5.0's figure* | *60,240* | *21,450* | *81,690* | *over by 48,922* | *over by 16,154* | — |
+| *P5.0's basis, sword-corrected* | *61,582* | *21,450* | *83,032* | — | *over by 17,496* | — |
 
-**THE SHORTFALL AGAINST THE RECRUITABLE BANK DISSOLVES AT W1 — WITH 2,897 BYTES TO SPARE, WHICH
-IS 4.4% AND IS NOT COMFORTABLE.** Against the bank *as it stands* (32,768) it does not dissolve
+*(character columns include the sword cels and the +182 B impact star.)*
+
+**THE SHORTFALL AGAINST THE RECRUITABLE BANK DISSOLVES AT W1 — WITH 1,465 BYTES TO SPARE, WHICH
+IS 2.2% AND IS NOT COMFORTABLE.** Against the bank *as it stands* (32,768) it does not dissolve
 at any window above W0.
 
 **AND THE BINDING CONSTRAINT HAS MOVED FROM CAPACITY TO ADDRESSABILITY.** At most **15,872
@@ -294,9 +472,9 @@ unranked, and the choice is Jay's.
 
 The numbers above hand the paging question a concrete shape:
 
-- **A swap that completes inside W0 is affordable**: 12,061 B of characters, and the port knows
+- **A swap that completes inside W0 is affordable**: 12,386 B of characters, and the port knows
   *exactly* when it is safe — the 204 frame slots that reach no controller.
-- **A swap that must survive one control decision is not**: 48,576 B of characters.
+- **A swap that must survive one control decision is not**: 49,924 B of characters.
 - **`standing` alone costs 33,194 B**, so "keep the standing hub pinned and page the rest" is a
   shape the measurement supports — and pinning it is most of the bank.
 - **The room-change frame is already a covered black screen** (§6), which is the natural place to
@@ -307,7 +485,9 @@ The numbers above hand the paging question a concrete shape:
 ## 9. AC2 — per-sequence cel count and CoCo3 bytes
 
 Generated by `harness/tools/seq_graph.py --out`. `act` is the `CharAction` value(s) the body
-sets; out-edges are the terminal `goto` plus any `ifwtless` targets.
+sets; out-edges are the terminal `goto` plus any `ifwtless` targets. **The `cels`/`CoCo3 B`
+columns are CHARACTER cels only** — the sword cels a frame's `Fsword&$3f` adds (§4b) are a
+per-mode overlay and are counted there, not here.
 
 | # | sequence | label | frames | cels | CoCo3 B | act | out-edges |
 |---|---|---|---|---|---|---|---|

@@ -118,12 +118,18 @@ def main():
             f |= bodies[n]["frames"]
         return f
 
-    def cost(nodes):
-        c = cels.cels(frames_of(nodes))
+    def cost(nodes, armed=True):
+        c = cels.cels(frames_of(nodes), armed=armed)
         return len(c), cels.bytes_of(c)
 
-    def step(nodes, exclude_cutscene=True):
-        """one control decision: add every routine reachable from a control-active frame."""
+    def step(nodes, exclude_cutscene=True, armed=True):
+        """one control decision: add every routine reachable from a control-active frame.
+
+        ★ ADDENDUM A.4/A.5: `armed` is not cosmetic. GENCTRL routes to FightCtrl only when
+        CharSword == 2 [CTRL.S:678], so an UNARMED kid cannot reach the fight sequences at
+        all, and SETUPSWORD [CTRLSUBS.S:1590] draws no sword cel. The two modes are
+        different resident sets and a peak computed across both would be this dispatch's
+        own error committed inside its own correction."""
         out = set(nodes)
         for f in frames_of(nodes):
             r = CE.DISPATCH.get(f)
@@ -136,7 +142,7 @@ def main():
                         out.add(lab)
         # FightCtrl is entered on CharSword==2, not on a frame; treat it as available
         # whenever a fighting frame (150-189) is live.
-        if any(150 <= f <= 189 for f in frames_of(nodes)):
+        if armed and any(150 <= f <= 189 for f in frames_of(nodes)):
             for s in routine_targets["FightCtrl"]:
                 lab = seq_label(s)
                 if lab:
@@ -229,13 +235,20 @@ def main():
     # is the half P5.0's guard figure left out.
     alt = SG.Cels("ALTSET1")
 
-    def guard_cost(nodes):
+    def guard_cost(nodes, armed=True):
         c = set()
         for f in frames_of(nodes):
             g = f + 70 if 102 <= f <= 106 else f
             e = alt.cel_of(g) if 150 <= g <= 189 else cels.cel_of(g)
             if e:
                 c.add(e)
+            # ★ A.3: the guard's sword. SETUPSWORD's own first test is
+            # `lda CharID / cmp #2 / bne :3 / lda CharLife / bmi :2` -- "live guard's sword
+            # is ALWAYS visible", so the guard is armed unconditionally.
+            if armed:
+                sc = alt.sword_cel_of(g) if 150 <= g <= 189 else cels.sword_cel_of(g)
+                if sc:
+                    c.add(sc)
         return len(c), cels.bytes_of(c)
 
     gd_seed = set()
@@ -259,12 +272,36 @@ def main():
     gw0 = sorted(guard_cost(w0({n}))[1] for n in gd_nodes)
     print("  per-start W0: max %d B, median %d B, min %d B" % (gw0[-1], gw0[len(gw0)//2], gw0[0]))
 
+    # --- ARMED vs UNARMED, which are different resident sets (A.4) ---------
+    print()
+    print("ARMED vs UNARMED — the kid, per mode")
+    print("  unarmed: CharSword == 0. GENCTRL cannot route to FightCtrl [CTRL.S:678] and")
+    print("           SETUPSWORD draws no sword cel [CTRLSUBS.S:1590].")
+    print("  armed:   the fight sequences are reachable AND every frame's Fsword&$3f adds a")
+    print("           chtable3 cel on top of the character cel.")
+    print("  %-26s %9s %9s" % ("", "max B", "median B"))
+    modes = {}
+    for tag, armed in (("unarmed", False), ("armed", True)):
+        cur_m = {n: w0({n}) for n in starts}
+        for depth in (1, 2):
+            cur_m = {n: step(v, armed=armed) for n, v in cur_m.items()}
+            vals = sorted((cost(v, armed)[1], cost(v, armed)[0], n) for n, v in cur_m.items())
+            print("  %-26s %9d %9d   worst %s (%d cels)"
+                  % ("%s  W%d" % (tag, depth), vals[-1][0], vals[len(vals) // 2][0],
+                     vals[-1][2], vals[-1][1]))
+            modes[(tag, depth)] = vals[-1][0]
+    print("  ★ armed W1 - unarmed W1 = %d B; the modes cannot coexist, so the larger is the"
+          % (modes[("armed", 1)] - modes[("unarmed", 1)]))
+    print("    requirement and their union (%d B) is only needed if the draw/sheathe"
+          % max(modes[("armed", 1)], modes[("unarmed", 1)]))
+    print("    transition cannot be a paging point.")
+
     # --- CO-RESIDENCY, AS A UNION AND NOT AS A SUM -------------------------
     # * The kid and the guard SHARE Fdef cels for every frame outside 150-189, so adding
     # their two figures double-counts. The bank holds a SET of cels, so the figure the
     # bank cares about is the union.
     def kid_cels(nodes):
-        return cels.cels(frames_of(nodes))
+        return cels.cels(frames_of(nodes), armed=True)
 
     def gd_cels(nodes):
         c = set()
@@ -273,6 +310,9 @@ def main():
             e = alt.cel_of(g) if 150 <= g <= 189 else cels.cel_of(g)
             if e:
                 c.add(e)
+            sc = alt.sword_cel_of(g) if 150 <= g <= 189 else cels.sword_cel_of(g)
+            if sc:
+                c.add(sc)
         return c
 
     print()

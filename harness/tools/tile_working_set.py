@@ -52,6 +52,20 @@ STATE_IMAGES = {
     B.posts:  [B.CUpost],
 }
 
+# ★★★ ADDENDUM A.3 STEP 6 — IMAGES NO BLUEPRINT AND NO PIECE ID NAMES, drawn straight by
+# GAMEBG.S. They were missed for exactly the reason SWORDTAB was: the walk followed the
+# tables the blueprint indexes and these are not among them.
+#   GAMEBG.S:99-101   bullet $88 / bline 89,8a,8b / blank $8c  ";in bgtable2"
+#                     -> bit 7 set -> bgtable2 indices 8..12. The strength meters, redrawn
+#                     every frame by `updatemeters` at the tail of FAST.
+#   GAMEBG.S:1134     pretext sets TABLE = bgtable2 and prchar does `sbc #"/"`, so a glyph is
+#                     bgtable2[ascii - '/']: "0"->1 .. "9"->10, "A"->$12 .. "Z"->$2B.
+# ★ The DEMO draws no text: RESTART suppresses the banner at level 0 (`lda level / beq
+# :nomsg`) and timerequest is never set, so the glyphs are a REAL-GAME cost, not a demo one.
+METERS = [0x88, 0x89, 0x8A, 0x8B, 0x8C]
+GLYPH_DIGITS = [0x80 | i for i in range(1, 11)]
+GLYPH_LETTERS = [0x80 | i for i in range(0x12, 0x2C)]
+
 
 def main():
     level = sys.argv[1] if len(sys.argv) > 1 else "LEVEL0"
@@ -105,6 +119,14 @@ def main():
              max(ups), int(statistics.median(ups))))
     print("  WHOLE LEVEL, union over 24 screens : %d images, lower %d B, upper %d B"
           % (len(union), cost(union), cost(union | extra)))
+    print()
+    print("  NOT NAMED BY ANY BLUEPRINT OR PIECE ID — drawn directly by GAMEBG.S:")
+    print("    strength meters (bgtable2 8-12)     %5d B   every frame, inside FAST" % cost(METERS))
+    print("    text digits 0-9                     %5d B   ★ 0 B in the DEMO: level 0" % cost(GLYPH_DIGITS))
+    print("    text letters A-Z                    %5d B     suppresses the banner" % cost(GLYPH_LETTERS))
+    print("  DEMO-CORRECT tile total (upper + meters): %d B" % cost(union | extra | set(METERS)))
+    print("  REAL-GAME tile total (+ the full glyph set): %d B"
+          % cost(union | extra | set(METERS) | set(GLYPH_DIGITS) | set(GLYPH_LETTERS)))
     whole = [c for c in bg1 if c] + [c for c in bg2 if c]
     print("  the two FILES (all 15 dungeon levels): %d images, %d B"
           % (len(whole), sum(coco3_bytes(c[0], c[1]) for c in whole)))

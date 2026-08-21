@@ -25,7 +25,16 @@
 --
 --   P_AFTER  frames to run after arrival before dumping (default 400)
 --   P_OUT    output prefix (default build/oracle_demo)
-local AFTER = tonumber(os.getenv("P_AFTER") or "400")   -- frames AFTER arrival
+-- P_AFTER may be a COMMA LIST: one run, several dumps, each suffixed with its offset.
+-- The demo plays itself and walks the kid off screen 1, so "which screen is showing" is a
+-- function of WHEN you look; sampling several instants in one boot is far cheaper than
+-- re-booting 110 emulated seconds per guess.
+local AFTERS = {}
+for tok in (os.getenv("P_AFTER") or "400"):gmatch("[^,]+") do
+    AFTERS[#AFTERS + 1] = tonumber(tok)
+end
+table.sort(AFTERS)
+local AFTER = AFTERS[#AFTERS]
 local OUT   = os.getenv("P_OUT") or "build/oracle_demo"
 
 local cpu = manager.machine.devices[":maincpu"]
@@ -95,17 +104,17 @@ _G._n = emu.add_machine_frame_notifier(function()
                           frames, mem:read_u8(LEVEL), mem:read_u8(PARAMS),
                           mem:read_u8(PARAMS + 1), nwrites))
     end
+    for _, off in ipairs(AFTERS) do
+        if frames == arrived + off then
+            local sfx = (#AFTERS > 1) and ("_" .. off) or ""
+            say(string.format("# DUMP at frame %d (+%d)  level=%d  SCRNUM=%d",
+                              frames, off, mem:read_u8(LEVEL), mem:read_u8(SCRNUM)))
+            dump_main(OUT .. sfx .. "_hgr1.bin", 0x2000, 0x3FFF)
+            dump_main(OUT .. sfx .. "_hgr2.bin", 0x4000, 0x5FFF)
+            scr:snapshot(OUT .. sfx .. ".png")
+            say("# -> " .. OUT .. sfx .. "_hgr{1,2}.bin + .png")
+        end
+    end
     if frames < arrived + AFTER then return end
-
-    say(string.format("# DUMP at frame %d (+%d)  level=%d  SCRNUM=%d",
-                      frames, AFTER, mem:read_u8(LEVEL), mem:read_u8(SCRNUM)))
-    say("# hgr1      " .. tostring(dump_main(OUT .. "_hgr1.bin", 0x2000, 0x3FFF)))
-    say("# hgr2      " .. tostring(dump_main(OUT .. "_hgr2.bin", 0x4000, 0x5FFF)))
-    say("# blueprint " .. tostring(dump_aux(OUT .. "_bluep.bin", 0xB700, 0xBFFF)))
-    say("# bgtab1    " .. tostring(dump_aux(OUT .. "_bgtab1.bin", 0x6000, 0x83FF)))
-    say("# bgtab2    " .. tostring(dump_aux(OUT .. "_bgtab2.bin", 0x8400, 0x95FF)))
-    say("# chtab4    " .. tostring(dump_aux(OUT .. "_chtab4.bin", 0x9600, 0xADFF)))
-    scr:snapshot(OUT .. ".png")
-    say("# snapshot -> " .. OUT .. ".png")
     done = frames
 end)

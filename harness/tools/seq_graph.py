@@ -58,7 +58,7 @@ IMAGES = ROOT / "oracle/source/01 POP Source/Images"
 sys.path.insert(0, str(ROOT / "harness/tools"))
 
 from demo_asset_census import read_table, coco3_bytes          # noqa: E402
-from demo_frame_census import parse_framedef, decodeim         # noqa: E402
+from demo_frame_census import parse_framedef, decodeim, sword_cel   # noqa: E402
 
 # COLL.S:994 ANIMCHAR — operand counts read off the dispatch chain.
 OPS = {
@@ -192,7 +192,13 @@ class Cels:
                  4: "IMG.CHTAB5", 5: "IMG.CHTAB6.A", 6: "IMG.CHTAB7", 7: "IMG.CHTAB6.B"}
 
     def __init__(self, which="Fdef"):
-        self.fd = parse_framedef()[which]
+        _t = parse_framedef()
+        self.fd = _t[which]
+        # ★ ADDENDUM A.3. Fsword's LOW SIX BITS index SWORDTAB; decodeim never follows them.
+        # SETUPSWORD [CTRLSUBS.S:1590] does, and decodeswim sends every one to table 2.
+        # A sword cel is drawn IN ADDITION to the character cel, so it belongs to the ARMED
+        # mode's resident set and to no other.
+        self.swordtab = _t["SWORDTAB"]
         self.tabs = {}
         for slot, name in self.SLOT_FILE.items():
             _, c, _ = read_table(IMAGES / name)
@@ -208,12 +214,23 @@ class Cels:
             return None
         return decodeim(fi, fs)
 
-    def cels(self, frames):
+    def sword_cel_of(self, frame):
+        """The chtable3 cel this frame's Fsword names, or None."""
+        e = self.fd.get(frame)
+        if e is None:
+            return None
+        return sword_cel(e[1], self.swordtab)
+
+    def cels(self, frames, armed=False):
         out = set()
         for f in frames:
             c = self.cel_of(f)
             if c:
                 out.add(c)
+            if armed:
+                sc = self.sword_cel_of(f)
+                if sc:
+                    out.add(sc)
         return out
 
     def bytes_of(self, cels):
