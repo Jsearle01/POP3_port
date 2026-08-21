@@ -506,5 +506,8 @@ the walk followed only the first.*
 
 Phase 1-3 work: **`05d3e4f`** — pushed to `origin/wip`, then fast-forwarded to `origin/main`
 (`34e93e0..05d3e4f`), which is the AC8 promotion the 43/43 clean-clone check verifies.
-Addendum work + this report: **`6535f12`** — pushed to `origin/wip` and fast-forwarded to
-`origin/main` before this line was written; `wip` and `main` are both at `6535f12`.
+Addendum work + this report: **`6535f12`**, and this hash stamp itself: **`68c04df`** — each
+pushed to `origin/wip` and fast-forwarded to `origin/main` in turn. **`wip`, `main` and
+`origin/main` are all at `68c04df`**, which is the state the AC8 sums were taken one promotion
+earlier at (`05d3e4f`); nothing under `src/`, `content/`, `link/` or `build.bat` changed between
+them, so the artifacts are unchanged and the prod sha1 in §0 still holds.
