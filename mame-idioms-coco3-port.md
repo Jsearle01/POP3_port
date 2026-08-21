@@ -1575,7 +1575,52 @@ against 103 MB of MJPEG. GIF's 10 ms delay granularity costs 20 ms of drift acro
 15 s, because the holds are seconds long. Use it when the target might not have a
 video codec, or when the artifact needs to be small.
 
-*Established:* SQ-1.
+### 27a. Recording the WHOLE run: segment it from Lua, and the keyframe interval is the lever
+
+**Three findings from capturing the port end to end (10,357 frames, 2:52).**
+Tools: `harness/tools/capture_run.lua` + `harness/tools/encode_run.sh`.
+
+**(1) `video:begin_recording()` / `end_recording()` exist in Lua — so segment from one boot.**
+At 27 MB/emulated-second the full sequence is **4.5 GB**, past what one RIFF file should be
+asked to hold. `manager.machine.video` exposes `begin_recording(name, "avi")`,
+`end_recording()` and `is_recording` (enumerate its metatable if in doubt), so the run is cut
+into fixed-frame files from **one** boot — which also means one deterministic timeline, so the
+segments join exactly and ffmpeg's `concat` demuxer stitches them into a single encode.
+Starting the recording *after* `LOADM`+`EXEC` also never writes the ~20 s of black BASIC
+prompt at all — cheaper than trimming 550 MB of it afterwards.
+**End where the PROGRAM ends**, not at a guessed frame: watch `probe_status` (`$2003`, from
+`build/obj/introseq.map`) reach `BEAT_COUNT+2` and stop a tail later.
+
+**(2) ★★★ THE PERIODIC KEYFRAMES WERE 56% OF THE FILE.** One 2,700-frame segment, crf 23 fixed:
+
+```
+ -g 250 (x264 default)   960 KB   11 keyframes
+ -g 600                  570 KB    6
+ -g 1200                 422 KB    4
+ -g 3000                 284 KB    1
+```
+
+The artwork is converted Apple II DHR, so **every still frame is full of dither detail and an
+I-frame of it is expensive** while the P-frames between are nearly free. Scene-cut detection
+still inserts an I-frame where the picture actually changes, so raising `-g` costs **0 dB** —
+only seek granularity. By contrast the CRF sweep on the busiest segment ran 1,048 KB (crf 18,
+50.9 dB) to 723 KB (crf 28, 42.2 dB): a third of the size for 8.7 dB. **Reach for `-g` first.**
+
+`-tune animation` also earns its 4%: 850 KB at 46.4 dB against 816 KB at 44.0 dB untuned.
+`stillimage`, `film` and `deblock=-3,-3` were all worse on both axes.
+
+**(3) 640x472 IS CHROMA-EXACT — §27's 1280x944 is one doubling more than this source needs.**
+MAME emits 640x236 for a 320-pixel mode, so a source pixel is already **2 luma px wide and 1
+luma row tall**. Output 640x472 (x1 horizontal, x2 vertical) has a yuv420p chroma plane of
+320x236 — **exactly one chroma sample per source pixel on both axes.** 1280x944 gives two,
+which is redundant rather than safer. Same 1.356:1, same `-aspect 4:3`, and the luma is 1:1
+horizontally so the pixels cannot get softer than the source.
+
+**Result:** 4.5 GB raw → **2.09 MB** (video 57 kbps + mono AAC 32k), **mean PSNR 48.2 dB luma,
+worst single frame 43.0 dB** over all 10,361 frames. Silent: **1.25 MB**.
+★ **On near-static content the SOUNDTRACK is the file** — 0.71 MB of the 2.09.
+
+*Established:* SQ-1 (§27), extended at the P5.1 capture.
 
 ---
 
