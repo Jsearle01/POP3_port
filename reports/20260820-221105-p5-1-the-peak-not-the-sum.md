@@ -504,6 +504,7 @@ the walk followed only the first.*
 
 ### 11 — Commit
 
-Work: **`05d3e4f`** (pushed to `origin/wip`, then fast-forwarded to `origin/main`).
-Addendum work + this report: see the commit that carries it, pushed to `origin/wip` and
-fast-forwarded to `origin/main` before reporting.
+Phase 1-3 work: **`05d3e4f`** — pushed to `origin/wip`, then fast-forwarded to `origin/main`
+(`34e93e0..05d3e4f`), which is the AC8 promotion the 43/43 clean-clone check verifies.
+Addendum work + this report: **`6535f12`** — pushed to `origin/wip` and fast-forwarded to
+`origin/main` before this line was written; `wip` and `main` are both at `6535f12`.
