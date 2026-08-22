@@ -92,13 +92,14 @@ for s in P_ENTRY P_SPIN P_TICKS P_WIDTH P_PTR; do
 done
 
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 echo "[song_check] $RAMOPT  ablate=$ABL  probe \$$P_ENTRY  spin \$$P_SPIN  ticks \$$P_TICKS"
 
 rm -f "$P_OUT"
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     $RAMOPT \
-    -cfg_directory dist/mame-cfg/rgb \
+    $CFGOPT \
     -ext fdc -flop1 "$DSK" \
     -window -nomaximize -nothrottle -sound none \
     -seconds_to_run "${P_SECS:-95}" \

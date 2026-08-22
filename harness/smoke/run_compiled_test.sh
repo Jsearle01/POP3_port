@@ -78,8 +78,9 @@ export P_OUT="$LOG" P_PASS="$PASS" P_FAIL="$FAIL"
 # note in run_cel_test.sh. These two were the pair P3.98's sweep left carrying no -ramsize
 # at all, so every "green" they have ever reported was on the non-target machine.
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 
-"$MAME" coco3 -rompath "$MAME_ROMS" $RAMOPT -cfg_directory dist/mame-cfg/rgb \
+"$MAME" coco3 -rompath "$MAME_ROMS" $RAMOPT $CFGOPT \
     -ext fdc -window -nomaximize \
     -nothrottle -sound none -seconds_to_run 30 \
     -autoboot_script harness/smoke/compiled_test.lua >/dev/null 2>&1

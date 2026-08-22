@@ -138,6 +138,7 @@ SECS=$(( (P_RUNTO + 3600) / 60 + 30 ))
 
 # ONE HOME for which machine this runs on: 128 KB, the target (CLAUDE.md 2K).
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 
 echo "[run_walk_test] viz_slot $P_VIZ  ch_drawn $P_DRAWN  ch_last $P_LAST"
 echo "[run_walk_test] $P_SHOTS captures every $P_GAP frames, live-disk"
@@ -155,7 +156,7 @@ run_once() {   # $1 = run tag
     "$MAME" coco3 \
         -rompath "$MAME_ROMS" \
         $RAMOPT \
-        -cfg_directory dist/mame-cfg/rgb \
+        $CFGOPT \
         -ext fdc \
         -flop1 "$DSK" \
         -window -nomaximize \

@@ -86,6 +86,7 @@ export P_DUMP2="build/room_front2.bin"
 
 # ONE HOME for which machine this runs on: 128 KB, the target (CLAUDE.md 2K).
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 
 echo "[run_room_test] POP CoCo3 — the princess's room, 4-colour, LOADM off disk"
 echo "[run_room_test] room_entry $P_ENGINE  cur_back $P_CURBACK  blocks $P_BLK_A/$P_BLK_B"
@@ -93,7 +94,7 @@ echo "[run_room_test] room_entry $P_ENGINE  cur_back $P_CURBACK  blocks $P_BLK_A
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     $RAMOPT \
-    -cfg_directory dist/mame-cfg/rgb \
+    $CFGOPT \
     -ext fdc \
     -flop1 "$DSK" \
     -window -nomaximize \

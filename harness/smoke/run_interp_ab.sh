@@ -46,6 +46,7 @@ cp -f build/probe.dmk "$DSK" || exit 1
     || { echo "[interp-ab] could not add INTERP.BIN to $DSK"; exit 1; }
 
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 
 sym() { grep -E "^Symbol: $2 " "$1" | sed -E 's/.*= *//'; }
 export P_ENTRY="$(sym "$MAP" probe_entry)"
@@ -101,7 +102,7 @@ echo "[interp-ab] $RAMOPT  probe \$$P_ENTRY  mode $P_MODE  song $P_SONG"
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     $RAMOPT \
-    -cfg_directory dist/mame-cfg/rgb \
+    $CFGOPT \
     -ext fdc -flop1 "$DSK" \
     -window -nomaximize -prescale 2 \
     -autoboot_script harness/smoke/interp_live.lua

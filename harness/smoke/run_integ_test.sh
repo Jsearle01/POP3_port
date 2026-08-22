@@ -46,6 +46,7 @@ export P_TO="${P_TO:-13000}"
 SECS=$(( (P_TO + 1200) / 60 + 30 ))
 
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 echo "[integ] $RAMOPT  intro \$$P_ENTRY  scene \$$P_SCENEBASE  done \$$P_DONE  beats $P_NBEATS"
 echo "[integ] running to frame $P_TO (${SECS}s emulated)"
 
@@ -54,7 +55,7 @@ rm -f "$P_OUT"
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     $RAMOPT \
-    -cfg_directory dist/mame-cfg/rgb \
+    $CFGOPT \
     -ext fdc -flop1 "$DSK" \
     -window -nomaximize -nothrottle -sound none \
     -seconds_to_run $SECS \

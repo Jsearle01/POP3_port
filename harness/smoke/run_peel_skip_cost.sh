@@ -43,11 +43,12 @@ echo "[run_peel_skip_cost] room_loop $P_LOOP  hal_vbl_spin $P_SPIN  ch_anymove $
 # carried no -ramsize at all until P3.101's sweep, so every reading it has ever produced
 # was taken on the 512 KB machine. See harness/smoke/ramsize.sh.
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     $RAMOPT \
-    -cfg_directory dist/mame-cfg/rgb \
+    $CFGOPT \
     -ext fdc \
     -flop1 "$DSK" \
     -window -nomaximize \

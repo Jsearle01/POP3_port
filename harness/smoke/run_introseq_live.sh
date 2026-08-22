@@ -6,7 +6,7 @@
 # THROTTLED on purpose — no -nothrottle. The gate here is the TIMING and the
 # flips, and both are meaningless at 500% speed.
 #
-# `-cfg_directory dist/mame-cfg/rgb` forces Monitor Type = RGB; MAME's default
+# `$CFGOPT` forces Monitor Type = RGB; MAME's default
 # is Composite, in which the same palette byte is a different colour
 # (CLAUDE.md §4). Pass MONITOR=composite to look at the other one.
 #
@@ -51,6 +51,7 @@ cp -f "$SRC_DSK" "$DSK" || exit 1
 
 # ONE HOME for which machine this runs on: 128 KB, the target (CLAUDE.md 2K).
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 
 echo "[run_introseq_live] POP CoCo3 — the static intro, normal speed, $MONITOR${MAME_RAM:+, $MAME_RAM}"
 echo "[run_introseq_live] boot, LOADM\"LOADER\", EXEC — the stage-1 loader puts the \"loading\""

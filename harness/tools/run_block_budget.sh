@@ -75,8 +75,10 @@ rm -f build/bank_proof.log
 
 . "$(dirname "$0")/../smoke/ramsize.sh"
 echo "[block-budget] coco3 at $MAME_RAM, port launched by room_test.lua's own sequence"
+. "$(dirname "$0")/cfgdir.sh"
+
 "$MAME" coco3 -rompath "$MAME_ROMS" $RAMOPT \
-    -cfg_directory dist/mame-cfg/rgb -ext fdc -flop1 "$DSK" \
+    $CFGOPT -ext fdc -flop1 "$DSK" \
     -window -nomaximize -nothrottle -sound none -seconds_to_run 45 \
     -autoboot_script "$SCRATCH/room_mmu.lua" >/dev/null 2>&1
 

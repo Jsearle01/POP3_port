@@ -69,6 +69,19 @@ export P_PAL="${P_PAL:-build/tile_palette.bin}"
 rm -f "$SHOT" "$P_PAL"
 
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
+
+# ★ HEADLESS BY DEFAULT. This runner decides on a byte comparison and a decoded PNG; it has
+# never needed a window, and mame-idioms-apple2e-oracle.md:113 says to validate headlessly
+# before opening one, EVERY TIME. Jay, P5.10: "you probe it faulty. i keep having to start it
+# for you." MAME_VIDEO=window restores a visible run for anyone who wants to watch this one;
+# the LIVE gate runners (run_tile_live.sh, run_introseq_live.sh, run_room_live.sh) keep their
+# window unconditionally, because being watched is what they are for.
+if [ "${MAME_VIDEO:-none}" = "none" ]; then
+    VIDOPT="-video none"
+else
+    VIDOPT="-window -nomaximize"
+fi
 
 echo "[run_tile_test] POP CoCo3 — LEVEL0 screen 1, 4-colour, LOADM off disk"
 echo "[run_tile_test] tile_entry $P_ENGINE  cur_back $P_CURBACK  blocks $P_BLK_A/$P_BLK_B  ents ${P_WANT_ENTS:-?}"
@@ -76,10 +89,10 @@ echo "[run_tile_test] tile_entry $P_ENGINE  cur_back $P_CURBACK  blocks $P_BLK_A
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     $RAMOPT \
-    -cfg_directory dist/mame-cfg/rgb \
+    $CFGOPT \
     -ext fdc \
     -flop1 "$DSK" \
-    -window -nomaximize \
+    $VIDOPT \
     -nothrottle -sound none \
     -seconds_to_run 60 \
     -autoboot_script harness/smoke/tile_test.lua \

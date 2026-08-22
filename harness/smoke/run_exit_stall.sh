@@ -24,6 +24,7 @@ cp -f "$SRC_DSK" "$DSK" || exit 1
 mkdir -p build/tmp
 
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 echo "[exit_stall] $RAMOPT"
 
 run() {   # $1 = tag
@@ -32,7 +33,7 @@ run() {   # $1 = tag
     "$MAME" coco3 \
         -rompath "$MAME_ROMS" \
         $RAMOPT \
-        -cfg_directory dist/mame-cfg/rgb \
+        $CFGOPT \
         -ext fdc -flop1 "$DSK" \
         -window -nomaximize -nothrottle -sound none \
         -seconds_to_run 160 \

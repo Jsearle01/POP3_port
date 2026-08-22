@@ -80,11 +80,12 @@ export P_OUT="$LOG" P_PASS="$PASS" P_FAIL="$FAIL"
 # disagree. Found by grepping for the file that is supposed to be sourced, which is the
 # check that catches this and re-reading the policy is not.
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     $RAMOPT \
-    -cfg_directory dist/mame-cfg/rgb \
+    $CFGOPT \
     -ext fdc \
     -window -nomaximize \
     -nothrottle -sound none \

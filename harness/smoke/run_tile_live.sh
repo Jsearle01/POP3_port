@@ -32,6 +32,7 @@ DSK="build/run_tile_live.dmk"
 cp -f "$SRC_DSK" "$DSK" || exit 1
 
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 
 echo "[tile-live] POP CoCo3 — LEVEL0 screen 1, live disk, RGB, $MAME_RAM"
 echo "[tile-live] the script types LOADM\"TILE\" then EXEC; the picture should hold."
@@ -39,7 +40,7 @@ echo "[tile-live] the script types LOADM\"TILE\" then EXEC; the picture should h
 exec "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     $RAMOPT \
-    -cfg_directory dist/mame-cfg/rgb \
+    $CFGOPT \
     -ext fdc \
     -flop1 "$DSK" \
     -window -nomaximize \

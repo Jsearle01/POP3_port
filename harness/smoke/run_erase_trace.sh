@@ -40,11 +40,12 @@ echo "[erase_trace] pri_slot $P_PRI_SLOT  ch_last $P_LAST  ch_move $P_MOVE"
 # carried no -ramsize at all until P3.101's sweep, so every reading it has ever produced
 # was taken on the 512 KB machine. See harness/smoke/ramsize.sh.
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     $RAMOPT \
-    -cfg_directory dist/mame-cfg/rgb \
+    $CFGOPT \
     -ext fdc -flop1 "$DSK" \
     -window -nomaximize -nothrottle -sound none \
     -seconds_to_run 60 \

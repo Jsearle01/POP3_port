@@ -44,6 +44,7 @@ cp -f "$SRC_DSK" "$DSK" || exit 1
 
 # ONE HOME for which machine this runs on: 128 KB, the target (CLAUDE.md 2K).
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 
 echo "[run_room_live] POP CoCo3 — the princess's room, 4-colour, normal speed, $MONITOR${MAME_RAM:+, $MAME_RAM}"
 echo "[run_room_live] boot, LOADM\"ROOM\", EXEC — then THREE track reads (room, flame bundle,"

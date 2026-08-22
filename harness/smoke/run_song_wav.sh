@@ -94,11 +94,12 @@ if [ "$WHICH" = "port" ] || [ "$WHICH" = "both" ]; then
     OUT="build/tmp/port_princess.wav"
     rm -f "$OUT"
     . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
     echo "[song_wav] port: coco3 $RAMOPT, ${P_PORT_SECS:-95} emulated seconds (boot + LOADM + one pass)..."
     "$MAME" coco3 \
         -rompath "$MAME_ROMS" \
         $RAMOPT \
-        -cfg_directory dist/mame-cfg/rgb \
+        $CFGOPT \
         -ext fdc -flop1 "$DSK" \
         -video none -nothrottle \
         -seconds_to_run "${P_PORT_SECS:-95}" \

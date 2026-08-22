@@ -49,6 +49,7 @@ DUR="${P_DUR:-12.724}"
 mkdir -p "$OUTDIR"
 
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 sym() { grep -E "^Symbol: $2 " "$1" | sed -E 's/.*= *//'; }
 export P_ENTRY="$(sym "$MAP" probe_entry)"
 export P_SONG="${P_SONG:-7}"
@@ -87,7 +88,7 @@ port_pass() {
     P_MODE="$mode" "$MAME" coco3 \
         -rompath "$MAME_ROMS" \
         $RAMOPT \
-        -cfg_directory dist/mame-cfg/rgb \
+        $CFGOPT \
         -ext fdc -flop1 "$DSK" \
         -video none -nothrottle \
         -seconds_to_run 40 \

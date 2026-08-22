@@ -68,13 +68,14 @@ export P_OUT="build/tmp/interp_song_${P_SONG}_m${P_MODE}.txt"
 export P_REPORT="build/tmp/interp_check_${P_SONG}_m${P_MODE}.log"
 
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 echo "[interp_check] $RAMOPT  probe \$$P_ENTRY  mode $P_MODE  song $P_SONG"
 
 rm -f "$P_OUT" "$P_REPORT"
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     $RAMOPT \
-    -cfg_directory dist/mame-cfg/rgb \
+    $CFGOPT \
     -ext fdc -flop1 "$DSK" \
     -window -nomaximize -nothrottle -sound none \
     -seconds_to_run "${P_SECS:-95}" \

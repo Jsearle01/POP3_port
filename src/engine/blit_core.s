@@ -16,6 +16,26 @@
 * This blitter therefore never shifts. P3.19 cycle-counted the result at 66% of one
 * hardware frame for the heaviest cutscene frame, against the strawman's 5.4x-over.
 *
+* ★★★ THE 1.20x IS THE CUTSCENE'S CONTENT, NOT THIS BLITTER'S PROPERTY, AND IT DOES NOT
+* CARRY INTO GAMEPLAY. P3.18 measured a vizier and a princess who move in 4-px steps BY
+* CONSTRUCTION -- `CH_STEP equ 8` [char_draw.s:360], whose own comment says "MUST be a
+* multiple of 4 px... Sub-byte motion is piece E's problem". A character that only ever
+* moves whole byte-columns can only ever land on one phase, so 1.20x is a measurement of
+* that decision, not of cels in general.
+*
+* A GAMEPLAY step is `Fdx`, and it is 1 or 3 px [FRAMEDEF.S:23,25 -- run-4 and run-6].
+* P5.10 write-tapped `setimage` on the running oracle and measured GAMEPLAY cels at
+* 3.09 of the four phases, with 35% of them drawn at ALL FOUR. Baking that is
+* ~189,000 B, about 24 blocks against the 8 free on a 128 KB machine -- and doubling
+* again for facing makes it ~47. Baking is not a tight option for gameplay; it is not
+* an option.
+*
+* ★ SO THE NO-SHIFT DESIGN IS CORRECT FOR THE CUTSCENE AND MUST NOT BE CARRIED INTO
+* GAMEPLAY ON THE STRENGTH OF THE PARAGRAPH ABOVE. The budget that decides it is the
+* ANIMATION STEP, not the display frame: P5.2 measured the game at 9.5 fps against a
+* 59.92 Hz display, so a character is drawn once per ~6.3 display frames and the real
+* budget is ~188,400 cy, not 29,859. A runtime shift costs ~14% of that. [P5.10]
+*
 * ---------------------------------------------------------------
 * THE CORE: PULU ASCENDS, PSHS DESCENDS, AND THAT IS LOAD-BEARING
 * ---------------------------------------------------------------

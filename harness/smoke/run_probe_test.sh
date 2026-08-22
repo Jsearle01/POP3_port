@@ -98,11 +98,12 @@ export P_EXPECT_B="$EXPECT_B"
 # to land straight on top of the program. Default is MAME 512K.
 # ONE HOME for which machine this runs on: 128 KB, the target (CLAUDE.md 2K).
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     $RAMOPT \
-    -cfg_directory dist/mame-cfg/rgb \
+    $CFGOPT \
     -ext fdc \
     -flop1 "$DSK" \
     -window -nomaximize \

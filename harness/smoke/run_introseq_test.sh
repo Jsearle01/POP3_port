@@ -17,7 +17,7 @@
 # saves back (idiom 24). Doubly important now: the raw asset tracks share the
 # image, so a write-back would corrupt the screen as well as the files.
 #
-# `-cfg_directory dist/mame-cfg/rgb` forces Monitor Type = RGB; MAME's own
+# `$CFGOPT` forces Monitor Type = RGB; MAME's own
 # default is Composite, in which the same palette byte is a different colour.
 #
 # HAL_gfx_cur_back's address is read out of the link map rather than hardcoded:
@@ -90,11 +90,12 @@ export P_WPLEFT="0x$(grep -E "^Symbol: wp_nleft " "$MAP" | sed -E "s/.*= *//")"
 # to land straight on top of the program. Default is MAME 512K.
 # ONE HOME for which machine this runs on: 128 KB, the target (CLAUDE.md 2K).
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     $RAMOPT \
-    -cfg_directory dist/mame-cfg/rgb \
+    $CFGOPT \
     -ext fdc \
     -flop1 "$DSK" \
     -window -nomaximize \

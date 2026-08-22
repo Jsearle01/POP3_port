@@ -48,13 +48,14 @@ export P_OUT="build/tmp/tone_cost.log"
 [ -n "$P_SPIN" ]  || { echo "[tone_cost] hal_vbl_spin not in $MAP"; exit 1; }
 
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 echo "[tone_cost] $RAMOPT  probe \$$P_ENTRY  spin \$$P_SPIN"
 
 rm -f "$P_OUT"
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     $RAMOPT \
-    -cfg_directory dist/mame-cfg/rgb \
+    $CFGOPT \
     -ext fdc -flop1 "$DSK" \
     -window -nomaximize -nothrottle -sound none \
     -seconds_to_run 60 \

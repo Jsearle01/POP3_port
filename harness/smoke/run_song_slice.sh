@@ -41,6 +41,7 @@ mkdir -p build/tmp
     || { echo "[song] could not add SONG.BIN to $DSK"; exit 1; }
 
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 
 sym() { grep -E "^Symbol: $2 " "$1" | sed -E 's/.*= *//'; }
 export P_ENTRY="$(sym "$MAP" probe_entry)"
@@ -78,7 +79,7 @@ echo "[song] Close the window when you are done."
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     $RAMOPT \
-    -cfg_directory dist/mame-cfg/rgb \
+    $CFGOPT \
     -ext fdc -flop1 "$DSK" \
     -window -nomaximize -prescale 2 \
     -autoboot_script harness/smoke/song_live.lua

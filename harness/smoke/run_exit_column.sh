@@ -50,6 +50,7 @@ SECS=$(secs_for $P_TO)
 echo "[exit_column] scene runs to ~frame $P_TO (${SECS}s emulated)"
 
 . "$(dirname "$0")/ramsize.sh"
+. "$(dirname "$0")/cfgdir.sh"
 echo "[exit_column] $RAMOPT"
 
 run() {   # $1 = tag, rest = extra env already exported
@@ -58,7 +59,7 @@ run() {   # $1 = tag, rest = extra env already exported
     "$MAME" coco3 \
         -rompath "$MAME_ROMS" \
         $RAMOPT \
-        -cfg_directory dist/mame-cfg/rgb \
+        $CFGOPT \
         -ext fdc -flop1 "$DSK" \
         -window -nomaximize -nothrottle -sound none \
         -seconds_to_run $(secs_for $P_TO) \
