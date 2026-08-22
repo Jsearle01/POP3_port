@@ -231,15 +231,28 @@ front instead:
 Today *"nearly everything below `$7900` is free"* when gameplay starts, because the intro's program,
 cutscene data, captions, flame bundle and cel pages all die. Costed against P5.12's figures:
 
-| resident set | blocks |
-|---|---|
-| intro + cutscene assets (39,682 B bank + screens/captions) | ~7 |
-| gameplay, per-level [P5.12] | 16 |
-| **both resident together** | **~23 of 56** |
-| gameplay, all-resident [P5.12] | 44 |
-| **intro + all-resident gameplay** | **~51 of 56** |
+★★ **AMENDED — Jay: *"when you say gameplay do you mean demo?"*** The first version of this table
+quoted P5.12's **gameplay** figures while the conclusion it supports is about the **attract loop**,
+and what runs in the attract loop is the **demo**. Both are real questions; they are not the same
+question, and the table now says which is which.
 
-**Both fit.** ★ **So the attract loop could return to the title without re-reading anything** — spans
+| resident set | blocks | |
+|---|---|---|
+| intro + cutscene assets (39,682 B bank + screens/captions) | ~7 | |
+| **the DEMO** (LEVEL0, one screen's tile page) [P5.12 §3A] | **10** | chars 8 + scenery 1 + page 1 |
+| **★ intro + demo — the ATTRACT LOOP** | **~17 of 56** | **what §3G's conclusion is about** |
+| gameplay, per-level [P5.12] | 16 | chars 8 + tiles 7 (LEVEL5) + scenery 1 |
+| intro + per-level gameplay | ~23 of 56 | the intro staying resident *while the player plays* |
+| gameplay, all-resident [P5.12] | 44 | |
+| intro + all-resident gameplay | ~51 of 56 | |
+
+★ **And the demo is not the cheap case it sounds like.** Its character requirement is **the same 8
+blocks** as a gameplay level's, because P5.12 §3A established that the demo's guardprog closure IS
+the kid ∪ guard closure — a guardprog row changes probabilities, not the move alphabet. **The demo is
+cheaper only in tiles, and only because LEVEL0 is the smallest level in the game.**
+
+**All of them fit, and the attract-loop case fits easiest at ~17 of 56.** ★ **So the attract loop
+could return to the title without re-reading anything** — spans
 16, 17 and 18 disappear entirely rather than moving to the front, because the intro's assets would
 still be resident from the first pass. **That is the one benefit that does not have to be paid for at
 boot**, and §4.3's smallest change does not capture it.
