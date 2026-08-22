@@ -282,8 +282,9 @@ one. This is recorded in the renderer's own header as well as here.
   otherwise. Census: every LEVEL0 screen fits; worst screen 6 at 7,582 B of 8,192, 610 spare.
 - **AC2 — it runs on hardware, off the real disk path.** `run_tile_test.sh`, launch path
   **`live-disk`** (`-ext fdc`, `-flop1`, `LOADM"TILE"` + `EXEC`; no poke). Six in-emulator checks
-  green: status 4, dskerr 00, magic `$7B1E`, 80/80 display-list entries, mode 0, capture. A throttled
-  windowed runner (`run_tile_live.sh`) is provided for Jay's gate.
+  green: status 4, dskerr 00, magic `$7B1E`, 80/80 display-list entries, mode 0, capture.
+  **Jay observed it live on `run_tile_live.sh` (RGB, 128 KB, throttled) and passed the gate** — see
+  25.3 in §5.
 - **AC3 — port-vs-compositor and port-vs-oracle, predicted then measured.**
   Compositor: **15,360/15,360 identical, EXACT** (byte-identical by construction, as gated).
   Oracle: predicted 97.57% on extent B, measured **97.57% (374 differ)**. The extent discrepancy is
@@ -369,10 +370,32 @@ FB COMPARE — port vs bake reference
 **25.2 bundled-artifact grep:** N/A — no sibling-import artifact. `lz_unpack.s` is already POP's own
 module (lifted out of `intro_seq.s` at P3.17); nothing was copied from Karateka in this task.
 
-**25.3 operator-runtime-smoke:** **pending Jay** — `run_tile_live.sh`, launch path `live-disk`, RGB
-(`dist/mame-cfg/rgb`), 128 KB, throttled, windowed. The picture under gate is **static**, so there is
-no motion requirement; what the live path shows that a dump cannot is boot → LOADM → EXEC → track
-read → picture, with no flash of garbage.
+**25.3 operator-runtime-smoke: PASSED — Jay, live-disk, RGB, 128 KB** (observed 2026-08-21 on
+`run_tile_live.sh`; Jay: *"looks good"*). Throttled and windowed, `-ext fdc`, `-flop1
+build/run_tile_live.dmk`, `-cfg_directory dist/mame-cfg/rgb`.
+
+The picture under gate is **static**, so there is no motion requirement and the gate is COMPLETE
+rather than endpoints-only — the §4 caveat about `static-png` does not apply, because this was
+observed on a running machine and the thing observed does not vary with time. What the live path
+shows that a framebuffer dump cannot is the sequence itself: boot → LOADM → EXEC → track read →
+picture, with no flash of garbage in between.
+
+Measured on the run Jay watched, from the status byte's transitions:
+
+```
+# posted EXEC at frame 801
+# frame  867  status=1 (mode set)   +66 frames
+# frame  986  status=2 (page in)    +185   <- the whole-track read, ~2 s throttled
+# frame 1005  status=3 (drawn)      +204   <- 80 rectangles blitted, ~0.3 s
+# frame 1014  status=4 (SHOWN)      +213   <- ~3.5 s EXEC to picture
+```
+
+★ **The FIRST launch of this runner logged `status=1` and that was the HARNESS, not the port.**
+`tile_live.lua` read the probe block once at a fixed EXEC+180 frames, and throttled, the FDC was
+still mid-track at that instant — a stall and a read-in-flight are indistinguishable from one
+sample. It now logs every TRANSITION of the status byte, which is what produced the table above.
+The bet on how long the disk takes is the same one `room_test.lua` records losing on LOADM. Fixed in
+`ec397c3`, before the gate was observed.
 
 **PNG surfaced for Jay's inspection, not interpreted (CLAUDE.md §3):** `build/tile_screen1.png`,
 decoded from the 15,360 B dump at native 1:1 with the palette read out of the running machine
@@ -448,9 +471,19 @@ budget measurement, or any change to the scene/intro path. No cel-bank ruling wa
 
 ### 9 — User interaction during task
 
-None. No question was asked and no ruling was sought; the two places this task departed from the
-gated design (§6.1, §6.2) are reported rather than negotiated, per the dispatch's instruction to stop
-and report rather than amend in place.
+Two items, both after the work was committed and pushed:
+
+1. **Jay: "run it for me."** I launched `run_tile_live.sh` (live-disk, RGB, 128 KB, throttled,
+   windowed). The first launch logged `status=1` from a probe read at a fixed EXEC+180 frames; that
+   was the harness sampling too early, not the port stopping. I said so, fixed the script to watch
+   the status byte's transitions rather than sample it once, relaunched, and it reached status 4 —
+   picture up ~3.5 s after EXEC.
+2. **Jay: "looks good."** That is the 25.3 visual gate observed and PASSED (§5). No other ruling was
+   sought.
+
+No question was asked during the task itself: the two places it departed from the gated design
+(§6.1, §6.2) are reported rather than negotiated, per the dispatch's instruction to stop and report
+rather than amend in place.
 
 ---
 
