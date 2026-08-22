@@ -44,10 +44,18 @@ been wrong. Decompression is 1.82 s across the entire cycle — five expansions 
 51.18 s of disk. A 28:1 ratio.** The wait is disk. 512 KB is aimed at the right thing.
 
 ★ **And the trade is sharper than "remove disk loads" suggests.** The mid-run reads total **20.0 s**,
-and 512 KB removes them by moving that data to the front — **so the boot wait roughly doubles, from
-21.8 s to about 42 s, to remove 3.2 s of visible freeze.** That is a judgement, not an improvement,
-and §4.2 said so before it was measured. **The smallest version of the change buys the whole visible
-benefit for 9.2 s instead of 20** (§4.3).
+and most of that data has to be read at the front instead — **so the boot wait grows from 21.8 s to
+about 35.8 s, to remove 3.2 s of visible freeze.** That is a judgement, not an improvement, and §4.2
+said so before it was measured. **The smallest version of the change buys the whole visible benefit
+for 9.2 s instead of 14** (§4.3).
+
+★★ **AMENDED AFTER FILING, on Jay's account and confirmed by trace (§3H).** He said data is re-read
+after the cutscene because it could not be held in memory during it. **It is: tracks 25
+(`intro_bundle.raw`) and 27 (`intro_screen.lz`) are each read twice — once in the startup batch and
+again after the scene, to rebuild the title.** That is **6.0 s of the 20.0**, and it does not move to
+the front under 512 KB — **it stops happening.** §7.2 had flagged this as the softest figure in the
+report and the one Jay's decision most turns on; it was right that it would move, and Jay supplied
+the mechanism.
 
 ---
 
@@ -162,7 +170,46 @@ reads and it still has to publish the block and signature, because `room_present
 flip and the guard still compares. `cel_service_read` [`char_draw.s:2734`], called once per frame with
 `Y = load_tracks`, is the part with nothing left to do.
 
-#### 3F — AC6: does the initial load get longer? **Yes — it roughly doubles.**
+#### 3H — ★★ ADDENDUM: the re-reads, found on Jay's account and confirmed by trace
+
+**Jay, after the report was first filed:** *"so i know there is a re-read of data after the cutscene
+because it couldn't be held in memory during the cutscene."*
+
+**He is right, and §7.2 flagged exactly this figure as the one most likely to move. It moved.**
+
+Tapping the disk driver's own request block — `DR_VARBASE+5`, the track byte staged before every
+call [`tile_probe.s:93-95`] — names every read:
+
+```
+21 requests, 19 distinct tracks
+  track 25   read at frames    991, 8636   <- RE-READ
+  track 27   read at frames   2118, 10583  <- RE-READ
+2 of 19 distinct tracks are read more than once; 2 of 21 requests are re-reads.
+```
+
+**And `build.bat`'s track map says what they are:**
+
+| track | asset | first read | re-read |
+|---|---|---|---|
+| **25** | `intro_bundle.raw` | frame 991 (startup batch) | **frame 8636** |
+| **27** | `intro_screen.lz` | frame 2118 (startup batch) | **frame 10583** |
+
+> **★★ The intro's bundle and its title screen are evicted to make room for the cutscene and fetched
+> again afterwards to rebuild the title.** That is precisely Jay's account, arrived at from knowing
+> the design rather than from the trace, and the trace confirms it exactly.
+
+**This splits the 20.0 s of mid-run disk into two kinds that behave differently under 512 KB:**
+
+| | spans | frames | seconds | what 512 KB does |
+|---|---|---|---|---|
+| **first reads** | 13, 14, 15, 17 | 840 | **14.0** | move to the front — the boot wait pays for them |
+| **re-reads** | **16, 18** | 360 | **6.0** | ★ **vanish outright** — the data is still resident |
+
+**So §3F's arithmetic below is corrected: the boot wait grows by 14.0 s, not 20.0.** And the 6.0 s of
+re-read is the concrete, named content of §3G's coexistence benefit — **it is what the attract loop
+spends today, every cycle, to get back to the title.**
+
+#### 3F — AC6: does the initial load get longer? **Yes — but by 14 s, not 20 (see §3H).**
 
 512 KB does not make the machine boot with data in it. Everything read mid-run has to be read at the
 front instead:
@@ -170,12 +217,14 @@ front instead:
 | | frames | seconds |
 |---|---|---|
 | startup batch today (spans 2–12) | 1,307 | **21.8** |
-| mid-run reads that would move forward (spans 13–18) | 1,200 | **20.0** |
-| **boot wait after the change** | 2,507 | **≈41.8** |
+| mid-run reads that would move forward (spans 13,14,15,17 — first reads only) | 840 | **14.0** |
+| ~~re-reads (spans 16, 18)~~ — these VANISH, they do not move | ~~360~~ | ~~6.0~~ |
+| **boot wait after the change** | 2,147 | **≈35.8** |
 
-> **★★ So the trade is: about 20 seconds added to the boot wait, to remove 3.2 seconds of visible
-> freeze.** The other 16.8 s of removed disk time was never visible — it happened under a static
-> screen. **That is a judgement and it is Jay's**, exactly as §4.2 anticipated.
+> **★★ So the trade is: about 14 seconds added to the boot wait, to remove 3.2 seconds of visible
+> freeze — plus 6.0 s per cycle that disappears entirely (§3H).** The rest of the removed disk time
+> was never visible; it happened under a static screen. **That is still a judgement and it is Jay's**,
+> but it is a better one than the first arithmetic suggested.
 
 #### 3G — AC7: coexistence
 
@@ -205,9 +254,14 @@ boot**, and §4.3's smallest change does not capture it.
 user-visible gain, and it is the cutscene's torches unfreezing. Everything else 512 KB removes is
 disk time that already happens behind a static screen.
 
-**4.2 — What gets worse:** the boot wait, by up to **20 s** (§3F), unless coexistence (§3G) is used to
-avoid re-reading on the second pass — in which case the steady-state loop improves and only the
-*first* boot pays.
+★ **But 6.0 s of that invisible time is a re-read the machine would stop doing altogether** (§3H) —
+`intro_bundle` and `intro_screen`, fetched a second time to rebuild the title after the cutscene
+evicted them. It is invisible, so it is not a *visual* gain; it is 6.0 s per cycle of drive wear and
+of a static screen the viewer sits in front of.
+
+**4.2 — What gets worse:** the boot wait, by **14 s** (§3F as corrected by §3H). The 6.0 s of
+re-read does not move to the front — it stops happening — so coexistence (§3G) is not an extra
+option here, it is what the re-reads becoming unnecessary *means*.
 
 **4.3 — AC9: the smallest change that captures most of the benefit.**
 
@@ -278,10 +332,12 @@ alone gave an expansion's *start* but not its *duration* — one timestamp canno
    spans 16/17's byte signature, but found no marker that says "the attract loop restarted". The
    200 s window may contain slightly more or less than one full cycle, which would move the 25.6%
    figure.
-2. **★ §3F's +20 s assumes every mid-run read moves to the front unchanged.** Some of those tracks
-   may already be resident by then, or may be re-reads of the same data — I did not check track
-   numbers for duplication. **If spans 16-18 re-read what spans 13-14 already fetched, the true
-   boot-wait increase is smaller.** That is the single figure most likely to move.
+2. **★ RESOLVED, and it did move.** This flag read: *"§3F's +20 s assumes every mid-run read moves to
+   the front unchanged… I did not check track numbers for duplication… That is the single figure most
+   likely to move."* **Jay supplied the hypothesis from knowing the design and the track tap confirmed
+   it** — tracks 25 and 27 are re-reads, 6.0 s of the 20.0, and they vanish rather than move. The
+   corrected figure is **+14.0 s** (§3H). ★ **The flag was right about which number was soft and right
+   about the direction; it took Jay to say what the mechanism was.**
 3. **§3G's "~7 blocks" for the intro is an estimate.** The 39,682 B bank is measured
    [`char_draw.s:186-200`]; the screens and captions are not re-measured here and are carried from
    the intro's own accounting.
@@ -297,8 +353,8 @@ alone gave an expansion's *start* but not its *duration* — one timestamp canno
 
 ### 8 — Follow-up candidates
 
-1. **Check the mid-run reads for duplicate tracks** (flag 2) — it decides whether §3F's +20 s is real
-   or an overstatement, and it is the number Jay's decision most turns on.
+1. ~~Check the mid-run reads for duplicate tracks~~ — **done in §3H**; two re-reads found, +20 s
+   corrected to +14 s.
 2. **Find an attract-loop restart marker** (flag 1) so the cycle can be bounded exactly.
 3. **Cost §4.3's 3-block preload against the boot wait precisely**, rather than by subtraction.
 4. **Measure the intro's own asset residency** (flag 3) so §3G stops being an estimate.

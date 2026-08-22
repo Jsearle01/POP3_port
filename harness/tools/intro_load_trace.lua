@@ -41,6 +41,14 @@ local LZEND = tonumber(os.getenv("P_LZEND") or "0")
 -- can.
 local LZCNT = tonumber(os.getenv("P_LZCNT") or "0")
 local lz_calls, lz_busy = {}, {}
+-- ★ WHICH TRACKS, so a RE-READ can be distinguished from a first read. Jay: data could not
+-- be held in memory during the cutscene, so something is fetched twice. disk_read.s stages
+-- the request in its parameter block before calling: DR_VARBASE+5 is the track and +6 the
+-- count [tile_probe.s:93-95, from the same -DDR_VARBASE the kernel gets]. A write tap on the
+-- track byte therefore names every read. Without this, "20 s of mid-run disk moves to the
+-- front" assumes every read fetches something new -- which is exactly what a re-read is not.
+local DRTRK = tonumber(os.getenv("P_DRTRK") or "0")
+local trk_reads = {}
 
 local cpu = manager.machine.devices[":maincpu"]
 local mem = cpu.spaces["program"]
@@ -74,6 +82,13 @@ _G._dsk = mem:install_write_tap(DSKREG, DSKREG, "dskreg", function(off, data, ma
     end
     return data
 end)
+
+if DRTRK ~= 0 then
+    _G._trk = mem:install_write_tap(DRTRK, DRTRK, "trk", function(off, data, mask)
+        trk_reads[#trk_reads + 1] = { f = frame, t = data & 0xFF }
+        return data
+    end)
+end
 
 _G._dac = mem:install_write_tap(DAC, DAC, "dac", function(off, data, mask)
     dac_per_frame[frame] = (dac_per_frame[frame] or 0) + 1
@@ -194,6 +209,29 @@ _G._n = emu.add_machine_frame_notifier(function()
             seenv[v] = f
             say(string.format("    swaps=%3d first at frame %6d (%.1f s)", v, f, f / 59.92))
         end
+    end
+    say("")
+    if DRTRK ~= 0 then
+        say("# TRACKS REQUESTED, in order. A track appearing twice is a RE-READ.")
+        local seen, order = {}, {}
+        for _, r in ipairs(trk_reads) do
+            if not seen[r.t] then seen[r.t] = {}; order[#order + 1] = r.t end
+            seen[r.t][#seen[r.t] + 1] = r.f
+        end
+        say(string.format("  %d requests, %d distinct tracks", #trk_reads, #order))
+        say("  track  times  at frames")
+        local reread, rr_n = 0, 0
+        for _, t in ipairs(order) do
+            local fs = seen[t]
+            local mark = ""
+            if #fs > 1 then reread = reread + 1; rr_n = rr_n + (#fs - 1); mark = "  <- RE-READ" end
+            local list = {}
+            for i, f in ipairs(fs) do list[#list + 1] = tostring(f) end
+            say(string.format("   %3d %6d   %s%s", t, #fs, table.concat(list, ", "), mark))
+        end
+        say(string.format("  ★ %d of %d distinct tracks are read more than once; %d requests"
+                          .. " of %d are re-reads (%.0f%%).",
+                          reread, #order, rr_n, #trk_reads, 100 * rr_n / #trk_reads))
     end
     say("")
     if LZEND ~= 0 then
