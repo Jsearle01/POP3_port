@@ -463,5 +463,4 @@ and pushed to the pool (`9445650`).
 
 ### 11 — Commit
 
-See the commit hash in the push that precedes this report on `origin/wip`. `main` is untouched at
-`32b5fe2`.
+`1bd3948` (pushed to origin/wip). `main` is untouched at `32b5fe2`.
