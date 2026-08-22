@@ -59,6 +59,10 @@ local function rd(a) return mem:read_u8(a) end
 
 local frame = 0
 local spans = {}            -- drive-engaged spans
+-- ★ A SPAN IS ONLY RECORDED WHEN IT CLOSES. If DSKREG never returns to 0 the last span is
+-- silently dropped, and the total under-reports. Count the raw transitions so the span list
+-- can be checked against them instead of trusted.
+local dsk_writes, on_edges, off_edges = 0, 0, 0
 local cur = nil
 local fdc_bytes = 0
 local dac_per_frame = {}    -- frame -> DAC writes
@@ -73,6 +77,9 @@ end)
 
 _G._dsk = mem:install_write_tap(DSKREG, DSKREG, "dskreg", function(off, data, mask)
     local on = (data ~= 0)
+    dsk_writes = dsk_writes + 1
+    if on and not cur then on_edges = on_edges + 1 end
+    if (not on) and cur then off_edges = off_edges + 1 end
     if on and not cur then
         cur = { first = frame, bytes = 0, dac0 = 0, swap0 = SWAPS ~= 0 and rd(SWAPS) or 0 }
     elseif not on and cur then
@@ -256,6 +263,11 @@ _G._n = emu.add_machine_frame_notifier(function()
         say("# lz_end not resolved -- decompression NOT attributed.")
     end
     say("")
+    say(string.format("# DSKREG writes %d; on-edges %d; off-edges %d; span still OPEN at end: %s",
+                      dsk_writes, on_edges, off_edges, cur and ("YES, since frame " .. cur.first) or "no"))
+    if cur then
+        say("  ★★ THE LAST SPAN NEVER CLOSED and is NOT in the table above or the total.")
+    end
     say(string.format("# %d spans, %d frames engaged = %.2f s of %.1f s (%.1f%%)",
                       #spans, tot, tot / 59.92, frame / 59.92, 100 * tot / frame))
     out:close()
