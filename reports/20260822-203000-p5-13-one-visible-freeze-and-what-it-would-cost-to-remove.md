@@ -44,11 +44,20 @@ interrupt.** That is why the gate passed, and it is a deliberate placement, not 
 been wrong. Decompression is 1.82 s across the whole run — five expansions of 0.38-0.48 s — against
 51.18 s of disk. A 28:1 ratio.** The wait is disk. 512 KB is aimed at the right thing.
 
-★ **And the trade is sharper than "remove disk loads" suggests.** The mid-run reads total **20.0 s**,
-and most of that data has to be read at the front instead — **so the boot wait grows from 21.8 s to
-about 35.8 s, to remove 3.2 s of visible freeze.** That is a judgement, not an improvement, and §4.2
-said so before it was measured. **The smallest version of the change buys the whole visible benefit
-for 9.2 s instead of 14** (§4.3).
+★★★ **AND THE TRADE IS MUCH BETTER THAN MY FIRST TWO ANSWERS, because both answered the wrong
+question (§3I).** They moved each read to the front while leaving it as its own drive operation.
+**Loading everything in ONE batch under the loading screen collapses 17 motor cycles into one and
+drops the two duplicate reads: the boot wait grows by ≈8 s and TOTAL disk time FALLS by ≈12 s.**
+
+| | boot wait | mid-run | total port disk |
+|---|---|---|---|
+| today | 21.8 s | 20.0 s | **41.8 s** |
+| **all up front, one batch** | **≈30 s** | **0** | **≈30 s** |
+
+**★ This requires 512 KB — Jay: *"correct. we would have to use 512kb to do that."*** There is
+nowhere on a 128 KB machine to put 101,376 B of assets. **So the case for 512 KB is not "the intro
+improves a little"; it is ≈8 s more loading screen in exchange for an intro that touches the disk
+zero times** — no freeze, no re-reads, no drive noise for its whole 141-second run.
 
 ★★ **AMENDED AFTER FILING, on Jay's account and confirmed by trace (§3H).** He said data is re-read
 after the cutscene because it could not be held in memory during it. **It is: tracks 25
@@ -226,7 +235,70 @@ call [`tile_probe.s:93-95`] — names every read:
 re-read is the concrete, named content of §3G's coexistence benefit — **it is what the attract loop
 spends today, every cycle, to get back to the title.**
 
-#### 3F — AC6: does the initial load get longer? **Yes — but by 14 s, not 20 (see §3H).**
+#### 3I — ★★★ AMENDED AGAIN: batching the load is a different question from moving the reads
+
+**Jay: *"so if we load up front, don't we gain back spin-up, seek time and rotational latency for
+each read that is currently separate"* — and then, when the first answer still moved reads
+individually: *"im asking about loading all the data up front during the loading screen, not
+individually."*** ★ **Both §3F and §3H answered the wrong question. They moved each read forward
+while leaving it as its own drive operation, so each kept paying for a motor cycle it need not have.**
+
+**The mechanism is in the driver, not the emulation.** `disk_read_motor_off` clears **both** the
+register and the spin-up flag:
+
+```
+disk_read_motor_off:
+        clr     DSKREG               ; motor off, no drive selected
+        clr     dr_motor_on
+```
+
+and `dr_spinup` is a **software** delay — a `$C000` `leax -1,x / bne` loop, ~393,000 cycles ≈
+**0.43 s at the normal speed the FDC requires** [`disk_read.s:318-330`], whose own comment says it
+stands in for *"real HW ~0.5-1 s"*. **So every DSKREG-separated read pays a fresh spin-up in real
+cycles**, and the figure does not depend on how faithfully MAME models the drive.
+
+★ **Span 14 demonstrates the saving from the other side.** The track tap shows **three separate
+`disk_read_range` calls inside that one span** (frames 3867, 3981, 4071) with DSKREG never dropping —
+three calls sharing one spin-up. That is already the batching this section is about, happening where
+the driver keeps the motor alive.
+
+**A cost model fitted to the trace** — it reproduces span 14 exactly and the 1- and 2-track calls
+within 6%:
+
+| term | cost |
+|---|---|
+| per **motor cycle** (spin-up) | 26 frames = **0.43 s** |
+| per **call** (seek) | 12 frames = 0.20 s |
+| per **track** (transfer + latency) | 74.5 frames = **1.24 s** |
+
+**Today the port reads 26 track-loads for 22 tracks of unique data, across 17 motor cycles.**
+Batched into one motor cycle it is 22 tracks, once:
+
+| | boot wait | mid-run disk | total port disk |
+|---|---|---|---|
+| **today** | 21.8 s | 20.0 s | **41.8 s** |
+| **all up front, one batch** | **≈30 s** | **0** | **≈30 s** |
+
+> **★★★ The boot wait grows by about 8 seconds and TOTAL disk time falls by about 12.** Two savings
+> compound, and moving reads individually captured neither: **16 spin-ups eliminated (≈6.9 s)** and
+> **4 duplicate track reads eliminated (≈5.0 s)**.
+
+**Sensitivity:** the call count is the soft input. At 1 call the batch is 28.0 s, at 17 it is 31.2 s —
+**a 3 s spread that does not change the conclusion.**
+
+**★ AND THIS REQUIRES 512 KB — confirmed by Jay: *"correct. we would have to use 512kb to do that."***
+There is nowhere on a 128 KB machine to put 101,376 B of assets; P5.12 established the demo alone
+needs 10 blocks against 8 free.
+
+**What the viewer gets:**
+
+| | today | batched |
+|---|---|---|
+| loading screen | 23.6 s | **≈32 s** |
+| `EXEC` → intro starts | 25.0 s | **≈33 s** |
+| disk during the intro | 20.0 s, including the 3.2 s visible freeze | **none** |
+
+#### 3F — AC6: does the initial load get longer? **Yes — by ~8 s if batched (§3I supersedes this).**
 
 512 KB does not make the machine boot with data in it. Everything read mid-run has to be read at the
 front instead:
@@ -286,20 +358,28 @@ disk time that already happens behind a static screen.
 
 ★ **But 6.0 s of that invisible time is a re-read the machine would stop doing altogether** (§3H) —
 `intro_bundle` and `intro_screen`, fetched a second time to rebuild the title after the cutscene
-evicted them. It is invisible, so it is not a *visual* gain; it is 6.0 s per cycle of drive wear and
-of a static screen the viewer sits in front of.
+evicted them.
 
-**4.2 — What gets worse:** the boot wait, by **14 s** (§3F as corrected by §3H). The 6.0 s of
-re-read does not move to the front — it stops happening — so coexistence (§3G) is not an extra
-option here, it is what the re-reads becoming unnecessary *means*.
+★★ **And under the BATCHED load (§3I) the intro touches the disk ZERO times after the loading
+screen.** All 20.0 s of mid-run drive activity goes, not just the visible 3.2 s: no freeze, no
+re-reads, no motor cycling during a 141-second sequence. **Total disk time falls from 41.8 s to
+≈30 s while the boot wait rises ≈8 s.**
+
+**4.2 — What gets worse:** the boot wait, by **≈8 s** (§3I — superseding the 14 s of §3F/§3H, which
+moved reads individually and kept their motor cycles). **Nothing else gets worse**, and total disk
+time improves by ≈12 s.
 
 **4.3 — AC9: the smallest change that captures most of the benefit.**
 
 **Preload only the rotating pages the cutscene reads mid-scene** — spans 15, 16 and 17, 27,648 bytes,
-**3 blocks** — at startup, and leave everything else exactly as it is. **That removes the one visible
-freeze for about 9.2 s of extra boot wait instead of 20**, needs no restructuring of the beat
-schedule or the intro's asset flow, and leaves `vb_apply`'s publishing path untouched. Named, not
-built.
+**3 blocks** — at startup, and leave everything else exactly as it is. That removes the one visible
+freeze, needs no restructuring of the beat schedule or the intro's asset flow, and leaves
+`vb_apply`'s publishing path untouched.
+
+★ **But §3I weakens the case for doing only this.** Batching *everything* costs ≈8 s of boot wait and
+returns ≈12 s of total disk time; the partial version costs less boot wait but keeps the motor cycling
+through the intro and keeps the re-reads. **The smallest change is no longer obviously the best value**
+— it is the least disruptive one. Named, not built, and not recommended over the full batch.
 
 **4.4 — AC10: what I am NOT proposing.**
 
@@ -373,12 +453,16 @@ alone gave an expansion's *start* but not its *duration* — one timestamp canno
 3. **§3G's "~7 blocks" for the intro is an estimate.** The 39,682 B bank is measured
    [`char_draw.s:186-200`]; the screens and captions are not re-measured here and are carried from
    the intro's own accounting.
-4. **One observed cycle, one machine, 128 KB.** The freeze duration could differ on a machine whose
+4. **★ §3I's cost model is fitted, not derived.** Motor cycle 26 fr / call 12 fr / track 74.5 fr
+   reproduces span 14 exactly and the 1- and 2-track calls within 6%, but it is three parameters fitted
+   to eighteen observations. The **call count** for a batched load is the softest input; at 1 call the
+   batch is 28.0 s and at 17 it is 31.2 s, so the 3 s spread does not change the conclusion.
+5. **One observed run, one machine, 128 KB.** The freeze duration could differ on a machine whose
    drive seeks differently; the span is drive-engaged time, which includes latency.
-5. **"Visible" is defined as page flips on both sides and none during.** A screen that is genuinely
+6. **"Visible" is defined as page flips on both sides and none during.** A screen that is genuinely
    static by design and a screen that has frozen are indistinguishable to that test — it is why
    span 15 is identified and why the other seventeen are called invisible rather than proven so.
-6. **The DAC tap sees writes, not audibility.** Four writes in 192 frames is silence for practical
+7. **The DAC tap sees writes, not audibility.** Four writes in 192 frames is silence for practical
    purposes, but the tap cannot distinguish a held sample from no sample.
 
 ---
