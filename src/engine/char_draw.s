@@ -2661,6 +2661,25 @@ cs_next
                 beq     cs_next
                 bra     cs_out
 cs_first
+* ★★ AND WITH NO STAGED READ OWED, THE LAST STARTUP READ IS THE LAST READ (P5.15).
+* cel_service_read releases the drive on the read that takes cel_rd_left to zero, and its
+* own note says holding it past the last one "would spin for the rest of the scene for
+* nothing." That note then reasons in one direction only — "adding a read cannot leave the
+* motor running" — and the case it does not cover is the one a fourth rotating block
+* creates: CEL_N_READS is 0, cel_rd_req is never raised, so the decrement that releases the
+* drive is never reached and the motor runs for the whole scene. Not a hypothetical: it is
+* what this routine does on the standalone path, where the magic is absent and the reads
+* above actually happen.
+*
+* So the release is asked for HERE too, on the same condition the schedule uses. It is
+* unconditional on the path, not on the count: when the preload already brought the bank in
+* (the magic answered, no read happened here) the drive is idle anyway and clearing an
+* already-clear flag costs a call. Placed before the window restore so the `clra` below is
+* still what sets the caller's Z.
+                tst     cel_rd_left
+                bne     cs_f_map                ; a staged read still owes a release
+                jsr     [cel_moff]
+cs_f_map
 * cel_read_page left the window on whatever it loaded LAST — the highest-numbered startup
 * page, not the first one drawn. Put it back on page 0 before the scene starts. (The beat
 * schedule would fix this on its first tick anyway; doing it here means the window is

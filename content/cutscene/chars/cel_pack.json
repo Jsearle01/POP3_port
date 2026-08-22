@@ -567,7 +567,7 @@
   },
   {
    "index": 3,
-   "block": 13,
+   "block": 24,
    "sig": 43119,
    "bytes": 3265,
    "track": 22,
@@ -637,13 +637,7 @@
  "res_cap": 8192,
  "track_bytes": 4608,
  "res_bytes": 7647,
- "reads": [
-  {
-   "at_beat": 12,
-   "page": 3,
-   "block": 13
-  }
- ],
+ "reads": [],
  "schedule": [
   {
    "beat": 0,
@@ -771,9 +765,9 @@
    "plays": 56,
    "block": 13,
    "sig": 0,
-   "page": 3,
+   "page": 0,
    "resident_only": true,
-   "read": 3
+   "read": null
   },
   {
    "beat": 13,
@@ -829,7 +823,7 @@
    "beat": 18,
    "name": "(hold)",
    "plays": 12,
-   "block": 13,
+   "block": 24,
    "sig": 43119,
    "page": 3,
    "resident_only": false,
@@ -839,7 +833,7 @@
    "beat": 19,
    "name": "Pslump",
    "plays": 28,
-   "block": 13,
+   "block": 24,
    "sig": 43119,
    "page": 3,
    "resident_only": false,
@@ -849,7 +843,7 @@
    "beat": 20,
    "name": "s_StTimer",
    "plays": 51,
-   "block": 13,
+   "block": 24,
    "sig": 0,
    "page": 3,
    "resident_only": true,
@@ -859,7 +853,7 @@
    "beat": 21,
    "name": "Vstand",
    "plays": 0,
-   "block": 13,
+   "block": 24,
    "sig": 0,
    "page": 3,
    "resident_only": true,

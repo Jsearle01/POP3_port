@@ -696,7 +696,21 @@ def main():
     # exists — which is exactly the conclusion P3.95 drew and got wrong, sending three
     # expensive options to Jay when the scene packs at today's 4 pages and ONE read.
     #
-    # So: try candidate sets in increasing order and take the first that packs. The safety
+    # ★★ AND "THE FIRST THAT PACKS" WAS THE WRONG STOPPING RULE (P5.15). It was written
+    # when NO candidate packed without a read, so first-that-packs and best-that-packs
+    # were the same answer and the difference could not show. Given a fourth rotating
+    # block they diverge immediately: the first candidate now packs at FIVE pages and one
+    # read, the loop stops there, and a later candidate that packs at four pages and NO
+    # read is never reached. The extra block made the result WORSE, which is the shape of
+    # a greedy stop, not of a capacity problem.
+    #
+    # So: score every candidate that packs and take the best — fewest READS first (a read
+    # is the ~2.8 s the viewer actually sees), then fewest PAGES (each is two tracks of a
+    # disk that has ten left), then the candidate order itself so the choice is
+    # deterministic. The non-monotonicity noted above is exactly why the whole list must
+    # be walked rather than truncated at the first success.
+    #
+    # So: try candidate sets in increasing order and take the best that packs. The safety
     # property is kept as an ASSERTION on the result rather than as a restriction on the
     # input — every read that is actually SCHEDULED must land in a hold long enough to
     # cover it, whatever boundaries the packer used to get there.
@@ -714,7 +728,7 @@ def main():
             for combo in itertools.combinations(holds, r):
                 yield sorted(set(songs) | set(combo))
 
-    p = None
+    p, p_pts, p_score, n_packed = None, None, None, 0
     for pts in candidates():
         try:
             q = K.pack(beats, size_of, table_bytes, pts)
@@ -726,11 +740,13 @@ def main():
             print("  read points %s: packs, but schedules a read at beat(s) %s, which are "
                   "too short to hide a transfer — rejected" % (pts, bad))
             continue
-        p = q
-        if pts != songs:
-            print("  read-point search: the default %s did not pack; %s did, with the "
-                  "read still in a long hold" % (songs, pts))
-        break
+        n_packed += 1
+        score = (len(q["reads"]), len(q["pages"]))
+        if p_score is None or score < p_score:
+            p, p_pts, p_score = q, pts, score
+    if p is not None:
+        print("  read-point search: %d candidate set(s) packed; %s wins with %d read(s) "
+              "and %d page(s)" % (n_packed, p_pts, p_score[0], p_score[1]))
     if p is None:
         print("\n*** THE SCENE DOES NOT PACK ***\n  no candidate read-point set produces "
               "a schedule whose reads all land in holds of >= %d plays" % READ_MIN_PLAYS)
@@ -767,10 +783,34 @@ def emit(p, label_of, size_of, lo, hi):
     res = sorted(p["resident"])
 
     # ── which two disk tracks each unit lands on ────────────────────────────────────
-    # Whole tracks, because disk_read_range reads nothing else (its own header). The
-    # free spans are what packing the intro assets opened up; track 17 is the DECB
-    # directory and no span may cross it (idiom §4).
-    spans = [[11, 6], [20, 5], [32, 3]]           # (first track, tracks available)
+    # Whole tracks, because disk_read_range reads nothing else (its own header). Track 17
+    # is the DECB directory and no span may cross it (idiom §4).
+    #
+    # ★★★ THIS LIST OVER-CLAIMED FOUR OCCUPIED TRACKS UNTIL P5.15, AND IT WAS A SILENT
+    # CORRUPTION WAITING FOR ONE MORE PAGE. It read [[11,6],[20,5],[32,3]] — fourteen
+    # tracks — while the disk has ten free. res + four pages is five units of two tracks,
+    # so `take` stopped at ten and never reached the bad entries. A fifth page would have
+    # been placed on track 32, which is the MUSIC PLAYER, and the build would have said
+    # nothing.
+    #
+    # ★ AND P5.5 MADE IT WORSE WITHOUT NOTICING: the tile page went onto track 34, inside
+    # the [32,3] span this file still called free. A second home for the disk map, and the
+    # dispatch that added an asset updated only one of them.
+    #
+    # THE DISK, IN FULL — build.bat's raw_tracks calls plus DECB's own areas:
+    #    0-8   DECB file area (PROBE/MODE/ANIM/INTRO/LOADER/TILE.BIN as files)
+    #    9-10  prolog1.lz          18-19  prolog2.lz        27-28  intro_screen.lz
+    #   11-16  ★ FREE — cel pages  20-23  ★ FREE — cel pages   29   princess_room.lz
+    #    17    DECB directory        24   scene_prog.raw     30-31  flames.lz
+    #   25-26  intro_bundle.raw                               32    msys_player.raw
+    #                                                         33    intro_prog.raw
+    #                                                         34    tile_page.lz  [P5.5]
+    #
+    # So: ten free tracks, and res + four pages needs exactly ten. THERE IS NO SPARE. A
+    # packing that wants an eleventh now raises "out of raw disk tracks" instead of
+    # overwriting an asset — which is the whole point of correcting this rather than
+    # widening it.
+    spans = [[11, 6], [20, 4]]                    # (first track, tracks available)
     def take(n):
         for s in spans:
             if s[1] >= n:

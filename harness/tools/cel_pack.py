@@ -6,9 +6,14 @@ that is 31,744 B addressable, and only two of the four window registers are free
 cels have to be cut into block-sized PAGES, one page mapped at a time, with the mapping
 changing only where no beat is mid-draw.
 
-  bank, physical        4 blocks, $0C..$0F, 32,768 B   [P3.66, and 4 is the count at
-                                                        128 KB: $00-$07 are the two
-                                                        framebuffers, $08-$0B the CPU map]
+  bank, physical        5 blocks, $0C..$0F + $18, 40,960 B
+                        [P3.66 measured 4, and 4 was the count at 128 KB, where NOTHING is
+                         free: $00-$07 are the two framebuffers, $08-$0B the CPU's low map,
+                         and $0C-$0F are simultaneously the cel bank AND the aliases of
+                         $3C-$3F, the CPU's own $8000-$FFFF. There is no fifth block to
+                         find. P5.15 takes the fifth from the 512 KB machine P5.14 made
+                         the target — $18 is free there and aliases onto $08, the program's
+                         low memory, on a 128 KB one. That is why this is 512 KB ONLY.]
   window                $FFA6 -> $C000-$DFFF (8,192 B)
                         $FFA7 -> $E000-$FFFF, of which $E000-$FDFF is reachable (7,680 B);
                         $FE00-$FEFF is constant RAM (MC3=1) and $FF00+ is I/O
@@ -18,8 +23,9 @@ THE SHAPE: PIN ONE, ROTATE THE OTHER.
 
   $FFA6  RESIDENT page, pinned for the whole scene. Holds the magic, the [cel][facing]
          [phase] table, and the cels that more than one page's worth of beats needs.
-  $FFA7  ROTATING page, one per group of consecutive beats, chosen from 3 physical
-         blocks and re-read from disk twice mid-scene.
+  $FFA7  ROTATING page, one per group of consecutive beats, chosen from 4 physical
+         blocks — and since P5.15 the scene's four pages each get one, so no page is
+         re-read mid-scene at all.
 
 WHY THE TABLE FORCES THE PIN. co_variant reads CEL_WALK_TAB on every cel it places, so
 the table has to be mapped at every instant. Rotating BOTH registers would mean a copy of
@@ -45,22 +51,34 @@ no rotating page" is a state the schedule can express: signature 0, never a real
 value. The packer ASSERTS such a beat's set really is a subset of the resident set, so the
 marking cannot drift from the content it describes.
 
-THE READS. Two pages arrive mid-scene, in the two song holds, over blocks whose previous
-occupant is provably finished (the residency check is `last beat using it < the read
-beat`). disk_read_range reads WHOLE TRACKS only (its own header: "dr_r_count must be a
-multiple of SECS_TRACK"), so a page costs ceil(bytes / 4608) tracks of transfer time
-whatever its length -- which is why this packs into FEW BIG pages rather than many small.
+THE READS — AND AT FOUR BLOCKS THERE ARE NONE. The machinery below still schedules them,
+because it is what proves none are needed: a page arrives mid-scene in a song hold, over a
+block whose previous occupant is provably finished (the residency check is `last beat using
+it < the read beat`). With a block per page that check has nothing to check, `reads` comes
+out empty, and the whole bank is loaded once in the intro's opening batch. What the viewer
+loses is the 3.20 s freeze at beat 12 — the one visible disk read in the entire intro
+(P5.13 span 15). What boot pays is one more page in the preload: two tracks.
+
+disk_read_range reads WHOLE TRACKS only (its own header: "dr_r_count must be a multiple of
+SECS_TRACK"), so a page costs ceil(bytes / 4608) tracks of transfer time whatever its
+length -- which is why this packs into FEW BIG pages rather than many small.
 """
 import math
+import os
+
+_DEBUG = bool(os.environ.get('CEL_PACK_DEBUG'))
 
 # --- the machine, measured, not assumed -----------------------------------------
 RES_BASE = 0xC000                 # $FFA6's page
 ROT_BASE = 0xE000                 # $FFA7's page
 RES_CAP = 0xE000 - 0xC000         # 8,192 B, all reachable
 ROT_CAP = 0xFE00 - 0xE000         # 7,680 B — MC3=1 shadows the top 512 B
-N_BLOCKS = 4                      # $0C..$0F; see the header for why 4 and not more
 RES_BLOCK = 0x0C                  # pinned at $FFA6
-ROT_BLOCKS = (0x0D, 0x0E, 0x0F)   # the three that rotate through $FFA7
+# ★ $18 IS THE 512 KB BLOCK, AND IT IS THE ONLY REASON THE SCENE NEEDS NO READ (P5.15).
+# The header says why no fifth block exists at 128 KB. $18-$37 are all free on the 512 KB
+# machine; $18 is simply the lowest, sitting immediately above framebuffer B ($14-$17).
+ROT_BLOCKS = (0x0D, 0x0E, 0x0F, 0x18)
+N_BLOCKS = 1 + len(ROT_BLOCKS)    # derived, so the two cannot drift apart
 SECTOR = 256
 SECS_PER_TRACK = 18
 TRACK = SECTOR * SECS_PER_TRACK   # 4,608 B
@@ -254,9 +272,21 @@ def pack(beats, sizes, table_bytes, read_beats, n_rot=len(ROT_BLOCKS),
     if not needing:
         raise PackError("no beat needs a rotating page — the scene fits the pinned block")
 
-    def search(start, groups):
+    def search(start, groups, cap):
         if start == len(needing):
             return groups
+        # ★★ THE PAGE BUDGET, ADDED AT P5.15. Without it the search is greedy-longest-first
+        # and takes whatever run fits, which is NOT optimal for page COUNT -- and page count
+        # is what decides whether a mid-scene disk read is needed at all. Worse, a LARGER
+        # n_rot made it produce MORE pages: the `k >= n_rot` refill constraint below is what
+        # forces a short group, so relaxing it lets an early group run long and pushes the
+        # tail into an extra page. Four blocks gave five pages where three blocks gave four.
+        #
+        # The caller now tries cap = n_rot first (zero reads), then widens. So a packing that
+        # needs no read is always preferred to one that does, and the old behaviour is just
+        # the first cap that succeeds.
+        if len(groups) >= cap:
+            return None
         # the longest run from `start` that fits one block, then shorter on backtrack
         acc, longest = set(), 0
         for j in range(start, len(needing)):
@@ -274,12 +304,24 @@ def pack(beats, sizes, table_bytes, read_beats, n_rot=len(ROT_BLOCKS),
                 prev_last = groups[k - n_rot][1][-1]
                 if not any(r for r in live_reads if prev_last < r < grp[1][0]):
                     continue               # this cut leaves the block unrefillable
-            got = search(end, groups + [grp])
+            got = search(end, groups + [grp], cap)
             if got is not None:
                 return got
         return None
 
-    pages = search(0, [])
+    # ★ FEWEST PAGES FIRST. cap = n_rot means every page has its own block and the read
+    # schedule below is empty; each widening step buys one more page at the cost of one
+    # mid-scene read. Trying them in order makes "no read" the preferred answer rather than
+    # an accident of how the greedy search happened to cut.
+    pages = None
+    for cap in range(n_rot, n_rot + len(live_reads) + 1):
+        pages = search(0, [], cap)
+        if _DEBUG:
+            print("    [cap=%d n_rot=%d live_reads=%s needing=%d] -> %s"
+                  % (cap, n_rot, live_reads, len(needing),
+                     "None" if pages is None else "%d pages" % len(pages)))
+        if pages is not None:
+            break
     if pages is None:
         raise PackError(
             "no grouping of the beats into <= %d blocks refilled at %s produces a page "

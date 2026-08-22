@@ -437,21 +437,35 @@ local function tick()
                 -- PAGES — moved out of the scene and into the intro's opening batch, because
                 -- reading them at scene start put the cutscene's first musical cue 12.4 s
                 -- late (P4.23/P4.24) and Jay ruled that unacceptable. They are the pinned
-                -- page (tracks 11-12) plus three startup pages, two tracks each:
+                -- page (tracks 11-12) plus the startup pages, two tracks each:
                 --
                 --   9,10   the pinned page   CEL_RES_TRK 11, then 12, into block $0C
                 --   11,12  startup page 0    tracks 13,14  -> block $0D
                 --   13,14  startup page 1    tracks 15,16  -> block $0E
                 --   15,16  startup page 2    tracks 20,21  -> block $0F
+                --   17,18  startup page 3    tracks 22,23  -> block $18   [P5.15]
                 --
                 -- ★★ AND THE COUNT IS THE PROOF THAT THE MOVE COST NO EXTRA DISK. Removing
                 -- the splash bank — whose blocks ARE those cel blocks at 128 KB — could have
                 -- forced beat 1 to re-read its second base, a ninth 2.6 s read. It did not:
                 -- fb_copy_front takes that base from the FRONT buffer instead. 8 + 8 = 16,
                 -- exactly, and a 17th here would mean the bank's removal was not paid for.
-                check("disk_reads_completed", rd8(ENGINE + 8) == 16,
-                      string.format("probe_loads = %d (want 16: bundle + THE MUSIC PLAYER "
-                                    .. "+ EIGHT CEL-PAGE TRACKS + splash + prolog1 + the "
+                --
+                -- ★★★ EIGHTEEN SINCE P5.15, AND THE TWO NEW ONES ARE NOT AN EXTRA COST —
+                -- THEY ARE A MOVED ONE. Page 3 used to arrive DURING the cutscene, read into
+                -- block $0D over page 0's remains at beat 12, because at 128 KB there was no
+                -- fourth rotating block to put it in. That read is the 3.20 s freeze P5.13
+                -- measured as the ONE disk operation visible in the whole intro. The 512 KB
+                -- target P5.14 moved to has block $18 free, so page 3 gets a block of its
+                -- own and is loaded here with the other three: the same two tracks, read
+                -- against a black screen instead of against a running scene.
+                --
+                -- So the number to check is 18 and the schedule to check is CEL_N_READS = 0.
+                -- A 17 here would mean the preload dropped a page; a 19 would mean the
+                -- cutscene read one anyway, which is precisely the thing this removed.
+                check("disk_reads_completed", rd8(ENGINE + 8) == 18,
+                      string.format("probe_loads = %d (want 18: bundle + THE MUSIC PLAYER "
+                                    .. "+ TEN CEL-PAGE TRACKS + splash + prolog1 + the "
                                     .. "scene's program + the captions again + prolog2 + "
                                     .. "the splash again; WD1773 status $%02X",
                                     rd8(ENGINE + 8), rd8(ENGINE + 9)))

@@ -17,7 +17,7 @@
 *   fcb first_track, block
 
 CEL_N_PAGES     equ     4
-CEL_N_READS     equ     1
+CEL_N_READS     equ     0
 CEL_SECS        equ     18              ; one track, and a read is always one
 CEL_RES_BLOCK   equ     $0C
 CEL_RES_TRK     equ     11
@@ -31,11 +31,11 @@ cel_page_tab
                 fcb     13,$0D             ; page 0, 7,290 B of 7,680
                 fcb     15,$0E             ; page 1, 6,449 B of 7,680
                 fcb     20,$0F             ; page 2, 7,203 B of 7,680
-                fcb     22,$0D             ; page 3, 3,265 B of 7,680
+                fcb     22,$18             ; page 3, 3,265 B of 7,680
 cel_page_tab_end
 
 * The pages that must be in RAM before the scene starts: one per block, the
 * first user of each. The rest arrive in the song holds.
-CEL_N_STARTUP   equ     3
+CEL_N_STARTUP   equ     4
 cel_startup_tab
-                fcb     0,1,2
+                fcb     0,1,2,3

@@ -57,7 +57,7 @@ cel_plan
                 fcb     0,0,0           ; beat 11 Vstop        plays 4   
                 fcb     56,$0D
                 fdb     $0000
-                fcb     4,0,10           ; beat 12 s_Buildup    plays 56    pinned-only  READ page 3
+                fcb     0,0,10           ; beat 12 s_Buildup    plays 56    pinned-only
                 fcb     1,$0E
                 fdb     $A64D
                 fcb     0,0,0           ; beat 13 Vraise       plays 1   
@@ -73,16 +73,16 @@ cel_plan
                 fcb     17,$0F
                 fdb     $A75E
                 fcb     0,6,0           ; beat 17 Vexit        plays 17    glass1  flow
-                fcb     12,$0D
+                fcb     12,$18
                 fdb     $A86F
                 fcb     0,6,0           ; beat 18 (hold)       plays 12    glass1  flow
-                fcb     28,$0D
+                fcb     28,$18
                 fdb     $A86F
                 fcb     0,6,0           ; beat 19 Pslump       plays 28    glass1  flow
-                fcb     51,$0D
+                fcb     51,$18
                 fdb     $0000
                 fcb     0,6,12           ; beat 20 s_StTimer    plays 51    pinned-only  glass1  flow
-                fcb     0,$0D
+                fcb     0,$18
                 fdb     $0000
                 fcb     0,6,0           ; beat 21 Vstand       plays 0     pinned-only  glass1  flow
                 fcb     0,0
