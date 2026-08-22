@@ -1,0 +1,35 @@
+; link/pop_tile.link — the TILE RENDERER's memory map (P5.5).
+;
+; A standalone LOADM'd program, the same shape link/pop_engine.link describes: the program
+; low at $2000 and the kernel high at $7900, because $2000 is the first address above every
+; region DECB uses while it is loading and while the operator types EXEC.
+;
+;   $2000-....    the renderer + lz_unpack (section `prog`), LOADM + EXEC address
+;   $3000-$41FF   the packed page, staged one whole track at a time (LZ_STAGE)
+;   $6A00-$6A06   the disk driver's parameter block (-DDR_VARBASE)
+;   $7800-$78FF   trace ring buffer
+;   $7900-$7D43   KERNEL (section `code` = hal_build.o)
+;   $7F00         stack top — below the draw window
+;   $8000-$BBFF   the back buffer, 15,360 B of the 32 KB window
+;   $C000-$DFFF   THE TILE PAGE, mapped through $FFA6 after HAL_gfx_set_mode
+;
+; ---------------------------------------------------------------------------
+; WHY THIS ONE STAYS A LOADM FILE WHEN THE INTRO STOPPED BEING ONE
+; ---------------------------------------------------------------------------
+; The intro moved to a raw track because it carried 28 KB of screen asset and could not fit
+; one granule (P3.4, and the measured ceiling at $2488..$2535 in link/pop_engine.link).
+; THIS PROGRAM CARRIES NO ASSET AT ALL — the screen lives in its own GIME block and arrives
+; over disk_read_range, so the LOADM image is the renderer plus lz_unpack plus the kernel and
+; nothing else. It is a few hundred bytes against a ceiling ~1,150 bytes away.
+;
+; The page arrives PACKED because it has to: 7,280 B raw against a 4,608 B track, with one
+; free track left on the image. src/engine/tile_probe.s's header carries the arithmetic.
+;
+; ★ THE CEILING STILL HAS TO BE CHECKED, not assumed: build.bat's map_overlap_check.py sees
+; this map like any other, and the signature of crossing it is documented in
+; link/pop_engine.link — probe_status reading $40 with a disk-read count of zero.
+
+section prog load 2000
+section code load 7900
+
+entry tile_entry

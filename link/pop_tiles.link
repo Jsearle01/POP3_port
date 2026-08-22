@@ -1,0 +1,28 @@
+; link/pop_tiles.link — the BAKED TILE PAGE for one blueprint screen (P5.5).
+;
+; One 8,192 B GIME block at $C000, mapped through $FFA6 and pinned for the whole draw.
+; `cel_pg_sig` is 0 in the gated design, so $FFA7 is never written and nothing rotates.
+;
+; ---------------------------------------------------------------------------
+; $C000..$DFFF IS 8,192 B AND ALL OF IT IS REACHABLE — unlike $FFA7's page.
+; ---------------------------------------------------------------------------
+; link/pop_cels_pg.link records why the ROTATING page is 7,680 and not 8,192: gfx.s sets
+; $FF90 with MC3=1, which holds $FE00-$FEFF as constant RAM, and $FF00-$FFFF is always
+; I/O, so the top 512 B of whatever sits at $FFA7 cannot be reached through the window.
+; NONE OF THAT APPLIES HERE. $FFA6's window ends at $DFFF, far below the constant page,
+; so this script's budget really is the full block.
+;
+; harness/tools/bake_screen.py refuses to emit a page over 8,192 B, so the capacity check
+; happens before the assembler sees anything — a build error rather than a silent overrun.
+;
+; The `load` value is bare hex. `section prog load $C000` parses the `$` form as ZERO —
+; no error, no warning, exit 0, and the image lands at $0000. link/pop_cels_res.link
+; documents that at length and decb_to_raw.py refuses an image whose first segment is not
+; exactly at the `--base` build.bat states, which is what turns the silence into a failure.
+;
+; Comments here are `;`. lwlink does NOT accept `*` — that is an assembler convention and
+; using it is a parse error, not a comment.
+
+section prog load C000
+
+entry tile_page

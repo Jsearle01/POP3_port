@@ -219,6 +219,13 @@ class Renderer:
         self.bgset1 = bgset1            # 0 = dungeon, 1 = palace
         self.bg = []                    # ADDBACK list
         self.fg = []                    # ADDFORE list
+        # THE BLOCK GRID AS `sure` ACTUALLY WALKED IT (P5.5). Recorded rather than
+        # re-derived, because getobjid CARRIES STATE -- the pressplate cases read
+        # self.state and write it back, so walking the blueprint a second time from
+        # outside does not reproduce the same objids. Rows are 0..2 plus -1 for the
+        # D-row of the screen above. Consumed by attribute_diff.py to say which OBJECT a
+        # port-vs-oracle difference sits on, instead of guessing from a bounding box.
+        self.blocks = []                # (colno, rowno, objid, Ay)
         self.omitted = {}
 
     # -- getobjid [FRAMEADV.S:2041] -------------------------------------
@@ -514,6 +521,7 @@ class Renderer:
                 st = dict(objid=objid, state=state, PRECED=PRECED, spreced=spreced,
                           colno=colno, rowno=rowno, blockxco=blockxco, Dy=Dy, Ay=Ay,
                           BELOW=BELOW, SBELOW=SBELOW)
+                self.blocks.append((colno, rowno, objid, Ay))
                 self.red_block_sure(st)
                 PRECED, spreced = objid, state
                 yindex += 1
@@ -532,6 +540,7 @@ class Renderer:
             st = dict(objid=objid, state=state, PRECED=PRECED, spreced=spreced,
                       colno=colno, rowno=2, blockxco=blockxco, Dy=Dy, Ay=Ay,
                       BELOW=BELOW, SBELOW=SBELOW)
+            self.blocks.append((colno, -1, objid, Ay))
             self.red_d_sure(st)
             PRECED, spreced = objid, state
             yindex += 1

@@ -31,7 +31,15 @@ cd "$(dirname "$0")/../.." || exit 1
 # phase-occupancy census and the two-run stability check. `integ` replaces NONE of those —
 # it checks that the scene is reached, returns, and that no read is revealed half-built.
 # The scene's PIXELS are now gated by Jay's eye alone. That is the decision, stated.
-SUITES="introseq integ"
+# ★ `tile` JOINS AT P5.5, AND IT BRINGS BACK THE THING THE PARAGRAPH ABOVE MOURNS.
+# The retired pair took the BYTE-EXACT PIXEL COMPARISON with them: since P4.2 no suite has
+# compared a real framebuffer against what the content says it should be, and the scene's
+# pixels have been gated by Jay's eye alone. run_tile_test.sh does exactly that check again
+# -- 15,360 bytes of displayed buffer against bake_screen.py's reference -- for the
+# gameplay background. It does NOT restore the rest of what went (no page-signature guard,
+# no phase-occupancy census, no two-run stability check, and nothing about the scene); it
+# restores the pixel comparison, on a different picture.
+SUITES="introseq integ tile"
 
 # ── RETIRED at P3.103, with what covers their ground now ─────────────────────────────
 #   probe     P1.1 loop probe        -> room/walk boot through the same HAL

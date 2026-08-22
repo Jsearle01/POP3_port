@@ -149,6 +149,10 @@ REM loader jumps to (P4.46). Both the loader and intro_seq.s take these from her
 REM intro_seq.s asserts that intro_seq_boot really is at INTRO_BOOT_OFF -- so a drift is a
 REM build error rather than a jump into the middle of probe_magic.
 set INTRO_TRK=33
+REM P5.5: the baked tile page for LEVEL0 screen 1. Track 34 is the LAST track of the
+REM 35-track image and the only one nothing else claims -- 9-16 and 18-32 are assets or
+REM cel pages, 17 is the RS-DOS directory, 33 is the intro's program.
+set TILE_TRK=34
 set INTRO_BOOT_OFF=11
 set SCENE_CALL_OFF=11
 REM The window the bundle is expanded inside: FLAME_BASE up to (not into) the disk
@@ -774,7 +778,42 @@ if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/intro_prog.raw --track %INTRO_TRK% --tracks 1 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 
+echo --- P5.5: the tile page and the tile renderer ---
+REM THE BAKE VERIFIES ITSELF BEFORE IT EMITS. bake_screen.py replays the page it is about
+REM to write and compares it byte-for-byte against hgr_screen_convert's framebuffer for the
+REM same screen; anything but EXACT is a non-zero exit, so a bake defect cannot reach the
+REM disk. It also refuses a page over 8,192 B, which is the GIME block's real capacity at
+REM $FFA6 -- see link/pop_tiles.link for why this one is 8,192 and the rotating page is 7,680.
+if not exist build\gen mkdir build\gen
+python harness/tools/bake_screen.py --level LEVEL0 --screen 1 --out build/gen/tile_screen1.s --out-ref build/assets/tile_screen1_ref.bin
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -I . -o build/obj/tile_screen1.o build/gen/tile_screen1.s
+if errorlevel 1 goto :error
+lwlink --decb --script=link/pop_tiles.link --map=build/obj/tile_page.map -o build/tile_page.bin build/obj/tile_screen1.o
+if errorlevel 1 goto :error
+python harness/tools/decb_to_raw.py --bin build/tile_page.bin --out build/assets/tile_page.raw --base 0xc000
+if errorlevel 1 goto :error
+REM ★ THE PAGE IS 7,280 B AND A TRACK IS 4,608. The uncompressed page needs TWO tracks and
+REM there is exactly ONE free track left on the image (34 -- see the map at the head of this
+REM file), so the raw form cannot be delivered at all. lz_pack takes it to 1,390 B, which is
+REM under a third of one track. This is the same route the intro screens and the cutscene
+REM room already take; nothing about it is new except that here it is LOAD-BEARING rather
+REM than a saving. The renderer stages the track in main RAM and expands into $C000, so the
+REM in-place high-water argument in lz_pack.py's header does not apply to this blob -- source
+REM and destination do not overlap.
+python harness/tools/lz_pack.py build/assets/tile_page.raw --out-dir build/assets
+if errorlevel 1 goto :error
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/tile_page.lz --track %TILE_TRK% --tracks 1 --reserve --imgtool "%IMGTOOL%"
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DTILE_TRK=%TILE_TRK% -I . -o build/obj/tile_probe.o src/engine/tile_probe.s
+if errorlevel 1 goto :error
+lwlink --decb --script=link/pop_tile.link --entry=tile_entry --map=build/obj/tile.map -o build/tile_probe.bin build/obj/tile_probe.o build/obj/lz_unpack.o build/obj/hal_build.o
+if errorlevel 1 goto :error
+call :size build/tile_probe.bin
+
 "%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\loader.bin LOADER.BIN --ftype=binary --ascii=binary
+if errorlevel 1 goto :error
+"%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\tile_probe.bin TILE.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
 
 echo --- The SPLIT cel image: pinned page + rotating pages (P3.78) ---
@@ -812,7 +851,7 @@ REM
 REM It also asserts the LOADM FLOOR. DECB's file buffers reach above $0A00; bisection
 REM found $0D00 loads and RUNS with silently damaged data, and $0E00 is clean.
 REM ======================================================================
-python harness\tools\map_overlap_check.py build/obj/introseq.map build/obj/interp.map build/obj/scene.map build/obj/room.map build/obj/song.map
+python harness\tools\map_overlap_check.py build/obj/introseq.map build/obj/interp.map build/obj/scene.map build/obj/room.map build/obj/song.map build/obj/tile.map
 if errorlevel 1 (
     echo *** BUILD BLOCKED: linked sections collide or sit below the LOADM floor ***
     exit /b 1
@@ -834,7 +873,7 @@ REM reason the HAL-sync check does: a check that has to be remembered enforces n
 REM ======================================================================
 python harness\tools\disk_file_readback_check.py --dsk build/probe.dmk --imgtool "%IMGTOOL%" ^
     PROBE.BIN=build/loop_probe.bin MODE.BIN=build/mode_probe.bin ANIM.BIN=build/anim_probe.bin ^
-    INTRO.BIN=build/intro_splash.bin LOADER.BIN=build/loader.bin
+    INTRO.BIN=build/intro_splash.bin LOADER.BIN=build/loader.bin TILE.BIN=build/tile_probe.bin
 if errorlevel 1 (
     echo *** BUILD BLOCKED: a file on the disk image is not what the build produced ***
     exit /b 1

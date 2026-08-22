@@ -46,6 +46,16 @@ local function say(s) log:write(s .. "\n"); log:flush() end
 local LEVEL  = 0x03F4        -- AUTO.LST:2796  `level ds 1`
 local PARAMS = 0x03F0        -- MASTER.S:88    `params = $3f0` = bluepTRK/bluepREG
 local SCRNUM = 0x0023        -- EQ.S `dum $18`: SCRNUM is the 12th byte -> $18+11
+-- GAMEEQ.S `dum Kid` / `dum Op` / `dum Shad` — the three persistent character records.
+-- Char ($0040) is the SCRATCH copy of whichever character is being processed, so it is
+-- not what to read at an arbitrary instant; these three are.
+local KID, OPP, SHAD = 0x0050, 0x039C, 0x0060
+-- ★ SCRNUM IS A LOOP CURSOR, NOT A DISPLAY LATCH. `SUBS.S:1444-1449` counts it down over
+-- every screen, so reading it at an arbitrary instant says where the WALK is, not what is
+-- on the glass. VisScrn ($CB, GAMEEQ.S:469) is the source of truth: DoSure (TOPCTRL.S:942)
+-- and DoFast (TOPCTRL.S:965) both do `lda VisScrn / sta SCRNUM`. P5.1 worked around this by
+-- identifying the screen by MATCHING its pixels; the latch makes that unnecessary.
+local VISSCRN = 0x00CB
 
 local frames, done = 0, false
 local arrived, nwrites = nil, 0
@@ -108,7 +118,26 @@ _G._n = emu.add_machine_frame_notifier(function()
         if frames == arrived + off then
             local sfx = (#AFTERS > 1) and ("_" .. off) or ""
             say(string.format("# DUMP at frame %d (+%d)  level=%d  SCRNUM=%d",
-                              frames, off, mem:read_u8(LEVEL), mem:read_u8(SCRNUM)))
+                              frames, off, mem:read_u8(LEVEL), mem:read_u8(SCRNUM))
+                .. string.format("  VisScrn=%d", mem:read_u8(VISSCRN)))
+            -- ★ THE ACTORS' POSITIONS, at the same instant as the pages (P5.5).
+            -- P5.1 closed with an open flag: "the character residual in the screen-diff
+            -- table is unseparated -- I cannot prove those bytes are characters rather
+            -- than compositor error WITHOUT THE ACTORS' POSITIONS." This is that. The
+            -- records are GAMEEQ.S's `dum Kid` / `dum Op` / `dum Shad` blocks, resolved
+            -- by walking the `ds` chain from each `dum` base rather than by reading a
+            -- number out of a report: Posn, X, Y, Face, BlockX, BlockY, Action, then
+            -- (+11) Scrn and (+13) ID.
+            for _, ch in ipairs({{"kid", KID}, {"op", OPP}, {"shad", SHAD}}) do
+                local b = ch[2]
+                say(string.format("#   %-4s posn=%3d x=%3d y=%3d face=%3d blk=%d,%d "
+                                  .. "action=%d scrn=%3d id=%3d",
+                                  ch[1], mem:read_u8(b), mem:read_u8(b + 1),
+                                  mem:read_u8(b + 2), mem:read_u8(b + 3),
+                                  mem:read_u8(b + 4), mem:read_u8(b + 5),
+                                  mem:read_u8(b + 6), mem:read_u8(b + 11),
+                                  mem:read_u8(b + 13)))
+            end
             dump_main(OUT .. sfx .. "_hgr1.bin", 0x2000, 0x3FFF)
             dump_main(OUT .. sfx .. "_hgr2.bin", 0x4000, 0x5FFF)
             scr:snapshot(OUT .. sfx .. ".png")
