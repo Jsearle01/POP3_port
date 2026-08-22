@@ -25,7 +25,8 @@ d07f1f3295525783968dcce6409ee1b64942231c  build/intro_seq.bin
 ### 1 — Summary
 
 **Measured on the port's own driver, live-disk, headless: 18 drive-engaged spans, 126,720 bytes,
-3,067 frames = 51.18 s of a 200.3 s window — the drive is running 25.6% of the attract cycle.**
+3,067 frames = 51.18 s. Against the intro's real duration (EXEC to last disk, 179.6 s) the
+drive is running 28.5% of it.**
 
 ★★ **But exactly ONE of those eighteen is visible.** Every other span happens with the screen already
 static — under the loading screen, or between beats. **Span 15 alone has page flips on both sides and
@@ -40,7 +41,7 @@ is free and a track can land in it without taking anything off the screen."* **T
 interrupt.** That is why the gate passed, and it is a deliberate placement, not an accident.
 
 ★★★ **§8's premise check comes back clean, and it was the most likely way this dispatch could have
-been wrong. Decompression is 1.82 s across the entire cycle — five expansions of 0.38-0.48 s — against
+been wrong. Decompression is 1.82 s across the whole run — five expansions of 0.38-0.48 s — against
 51.18 s of disk. A 28:1 ratio.** The wait is disk. 512 KB is aimed at the right thing.
 
 ★ **And the trade is sharper than "remove disk loads" suggests.** The mid-run reads total **20.0 s**,
@@ -104,7 +105,9 @@ sampler [§5.239].
 | 16–17 | 8636–8996 | 6.0 | 18,432 | static either side | invisible |
 | 18 | 10583–10763 | 3.0 | 9,216 | static either side | invisible |
 
-**Totals:** 18 spans, **3,067 frames = 51.18 s engaged of 200.3 s = 25.6%**; 126,720 bytes.
+**Totals:** 18 spans, **3,067 frames = 51.18 s engaged**; 126,720 bytes. Against the intro's
+actual span (EXEC at 801 to the last read ending at 10763) that is **28.5%** — the 200 s window used
+in the first draft included 20 s of post-intro idle and understated the fraction.
 
 ★ **The startup batch is 100% drive-engaged.** Spans 2–12 abut exactly — 991→1171→1279→1387… — so
 across those 1,307 frames the drive never disengages. **There is no decompression time inside the
@@ -114,12 +117,26 @@ batch**; it all follows.
 not the port). **EXEC → end of startup batch = 1,497 frames = 25.0 s** before the first beat can run.
 The intro then plays across a 2,654-frame gap (44.3 s, 223 flips) with the disk idle.
 
-★ **I could not identify the attract loop's repeat from a marker**, only infer it from span 18
-repeating spans 16/17's signature. **AC2's third total is therefore not established** — §7.
+★★ **AMENDED — THERE IS NO ATTRACT LOOP TO FIND.** The first version said *"I could not identify the
+attract loop's repeat from a marker"* and left AC2's third total open. Re-run at **450 emulated
+seconds**, the trace shows **the same 21 requests and nothing whatever after frame 10763 (179.6 s)** —
+270 s of silence. And `intro_seq.s:544` says so directly: *"beat 5 (reprise) is the LAST beat.
+Nothing follows it to inherit anything."*
+
+> **The intro runs ONCE and stops. AC2's third total does not exist**, and the re-reads at 8636 and
+> 10583 are not a restart — they are *within the single pass*, reloading `intro_bundle` and
+> `intro_screen` so beats 5 and 6 can render after the cutscene displaced them.
+
+★ **And the port has no DEMO.** The 19 tracks touched are intro program, bundle, screen, music, the
+five cutscene cel pages, scene program, flames, princess room, prolog1 and prolog2. **Track 34 —
+P5.5's tile page — is never read**, and P5.12's AC8 found the character bake unstarted at nine sample
+cels. Everything this project knows about the demo is oracle-side recon; **there is nothing in the
+port to loop back to.** "Attract cycle" is used loosely elsewhere in this report and should be read as
+"the intro's single pass".
 
 #### 3C — AC3: the freeze, and the music
 
-**Duration 192 frames = 3.20 s. Count: one visible occurrence per observed cycle.**
+**Duration 192 frames = 3.20 s. Count: ONE, and the intro runs once (§3B), so one per run.**
 
 The other seventeen spans all sit in periods with no flips on either side, so nothing stops that was
 moving. **Only span 15 has motion on both sides and none during** — that is the definition this
@@ -341,10 +358,12 @@ alone gave an expansion's *start* but not its *duration* — one timestamp canno
 
 ### 7 — Uncertainty flags
 
-1. **★ AC2's loop-repeat total is not established.** I inferred the cycle from span 18 repeating
-   spans 16/17's byte signature, but found no marker that says "the attract loop restarted". The
-   200 s window may contain slightly more or less than one full cycle, which would move the 25.6%
-   figure.
+1. **★ RESOLVED — there is no loop.** This flag read: *"AC2's loop-repeat total is not established…
+   the 200 s window may contain slightly more or less than one full cycle."* Jay asked what the
+   intro-and-demo loop costs, which forced the check: at 450 emulated seconds the trace shows the
+   same 21 requests and **nothing after frame 10763**, and `intro_seq.s:544` says beat 5 is the last.
+   **The intro runs once; there is no cycle and no demo in the port** (§3B). The 25.6% figure was
+   against a window containing 20 s of post-intro idle and is corrected to **28.5%**.
 2. **★ RESOLVED, and it did move.** This flag read: *"§3F's +20 s assumes every mid-run read moves to
    the front unchanged… I did not check track numbers for duplication… That is the single figure most
    likely to move."* **Jay supplied the hypothesis from knowing the design and the track tap confirmed
