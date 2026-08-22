@@ -36,7 +36,19 @@
 #         grep -q cfgdir.sh "$f" || echo "$f"
 #     done
 
-MAME_CFG_SRC="${MAME_CFG_SRC:-dist/mame-cfg/rgb}"
+# ★★ $MONITOR IS HONOURED, AND P5.11 MISSED IT. The live gate runners take MONITOR=rgb or
+# MONITOR=composite and built their own path — `-cfg_directory "dist/mame-cfg/$MONITOR"` —
+# which P5.11's sweep did not convert, because its regex looked for the literal
+# `dist/mame-cfg/rgb` and this is a VARIABLE. So two runners kept writing the tracked
+# template for another three dispatches.
+#
+# ★ AND P5.11'S RESIDUAL CHECK PASSED THEM, which is the more useful half of the lesson. It
+# asked whether each file SOURCES this one:
+#     grep -rl 'cfg_directory' harness/ | while read f; do grep -q cfgdir.sh "$f" || echo "$f"; end
+# Both files did source it. They just did not USE it. The check that finds this asks about
+# the flag, not the include:
+#     for f in $(grep -rl cfg_directory harness/); do grep -q '\$CFGOPT' "$f" || echo "$f"; done
+MAME_CFG_SRC="${MAME_CFG_SRC:-dist/mame-cfg/${MONITOR:-rgb}}"
 MAME_CFG_DIR="${MAME_CFG_DIR:-build/tmp/mame-cfg}"
 
 mkdir -p "$MAME_CFG_DIR" 2>/dev/null

@@ -177,7 +177,7 @@ export P_OUT="build/room_live.log"
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
     $RAMOPT \
-    -cfg_directory "dist/mame-cfg/$MONITOR" \
+    $CFGOPT \
     -ext fdc \
     -flop1 "$DSK" \
     -window -nomaximize -prescale 2 \

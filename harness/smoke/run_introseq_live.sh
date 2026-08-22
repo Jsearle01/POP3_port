@@ -77,7 +77,7 @@ export P_OUT="build/introseq_live.log"
 
 "$MAME" coco3 \
     -rompath "$MAME_ROMS" \
-    -cfg_directory "dist/mame-cfg/$MONITOR" \
+    $CFGOPT \
     $RAMOPT \
     -ext fdc \
     -flop1 "$DSK" \
