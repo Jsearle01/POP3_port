@@ -305,5 +305,5 @@ gate a one-variable question. Pushed as `c80ae4e`.
 
 ### 11 — Commit
 
-Recorded in the push that carries this report to `origin/wip`. ★ **`main` is untouched at
+`4868db0` (pushed to origin/wip). ★ **`main` is untouched at
 `32b5fe23a49bf43e86c64f867ff59fb40c1ce0db`.**
