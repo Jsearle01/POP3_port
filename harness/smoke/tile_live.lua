@@ -16,8 +16,16 @@
 -- sequence goes by in an instant and a load failure looks the same as a load.
 --
 -- It DOES post progress to the log, because "nothing appeared" needs to distinguish "EXEC
--- was never typed" from "the renderer stopped at status 1". The probe block is read only
--- after the picture is up, and only once.
+-- was never typed" from "the renderer stopped part way".
+--
+-- ★ THE PROBE IS WATCHED, NOT SAMPLED. The first version read the probe block ONCE at
+-- EXEC+180 frames and logged `status=1`, which reads as "the renderer stopped after
+-- setting the mode" and is not what happened: THROTTLED, one whole track off a real FDC
+-- takes longer than three seconds, and the read was still in flight. The headless suite
+-- reaches status 4 and a byte-exact framebuffer on the same image. A fixed delay is a bet
+-- on how long the disk takes -- the same bet room_test.lua lost on LOADM -- so this logs
+-- every TRANSITION of the status byte instead, and a stall is then visible as a status
+-- that stops advancing rather than as a number sampled at the wrong moment.
 
 local OUT = os.getenv("P_OUT") or "build/tile_live.log"
 local ENTRY = tonumber(os.getenv("P_ENGINE") or "0x2000")
@@ -30,7 +38,10 @@ nk.in_use = true
 local log_file = io.open(OUT, "w")
 local function log(s) if log_file then log_file:write(s .. "\n"); log_file:flush() end end
 
-local state, t0, reported = "boot", nil, false
+local state, t0, last_st = "boot", nil, -1
+
+local STATUS_NAME = {[0] = "boot", [1] = "mode set", [2] = "page in",
+                     [3] = "drawn", [4] = "SHOWN"}
 
 local function tick()
     local fn = manager.machine.screens:at(1):frame_number()
@@ -42,13 +53,18 @@ local function tick()
         nk:post('EXEC\n')
         log("# posted EXEC at frame " .. fn)
         state, t0 = "run", fn
-    elseif state == "run" and not reported and fn > t0 + 180 then
-        reported = true
-        log(string.format("# probe: status=%d dskerr=%02X magic=%02X%02X ents=%d",
-                          mem:read_u8(ENTRY + 3), mem:read_u8(ENTRY + 4),
-                          mem:read_u8(ENTRY + 5), mem:read_u8(ENTRY + 6),
-                          mem:read_u8(ENTRY + 7)))
-        log("# status 4 = shown. Anything less is where it stopped.")
+    elseif state == "run" then
+        local st = mem:read_u8(ENTRY + 3)
+        if st ~= last_st then
+            last_st = st
+            log(string.format("# frame %d  status=%d (%s)  dskerr=%02X magic=%02X%02X ents=%d",
+                              fn, st, STATUS_NAME[st] or "?", mem:read_u8(ENTRY + 4),
+                              mem:read_u8(ENTRY + 5), mem:read_u8(ENTRY + 6),
+                              mem:read_u8(ENTRY + 7)))
+            if st == 4 then
+                log("# the picture is up. The window stays open until you close it.")
+            end
+        end
     end
 end
 
