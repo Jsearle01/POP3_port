@@ -333,4 +333,4 @@ companion figures that *did* vary are what localised it. Pushed as `97ff84a`.
 
 ### 11 — Commit
 
-Recorded in the push that carries this report to `origin/wip`. **`main` is untouched at `32b5fe2`.**
+`de8142d` (pushed to origin/wip). **`main` is untouched at `32b5fe2`.**
