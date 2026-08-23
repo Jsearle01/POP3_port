@@ -904,24 +904,21 @@ sq_pal          lda     ,x+
 * therefore still leaves the intro running rather than calling into whatever is at $2600,
 * which is what the old `bne rs_out` bought and this keeps without a byte of state.
 * ---------------------------------------------------------------
-* blackout_page — fill the BACK buffer with palette index 0, in whatever mode is up.
+* ★★★ blackout_page IS GONE, AND THAT IS THE POINT (P5.18c). It existed for exactly one
+* reason: HAL_gfx_clear cleared half a 16-colour page, so an engine routine stood in for a
+* broken HAL export. P5.18 fixed the export in both repos — base AND length now come from the
+* mode — so the stand-in has nothing left to do and the two calls below go to the HAL.
 *
-* The whole routine is the HAL's own contract applied literally: the destination is
-* HAL_gfx_draw_base ("callers draw at HAL_gfx_draw_base and never at a buffer address") and
-* the length is HAL_gfx_cur_words ("the same value callers read"). Both are exported and
-* both are set by set_mode, so this is correct at 4 colours and at 16 without asking which.
+* ★★ THEY ARE EQUIVALENT, CHECKED RATHER THAN ASSUMED. In 16-colour the fixed HAL_gfx_clear
+* resolves to `ldx HAL_gfx_draw_base` / `ldy HAL_gfx_cur_words` — instruction for instruction
+* what blackout_page did — and the contracts match on both sides: A, B, X, Y clobbered, U
+* preserved. blackout_page's own header said so while it was still needed: "the same set
+* HAL_gfx_clear clobbers, so it drops in where that did." It does.
 *
-* Clobbers A, B, X, Y — the same set HAL_gfx_clear clobbers, so it drops in where that did.
+* ★ WHAT THE COLLAPSE COSTS, stated because it is not free: HAL_gfx_clear had NO engine caller
+* before this, which is precisely why its defect survived to be found by eye. It has one now.
+* The routine is reachable, so it is gated rather than argued.
 * ---------------------------------------------------------------
-blackout_page
-                ldx     HAL_gfx_draw_base
-                ldy     HAL_gfx_cur_words
-                beq     bp_done         ; a zero-size mode would spin 65,536 times
-                ldd     #0
-bp_lp           std     ,x++
-                leay    -1,y
-                bne     bp_lp
-bp_done         rts
 
 run_scene
                 lda     SCENE_BASE
@@ -961,9 +958,9 @@ run_scene
 * other caller of it runs 4-colour, where it is correct; this is the first 16-colour caller
 * the port has ever had. Fixing my own call site cannot regress anything, and the latent bug
 * is reported rather than patched under a gate that was not asked for. [follow-up]
-                jsr     blackout_page   ; the hidden page goes black
+                jsr     HAL_gfx_clear   ; the hidden page goes black
                 jsr     HAL_gfx_swap    ; ...and is shown
-                jsr     blackout_page   ; the other one too — see above
+                jsr     HAL_gfx_clear   ; the other one too — see above
 * ★ THE PAUSE ON BLACK IS AN INVENTED NUMBER, and it is flagged as one. The oracle spends
 * this interval on `ReloadStuff` and `cutprincess1` — real work with real duration — and the
 * port has nothing to do here because P5.16 made every one of the scene's assets resident.
