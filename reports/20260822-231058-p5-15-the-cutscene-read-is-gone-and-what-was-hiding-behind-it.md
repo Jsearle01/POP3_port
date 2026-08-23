@@ -312,7 +312,9 @@ span 15 has no successor.
 
 **25.2 bundled-artifact grep:** N/A — no sibling-import artefact; all changes are in-repo.
 
-**25.3 operator-runtime-smoke: PENDING JAY.** This is a **motion-bearing** gate — the thing under gate
+**25.3 operator-runtime-smoke: PASSED — Jay, live-disk, RGB, 512 KB (2026-08-23).** Jay, watching the cutscene run: *"torches run without stalling."* That is the gate this dispatch exists for, observed live on a running machine as a motion-bearing effect requires — not on a still. Gated on build `b019264`, which carries P5.16's cache on top of this change; the beat-12 behaviour under gate is this dispatch's.
+
+**Original gate note:** This is a **motion-bearing** gate — the thing under gate
 is the *absence* of a 3.20 s stall in a running cutscene, which §4's rules say a still cannot show. It
 must be observed **live-disk, RGB, 512 KB**. `./harness/smoke/run_introseq_live.sh` is the runner.
 **Jay deferred P5.14's gate until this rework was done; it is done, and both are now waiting on him.**

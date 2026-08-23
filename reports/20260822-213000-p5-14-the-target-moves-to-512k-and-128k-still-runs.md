@@ -213,7 +213,8 @@ same, it *is* the same program. The conversion touched no input to it.
 - **AC7** — §3D. Builds; the intro is byte-identical, not merely equivalent.
 - **AC8** — §3E. Both suites green, **512 KB first**, and 128 KB also green.
 - **AC9** — §3F. Drafted and quoted; **not applied.**
-- **AC10** — ★ **pending Jay.** `harness/smoke/run_introseq_live.sh` now defaults to `-ramsize 512K`
+- **AC10** — ★ **PASSED — Jay, live-disk, RGB, 512 KB (2026-08-23).** Jay, on the live run: *"whole thing ran."* The target machine is 512 KB and the port runs on it, observed on the delivery path rather than the poke path. Gated on build `b019264` (P5.16), the first build whose 128 KB fallback is genuinely gone — so this confirms the target move itself, which P5.14 made without spending any of its permission.
+- **AC10 (original note)** — `harness/smoke/run_introseq_live.sh` now defaults to `-ramsize 512K`
   through `ramsize.sh`, forces RGB through `cfgdir.sh`'s scratch copy, and mounts a real floppy
   (`-ext fdc -flop1`). It keeps its window deliberately — it is a gate meant to be watched, which is
   the one exception to the headless default [§5.255]. **Run: `bash harness/smoke/run_introseq_live.sh`**
