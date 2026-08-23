@@ -1789,7 +1789,20 @@ beat_table
                 fdb     0                ; BEAT_PATCH   none: the picture IS the beat
                 fdb     101              ; BEAT_PRE     the oracle spends these wiping
 *                                        ;              the picture in over the splash
-                fdb     760              ; BEAT_HOLD    f1822 - f2582
+* ★★★ 760 -> 820 AT P5.16c, AND IT IS A JAY RULING, NOT A MEASUREMENT. 760 is the oracle's
+* own interval (f1822..f2582) and every other number in this table is faithful to one like
+* it. Jay, on the live run: "prolog1 transition to the cutscene is a bit to abrupt, may
+* extend prologs for a sec?" — so this beat now outlasts the oracle's by 60 frames, 1.00 s
+* at 59.92 Hz, and §2I is why that is allowed to stand: the mandate is that the port LOOKS
+* and FEELS right, and the oracle's timing is evidence toward that rather than the thing
+* itself. Recorded as a deliberate divergence so nobody "corrects" it back to 760.
+*
+* ★ AND IT ONLY WORKS BECAUSE THIS BEAT'S HOLD IS FRAME-GOVERNED. play_song now ends a hold
+* early when the song falls silent, so extending a beat whose song is the shorter of the two
+* would change nothing. Beat 4 measured frame-identical either side of that change, which
+* is what proves s_Prolog outlasts its interval — and therefore that this number is the one
+* that decides when the cutscene starts.
+                fdb     820              ; BEAT_HOLD    the oracle's f1822 - f2582 is 760
                 fcb     S_PROLOG        ; BEAT_SONG    its song [MASTER.S:850-852, jmp -- a TAIL CALL, X=250]
                 fcb     0               ; BEAT_KEEP    no caption on a picture beat
 
