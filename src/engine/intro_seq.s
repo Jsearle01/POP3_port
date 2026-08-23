@@ -185,7 +185,25 @@ DISK_BUNDLE_SEC equ     2*SECS_PER_TRACK
 * ★★★ 512 KB IS WHAT PAYS FOR IT, and at 128 KB it is not merely tight but impossible --
 * every one of the sixteen blocks is spoken for (cel_pack.py's header has the census). Nine
 * blocks out of the 56 free at 512 KB, which P5.12 costed.
-TC_BLOCK0       equ     $19             ; $19..$21 — nine blocks, above the cel bank's $18
+* ★★ THE SCENE'S OWN TWO ASSETS, AND NEITHER NUMBER IS WRITTEN HERE. The tracks arrive as
+* -D from build.bat, which is now their single home and the same place the raw_tracks call
+* that PUTS them on the disk takes them from — so the disk, the scene that reads them and
+* the cache that holds them cannot disagree. The alternative was a duplicated literal in a
+* second link unit, which is exactly the drift link/pop_scene.link cost a dispatch to find.
+                ifndef  DISK_FLAME_TRK
+                fail    "DISK_FLAME_TRK must come from build.bat"
+                endc
+                ifndef  DISK_ROOM_TRK
+                fail    "DISK_ROOM_TRK must come from build.bat"
+                endc
+* ★ AND THE SIZE COMES FROM THE PACKER, not from a guess: lz_pack.py emits FLAME_TRACKS with
+* the bundle it actually produced. It is 1 today; if the flames grow past a track it becomes
+* 2 and this follows, where a hand-written 18 would have cached half a bundle in silence.
+                include "build/obj/flame_load.inc"
+DISK_FLAME_SEC  equ     FLAME_TRACKS*SECS_PER_TRACK
+ROOM_TRACKS     equ     1               ; princess_room.lz — build.bat asserts it still fits
+DISK_ROOM_SEC   equ     ROOM_TRACKS*SECS_PER_TRACK
+TC_BLOCK0       equ     $19             ; $19..$23 — eleven blocks, above the cel bank's $18
 TC_MMU          equ     $FFA4           ; the borrowed pair: $8000-$9FFF and $A000-$BFFF
 TC_WIN          equ     $8000           ; where a cached track appears while borrowed
 * Every entry starts at a block boundary, so one entry never needs a third block and the
@@ -677,6 +695,11 @@ sq_beat
                 ldb     #SECS_PER_TRACK
                 jsr     tc_fetch
                 bne     sq_pre_done     ; no program -> no fetch; run_scene will decline
+* ★★★ AND THE SCENE'S OWN TWO FETCHES COME FROM THE CACHE TOO (P5.16b). room_preloaded
+* takes Y = the reader; tc_fetch has load_tracks' contract and clobber set, so the scene's
+* flame bundle and room blob are copied rather than read. That is the 3.40 s Jay saw:
+* "there is still a long delay between the first title and prolog 1."
+                ldy     #tc_fetch
                 jsr     SCENE_BASE+SCENE_PRELOAD_OFF
 * ★★★ AND RELEASE THE DRIVE, BECAUSE NOTHING ELSE WILL ANY MORE (P5.16). room_preloaded
 * deliberately does not release it — P3.84 made the scene hold the drive across its whole
@@ -991,6 +1014,12 @@ tc_tab
 *               fcb     DISK_SCENE_TRK,SECS_PER_TRACK,TC_BLOCK0+4       ; $1D
                 fcb     DISK_BUNDLE_TRK,DISK_BUNDLE_SEC,TC_BLOCK0+5     ; $1E,$1F
                 fcb     DISK_SCREEN_TRK,DISK_SCREEN_SEC,TC_BLOCK0+7     ; $20,$21
+* ★★ THE SCENE'S OWN TWO ASSETS (P5.16b). They are not the intro's — they belong to the
+* cutscene bundle, which has its own load_tracks and cannot see this table — so they are
+* cached HERE and handed over as a reader argument at beat 4. One track each; the second
+* block of each pair is mapped but never written.
+                fcb     DISK_FLAME_TRK,DISK_FLAME_SEC,TC_BLOCK0+9       ; $22
+                fcb     DISK_ROOM_TRK,DISK_ROOM_SEC,TC_BLOCK0+10        ; $23
                 fcb     0               ; end. Track 0 is DECB's own and is never an asset.
 
 * ---------------------------------------------------------------

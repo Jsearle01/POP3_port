@@ -153,6 +153,15 @@ REM overlapping and did not flag it" -- so the constant is only half the fix. ma
 REM now FAILS the build when the intro's prog overruns SCENE_BASE, because a note asking a
 REM future reader to check the headroom is what did not work the first two times.
 set SCENE_BASE=0x2700
+REM DISK_FLAME_TRK / DISK_ROOM_TRK -- where the CUTSCENE's own two assets live, and
+REM they are set HERE because as of P5.16b TWO images need them: cutscene_room.s, which
+REM reads them, and intro_seq.s, which CACHES them in its opening batch and hands the
+REM scene a reader that answers from RAM. A track number known to two link units that
+REM never see each other is exactly the drift link/pop_scene.link just cost a dispatch
+REM to find, so it gets one home and both -D it. The raw_tracks calls below take them
+REM from here too, so the disk and both readers cannot disagree.
+set DISK_FLAME_TRK=30
+set DISK_ROOM_TRK=29
 REM ★ Where the intro's program lives on disk, and the offset of the entry the stage-1
 REM loader jumps to (P4.46). Both the loader and intro_seq.s take these from here, and
 REM intro_seq.s asserts that intro_seq_boot really is at INTRO_BOOT_OFF -- so a drift is a
@@ -207,7 +216,7 @@ if errorlevel 1 goto :error
 call :size build/obj/intro_splash.o
 
 echo --- Assemble: P3.3 intro sequencer (both credits, one mechanism) ---
-lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DSCENE_BASE=%SCENE_BASE% -DSCENE_CALL_OFF=%SCENE_CALL_OFF% -DINTRO_BOOT_OFF=%INTRO_BOOT_OFF% -I . -o build/obj/intro_seq.o src/engine/intro_seq.s
+lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DSCENE_BASE=%SCENE_BASE% -DSCENE_CALL_OFF=%SCENE_CALL_OFF% -DINTRO_BOOT_OFF=%INTRO_BOOT_OFF% -DDISK_FLAME_TRK=%DISK_FLAME_TRK% -DDISK_ROOM_TRK=%DISK_ROOM_TRK% -I . -o build/obj/intro_seq.o src/engine/intro_seq.s
 
 if errorlevel 1 goto :error
 
@@ -383,7 +392,7 @@ REM ======================================================================
 
 echo --- Assemble: P3.17 princess room (4-colour, static) ---
 
-lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DFLAME_BASE=%FLAME_BASE% -DCEL_VARBASE=%CEL_VARBASE% -DSCENE_CALL_OFF=%SCENE_CALL_OFF% -I . -o build/obj/cutscene_room.o src/engine/cutscene_room.s
+lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DFLAME_BASE=%FLAME_BASE% -DCEL_VARBASE=%CEL_VARBASE% -DSCENE_CALL_OFF=%SCENE_CALL_OFF% -DDISK_FLAME_TRK=%DISK_FLAME_TRK% -DDISK_ROOM_TRK=%DISK_ROOM_TRK% -I . -o build/obj/cutscene_room.o src/engine/cutscene_room.s
 if errorlevel 1 goto :error
 call :size build/obj/intro_seq.o
 
@@ -682,9 +691,14 @@ python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/pr
 if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/prolog2.lz --track 18 --tracks 2 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
-python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/princess_room.lz --track 29 --tracks 1 --reserve --imgtool "%IMGTOOL%"
+REM ROOM_TRACKS is a hand-written 1 in intro_seq.s (the room picture has no generated
+REM header the way the flame bundle does). Assert it rather than trust it: a blob that
+REM outgrew a track would be CACHED half-length and copied half-length, and the scene
+REM would draw a torn room rather than fail.
+python -c "import sys,pathlib; n=pathlib.Path('build/assets/princess_room.lz').stat().st_size; sys.exit(0) if n<=4608 else (print('*** princess_room.lz past one track (4608 B) -- ROOM_TRACKS in intro_seq.s must follow ***') or sys.exit(1))" || goto :error
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/princess_room.lz --track %DISK_ROOM_TRK% --tracks 1 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
-python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/flames.lz --track 30 --tracks 2 --reserve --imgtool "%IMGTOOL%"
+python harness/tools/raw_tracks.py --dsk build/probe.dmk --asset build/assets/flames.lz --track %DISK_FLAME_TRK% --tracks 2 --reserve --imgtool "%IMGTOOL%"
 REM ★ Track 32: the first free one (9-31 are allocated, 17 is the RS-DOS directory).
 REM   --reserve marks the granules used-with-no-directory-entry so DECB cannot
 REM   allocate a file over them -- P4.2 lost a suite to exactly that.

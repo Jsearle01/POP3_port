@@ -472,12 +472,21 @@ local function tick()
                 -- which used to be read for beat 1 AND again for beat 6's reprise. The
                 -- other two (prolog1, prolog2) moved from their beats into the batch.
                 --
-                --    4   tc_preload: prolog1 (9), prolog2 (18), captions (25), splash (27)
+                --    6   tc_preload: prolog1 (9), prolog2 (18), captions (25), splash (27),
+                --              and the CUTSCENE's own two — flames (30), room (29)  [P5.16b]
                 --    1   the music player (32)
                 --   10   the cutscene's cel pages, five units of two tracks   [P5.15]
                 --    1   the scene's program (24), at beat 4 — see below
                 --   --
-                --   16
+                --   18
+                --
+                -- ★★ EIGHTEEN AGAIN AT P5.16b, AND IT WENT UP WITHOUT A SINGLE EXTRA READ.
+                -- The scene's flame bundle and room picture were always fetched; they were
+                -- fetched by the CUTSCENE bundle's own load_tracks, which does not touch this
+                -- counter, so they were invisible here. Caching them moved the fetch into the
+                -- intro's batch — the same two tracks, counted for the first time. The check
+                -- that would have caught a real regression is the TRACE, not this number:
+                -- 0 of 19 distinct tracks read more than once.
                 --
                 -- ★★ THE SCENE'S PROGRAM IS DELIBERATELY NOT CACHED, and this count is
                 -- where that decision is visible. Caching it made the cutscene fail: the
@@ -486,11 +495,12 @@ local function tick()
                 -- integ passes and the flag sets at frame 9255. The root cause is not yet
                 -- established, so the row stays out and this number stays 16. If it ever
                 -- becomes 15, someone cached it again without fixing that.
-                check("disk_reads_completed", rd8(ENGINE + 8) == 16,
-                      string.format("probe_loads = %d (want 16: FOUR CACHE PRELOADS + THE "
+                check("disk_reads_completed", rd8(ENGINE + 8) == 18,
+                      string.format("probe_loads = %d (want 18: SIX CACHE PRELOADS + THE "
                                     .. "MUSIC PLAYER + TEN CEL-PAGE TRACKS + the scene's "
                                     .. "program; the captions and the splash are no longer "
-                                    .. "read twice; WD1773 status $%02X",
+                                    .. "read twice, and the scene's own two are now read "
+                                    .. "here rather than at beat 4; WD1773 status $%02X",
                                     rd8(ENGINE + 8), rd8(ENGINE + 9)))
                 check("image_cannot_contain_screen", BIN_BYTES < 30720,
                       string.format("INTROSEQ.BIN is %d B; the framebuffer it put on "
