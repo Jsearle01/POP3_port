@@ -903,6 +903,26 @@ sq_pal          lda     ,x+
 * the opening batch already makes on the music player (`cmpa #MSYS_SIG`). A failed read
 * therefore still leaves the intro running rather than calling into whatever is at $2600,
 * which is what the old `bne rs_out` bought and this keeps without a byte of state.
+* ---------------------------------------------------------------
+* blackout_page — fill the BACK buffer with palette index 0, in whatever mode is up.
+*
+* The whole routine is the HAL's own contract applied literally: the destination is
+* HAL_gfx_draw_base ("callers draw at HAL_gfx_draw_base and never at a buffer address") and
+* the length is HAL_gfx_cur_words ("the same value callers read"). Both are exported and
+* both are set by set_mode, so this is correct at 4 colours and at 16 without asking which.
+*
+* Clobbers A, B, X, Y — the same set HAL_gfx_clear clobbers, so it drops in where that did.
+* ---------------------------------------------------------------
+blackout_page
+                ldx     HAL_gfx_draw_base
+                ldy     HAL_gfx_cur_words
+                beq     bp_done         ; a zero-size mode would spin 65,536 times
+                ldd     #0
+bp_lp           std     ,x++
+                leay    -1,y
+                bne     bp_lp
+bp_done         rts
+
 run_scene
                 lda     SCENE_BASE
                 cmpa    #SCENE_SIG
@@ -922,9 +942,28 @@ run_scene
 * Both pages are cleared, not one: the swap shows the cleared page and the second clear takes
 * the picture off the page that is now hidden, so nothing can flash back if the scene swaps
 * before it draws.
-                jsr     HAL_gfx_clear   ; the hidden page goes black
+*
+* ★★★ AND IT DOES NOT CALL HAL_gfx_clear, WHICH IS NOT VALID IN THIS MODE. Jay saw what it
+* does, exactly: "the bottom half of the screen ... disappears right before the transition to
+* the cutscene." That routine is written for the FOUR-COLOUR side-by-side layout — it picks
+* its base from page_register ($8000 for A, $C000 for B) and clears a fixed GFX_FB_WORDS =
+* 15,360 B, which is a whole 4-colour framebuffer. The intro runs SIXTEEN-colour, where there
+* is one 30,720 B buffer across all four blocks and $C000 is not a second page at all: it is
+* the BOTTOM HALF of the only page. So the call wiped exactly that.
+*
+* ★★ THE HAL'S OWN CONTRACT IS THE FIX, and it is stated three ways in gfx.s: "CALLERS DRAW AT
+* HAL_gfx_draw_base AND NEVER AT A BUFFER ADDRESS", HAL_gfx_cur_words is "the same value
+* callers read", and HAL_gfx_mirror REFUSES in 16-colour rather than assuming the 4-colour
+* geometry. HAL_gfx_clear is the one routine in the file that does none of that. Cleared here
+* against draw_base for cur_words, so it is right in either mode.
+*
+* ★ HAL_gfx_clear IS LEFT ALONE DELIBERATELY. It is shared, Jay-gated substrate and every
+* other caller of it runs 4-colour, where it is correct; this is the first 16-colour caller
+* the port has ever had. Fixing my own call site cannot regress anything, and the latent bug
+* is reported rather than patched under a gate that was not asked for. [follow-up]
+                jsr     blackout_page   ; the hidden page goes black
                 jsr     HAL_gfx_swap    ; ...and is shown
-                jsr     HAL_gfx_clear   ; the other one too — see above
+                jsr     blackout_page   ; the other one too — see above
 * ★ THE PAUSE ON BLACK IS AN INVENTED NUMBER, and it is flagged as one. The oracle spends
 * this interval on `ReloadStuff` and `cutprincess1` — real work with real duration — and the
 * port has nothing to do here because P5.16 made every one of the scene's assets resident.
