@@ -874,6 +874,15 @@ REM
 REM It also asserts the LOADM FLOOR. DECB's file buffers reach above $0A00; bisection
 REM found $0D00 loads and RUNS with silently damaged data, and $0E00 is clean.
 REM ======================================================================
+REM --- THE REGISTER RATCHET (P5.19) -------------------------------------------
+REM Who outside the HAL touches a GIME/MMU/SAM register. A NEW owner fails the build
+REM until its row is added to docs/project/register-owners.tsv IN THE SAME COMMIT --
+REM which is the approval, and the point: a second owner should arrive as a diff line
+REM with a note beside it, not as an absence. $FFA4/$FFA5 gained one at P5.16 and
+REM nobody saw it for six commits; ten registers have two owners today, and $FF92/$FF93
+REM being two of them already cost a debugging round when enabling FIRQ killed VBL.
+python harness/tools/register_owner_check.py || goto :error
+
 python harness\tools\map_overlap_check.py --ceiling introseq.map=%SCENE_BASE% --loadat scene.map=%SCENE_BASE% build/obj/introseq.map build/obj/interp.map build/obj/scene.map build/obj/room.map build/obj/song.map build/obj/tile.map
 if errorlevel 1 (
     echo *** BUILD BLOCKED: linked sections collide or sit below the LOADM floor ***

@@ -1,0 +1,63 @@
+# register-owners.tsv — WHO OUTSIDE THE HAL TOUCHES A GIME/MMU/SAM REGISTER.
+#
+# Checked by harness/tools/register_owner_check.py, wired into build.bat. A row is an
+# OWNERSHIP fact: this file accesses this register. Adding an access to a register a file
+# already owns is free; a NEW file, or a NEW register in an existing file, is a new row and
+# FAILS THE BUILD until the row is added here.
+#
+# ★ ADDING THE ROW *IS* THE APPROVAL, and it must happen in the same commit as the code. There
+# is no override flag, deliberately. The whole point is that a second owner arrives as a diff
+# line with a note beside it instead of as an absence — which is exactly what $FFA4/$FFA5 was
+# when P5.16's tc_map borrowed the framebuffer's MMU slots and nothing said so for six commits.
+#
+# ★★ "TWO OWNERS" below means the HAL writes it too. That is the condition that already cost
+# this project a debugging round: $FF92/$FF93 share one set of interrupt latches, msys_player
+# writes them and so does the HAL, and enabling FIRQ killed VBL — which presents as a timing
+# bug, not as a contention. Ten registers are in that state today. They are not defects; they
+# are the list that has to stay short and stay known.
+#
+# hot = per frame or faster.  P5.17 §3C, derived from the CALLING routine, not the line.
+#
+# reg	file	accessor	hot|cold	note
+
+[allowlist]
+# Probes poke hardware; that is their job. BY EXPLICIT FILENAME, never by pattern — adding one
+# must be a visible act, and src/engine/tile_probe.s is a probe by name, header and behaviour
+# that lives in the ENGINE tree, which no directory rule would classify correctly.
+src/engine/tile_probe.s
+src/harness/anim_probe.s
+src/harness/cel_probe.s
+src/harness/compiled_probe.s
+src/harness/interp_probe.s
+src/harness/loop_probe.s
+src/harness/mode_probe.s
+src/harness/shift_bench.s
+src/harness/song_probe.s
+src/harness/tone_probe.s
+
+[owners]
+$FFB0	src/boot/loader.s	PALETTE	cold	TWO OWNERS. the loading screen's palette, once at boot
+$FFD8	src/boot/loader.s	SAM_SLOW	cold	normal speed for the FDC (§2G disk rule), once
+$FFD9	src/boot/loader.s	SAM_FAST	cold	TWO OWNERS. back to double speed after the read
+$FFA6	src/engine/char_draw.s	CEL_MMU	cold	TWO OWNERS. cel_load_startup pins the resident page
+$FFA7	src/engine/char_draw.s	CEL_MMU+1	warm	TWO OWNERS. the beat's page map — 1.58x/s (§5.227)
+$FFB0	src/engine/char_draw.s	$FFB0	cold	TWO OWNERS. the flame bundle links apart from the HAL's palette
+$FFA6	src/engine/cutscene_room.s	CEL_MMU	hot	TWO OWNERS. cel_bank_map, called from room_present — PER FRAME
+$FFA7	src/engine/cutscene_room.s	CEL_MMU+1	hot	TWO OWNERS. same; HAL_gfx_swap clobbers the window and this re-maps behind it
+$FFD8	src/engine/cutscene_room.s	SAM_SLOW	cold	normal speed for the FDC, per disk read
+$FFD9	src/engine/cutscene_room.s	SAM_FAST	cold	TWO OWNERS. double speed restored after each read
+$FFA2	src/engine/intro_seq.s	BANK_MMU	hot	TWO OWNERS. wc_loop inside wipe_col — PER COLUMN, 140 per wipe
+$FFA4	src/engine/intro_seq.s	TC_MMU	cold	TWO OWNERS. ★ tc_map's borrow (P5.16) — the row this ratchet exists for
+$FFA5	src/engine/intro_seq.s	TC_MMU+1	cold	TWO OWNERS. ★ the other half of the same borrow; saved and restored
+$FFA6	src/engine/intro_seq.s	CEL_MMU	cold	TWO OWNERS. cel_preload borrows the cel window, once at boot
+$FFA7	src/engine/intro_seq.s	CEL_MMU+1	cold	TWO OWNERS. same borrow, restored before returning
+$FFB0	src/engine/intro_seq.s	$FFB0	cold	TWO OWNERS. the intro's palette, per mode change
+$FFD8	src/engine/intro_seq.s	SAM_SLOW	cold	normal speed for the FDC, per disk read (19 per run)
+$FFD9	src/engine/intro_seq.s	SAM_FAST	cold	TWO OWNERS. double speed restored after each read
+$FFB0	src/engine/intro_splash.s	$FFB0	cold	TWO OWNERS. the splash's own palette
+$FF90	src/engine/msys_player.s	FF90	hot	TWO OWNERS. INIT0/FEN — written from the FIRQ's song-end path
+$FF91	src/engine/msys_player.s	FF91	hot	★ INSIDE THE FIRQ HANDLER (fh_pad1) — per audio segment
+$FF92	src/engine/msys_player.s	FF92	hot	★★ TWO OWNERS, THE KNOWN ONE. IRQENR — firq_arm takes it, song-end hands the VBL back
+$FF93	src/engine/msys_player.s	FF93	hot	★★ TWO OWNERS, THE KNOWN ONE. FIRQENR — shares one latch pair with $FF92
+$FF94	src/engine/msys_player.s	FF94	hot	★ INSIDE THE FIRQ HANDLER — the GIME timer, per segment
+$FF95	src/engine/msys_player.s	FF95	hot	★ INSIDE THE FIRQ HANDLER — the GIME timer, per segment
