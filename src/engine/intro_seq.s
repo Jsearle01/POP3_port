@@ -1606,7 +1606,7 @@ play_song
 * song that runs longer than the oracle's must not stretch the intro past it. So the hold is
 * min(song, oracle) — which for every beat whose song already fits is exactly what it was.
                 tfr     x,d
-                bsr     hold_song
+                bsr     hold_frames
                 jsr     msys_stop       ; ★ tear down, always
                 rts
 ps_hold
@@ -1615,32 +1615,20 @@ ps_hold
                 jsr     msys_stop       ; ★ tear down, always
                 rts
 
-* hold_song — wait D frames, but stop early once the song has sounded AND fallen silent.
+* ★★★ hold_song IS GONE, AND ITS FINDING IS NOT (P5.16g). P5.16c made a song beat end the
+* moment its song fell silent, because beat 5 was holding a fixed 1564 frames against a song
+* that stopped at 1113 — nearly EIGHT SECONDS of prolog2 in silence, which Jay heard before
+* it was measured. The mechanism fixed that and cost something that turned out to matter
+* more: it made the song a CEILING on every beat. Jay then asked for prolog1 to run longer,
+* and it could not — s_Prolog ends at ~833 frames, so any BEAT_HOLD past that was ignored and
+* his change "doesn't seem like prolog1 has extended in legth at all" was exactly right.
 *
-* ★★ IT WAITS FOR THE SONG TO START BEFORE IT WATCHES FOR THE END, and that is the whole
-* subtlety. msys_play returns AT ONCE and the FIRQ does the sounding, so msys_playing reads
-* 0 for the first frames — testing it naively would end every beat on its first tick and
-* collapse the intro to nothing. ps_started latches the first non-zero reading; only after
-* that does a zero mean "finished" rather than "not begun".
-hold_song
-                pshs    y
-                clr     ps_started
-                tfr     d,y
-hs_lp           cmpy    #0
-                beq     hs_done
-                jsr     HAL_time_vbl_wait
-                jsr     msys_playing    ; A != 0 while sounding [msys_player.s:290]
-                tsta
-                beq     hs_quiet
-                sta     ps_started      ; A is non-zero — the song is under way
-                bra     hs_next
-hs_quiet        tst     ps_started
-                bne     hs_done         ; it sounded, and it has stopped: the interval is over
-hs_next         leay    -1,y
-                bra     hs_lp
-hs_done         puls    y,pc
-
-ps_started      fcb     0               ; has this beat's song been heard yet?
+* ★★ SO THE NUMBERS CARRY THE FINDING INSTEAD OF THE CODE. Every beat's duration is its
+* BEAT_HOLD again, and beat 5's is now 1150 — its song's MEASURED length, not the oracle's
+* interval. Same result on screen as the mechanism gave, and every beat is a number Jay can
+* change, which is the property that was actually wanted. The cost is that a song whose
+* length changes no longer drags its beat along with it; the beat table is where that would
+* have to be re-measured, and this comment is the note saying so.
 
 hold_frames
                 pshs    y
@@ -1867,7 +1855,14 @@ beat_table
 * would change nothing. Beat 4 measured frame-identical either side of that change, which
 * is what proves s_Prolog outlasts its interval — and therefore that this number is the one
 * that decides when the cutscene starts.
-                fdb     820              ; BEAT_HOLD    the oracle's f1822 - f2582 is 760
+* ★★ AND 820 -> 1000, BECAUSE 820 WAS NEVER REACHING THE SCREEN THE WAY IT LOOKED. While
+* hold_song existed this beat was capped at s_Prolog's ~833 frames, so P5.16d's "+1 second"
+* was 60 frames of a 921-frame picture and Jay could not see it: "it doesn't seem like
+* prolog1 has extended in legth at all. over both changes you made." With the cap gone the
+* number governs again. 1000 is +4.00 s on the oracle's 760 and +3.00 s on what he last
+* watched — a bigger step than asked for, deliberately, because a step he cannot perceive
+* costs another whole gate to learn nothing from.
+                fdb     1000             ; BEAT_HOLD    the oracle's f1822 - f2582 is 760
                 fcb     S_PROLOG        ; BEAT_SONG    its song [MASTER.S:850-852, jmp -- a TAIL CALL, X=250]
                 fcb     0               ; BEAT_KEEP    no caption on a picture beat
 
@@ -1878,7 +1873,13 @@ beat_table
                 fdb     0                ; BEAT_PRE     back-to-back: the oracle's gap
 *                                        ;              here is the PrincessScene
 *                                        ;              cutscene, which is not built
-                fdb     1564             ; BEAT_HOLD    f5753 - f7317
+* ★★★ 1564 -> 1150 AT P5.16g, AND THE NUMBER IS THE PORT'S SONG, NOT THE ORACLE'S INTERVAL.
+* 1564 is f5753..f7317, measured on the oracle, and it is right for the ORACLE's s_Sumup.
+* The port's rendition of the same song stops sounding at 1113 frames, so this beat sat in
+* silence for 451 of them — 7.5 s of prolog2 with nothing happening. Jay, unprompted:
+* "prolog2 seems to be displayed for a long time after the song ends. longer than needed."
+* 1150 is that measurement plus the ~0.6 s of tail the DAC trace shows.
+                fdb     1150             ; BEAT_HOLD    the oracle's f5753 - f7317 is 1564
 * ★★★ S_SUMUP BELONGS HERE, AND IT WAS ON BEAT 6 UNTIL P4.23. Jay heard it: "something is
 * wrong at prolog 2, there is no music for a long time and then it move to the second
 * title screen and then plays music."
