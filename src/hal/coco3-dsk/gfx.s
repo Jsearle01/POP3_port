@@ -865,6 +865,40 @@ HAL_gfx_swaps:      fcb 0               ;   ... low byte. Proof the flip ran.
 * [ref: src/engine/timer_framesync.s — page_register equ $50]
 * ---------------------------------------------------------------
 HAL_gfx_clear:
+* ★★★ THE GEOMETRY IS ASKED FOR, NOT ASSUMED (P5.18). This routine took BOTH of its
+* facts from the FOUR-COLOUR layout: the BASE from page_register ($8000 or $C000), and the
+* LENGTH from a fixed GFX_FB_WORDS. Both are right for 320x192x4, where two whole 15,360 B
+* framebuffers sit side by side in one window. Mode 1 is 320x192x16 -- ONE 30,720 B buffer
+* across all four blocks -- and there $C000 is not a second page at all: it is the BOTTOM
+* HALF of the only one. So this cleared the bottom half of the picture and left the top,
+* which is exactly what Jay reported: "the bottom half of the screen ... disappears".
+*
+* ★★ set_mode ALREADY CLAIMED THIS WAS TRUE, where it publishes the geometry: "Callers read
+* these; THE CLEAR BELOW USES THEM TOO, so there is exactly one source for how big is the
+* screen and it cannot disagree with itself." It did not use them. The invariant was stated,
+* believed, and never held -- which is why it survived: nothing that ran was wrong until a
+* 16-colour caller appeared, and POP's first one arrived at P5.16e.
+*
+* ★ THE DISCRIMINATOR IS HAL_gfx_mirror'S, deliberately -- that routine already decides this
+* same question the same way ("16-colour: no room for two at once"), and two different tests
+* for one fact is how they drift apart.
+*
+* ★★ AND THE MODE SERVICE IS OPTIONAL, WHICH SHAPES THE WHOLE ROUTINE. HAL_gfx_cur_words
+* and HAL_gfx_draw_base live inside `ifdef HAL_GFX_MODE_SERVICE`; this routine sits after its
+* endc. POP defines the guard (build.bat) and karateka does not, so with the guard OFF those
+* symbols do not exist and the old fixed-size path is not merely acceptable, it is the only
+* one that resolves -- and it is CORRECT there, because without a mode service there is one
+* mode and $1E00 is its size. Guard off, the code below assembles to exactly what it always
+* did, byte for byte.
+                ifdef   HAL_GFX_MODE_SERVICE
+        ldy     HAL_gfx_cur_words       ; the MODE's size, not a constant
+        beq     gfx_clear_done          ; zero-size mode: 0 would wrap to 65,536 stores
+        cmpy    #GFX_MIRROR_MAX
+        bls     gfx_clear_two_buf       ; fits half a window => 4-colour, two side by side
+        ldx     HAL_gfx_draw_base       ; 16-colour: ONE buffer, and the HAL's own contract
+        bra     gfx_clear_common        ;   names where it is -- "callers draw at
+gfx_clear_two_buf:                      ;   HAL_gfx_draw_base and never at a buffer address"
+                endc
         lda     <page_register               ; read page_register ($50)
         cmpa    #PAGE_A_TOKEN           ; PAGE_A=$20 → back=frame A
         bne     gfx_clear_b_buf
@@ -874,11 +908,14 @@ gfx_clear_b_buf:
         ldx     #GFX_FB_B_BASE          ; back buffer = Frame B ($C000)
 gfx_clear_common:
         ldd     #$0000                  ; clear value (palette index 0 = $00 per byte)
+                ifndef  HAL_GFX_MODE_SERVICE
         ldy     #GFX_FB_WORDS           ; $1E00 word stores = 15,360 bytes
+                endc
 gfx_clear_loop:
         std     ,x++
         leay    -1,y
         bne     gfx_clear_loop
+gfx_clear_done:
         andcc   #$FE                    ; CC.C clear = success
         rts
 
