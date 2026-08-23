@@ -907,6 +907,32 @@ run_scene
                 lda     SCENE_BASE
                 cmpa    #SCENE_SIG
                 bne     rs_out          ; no scene program — leave the intro running
+* ★★★ BLACK OUT BEFORE THE CUTSCENE, AND IT IS THE ORACLE'S OWN FIRST INSTRUCTION.
+* PrincessScene [MASTER.S:859-861] opens `jsr blackout` before it reloads or reads anything;
+* the port went straight from prolog1's picture to the room's first frame. Jay, twice: "the
+* prolog1 transition to the cutscene is a bit to abrupt" — and then, after a second was
+* added to the hold, "still too abrupt", which is the useful half of the report. It was
+* never a DURATION problem. A hard cut does not get softer by lasting longer.
+*
+* ★★ AND THE FIRST DIAGNOSIS WAS WRONG, WHICH IS WHY THIS IS MEASURED AND NOT ARGUED. The
+* obvious suspect was play_song's `jsr msys_stop` chopping s_Prolog mid-phrase. Lifting the
+* beat's ceiling to 3000 frames grew it by THIRTEEN — the song was already ending on its own
+* at ~833 frames, so the cut was 0.22 s early and inaudible. The music was never the problem.
+*
+* Both pages are cleared, not one: the swap shows the cleared page and the second clear takes
+* the picture off the page that is now hidden, so nothing can flash back if the scene swaps
+* before it draws.
+                jsr     HAL_gfx_clear   ; the hidden page goes black
+                jsr     HAL_gfx_swap    ; ...and is shown
+                jsr     HAL_gfx_clear   ; the other one too — see above
+* ★ THE PAUSE ON BLACK IS AN INVENTED NUMBER, and it is flagged as one. The oracle spends
+* this interval on `ReloadStuff` and `cutprincess1` — real work with real duration — and the
+* port has nothing to do here because P5.16 made every one of the scene's assets resident.
+* So the beat that separates the two pictures has to be asked for explicitly. Half a second
+* is a starting point for Jay to rule on, not a measurement of anything.
+BLACKOUT_FRAMES equ     30              ; 0.50 s at 59.92 Hz — Jay's to change
+                ldd     #BLACKOUT_FRAMES
+                jsr     hold_frames
                 jsr     SCENE_BASE+SCENE_CALL_OFF
 * ---------------------------------------------------------------
 * ★★★ THERE IS NO SPLASH CACHE TO INVALIDATE ANY MORE, AND THE REASON IS THE OLD ONE.
