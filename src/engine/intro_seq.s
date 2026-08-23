@@ -1527,11 +1527,55 @@ play_song
                 pshs    x
                 jsr     msys_play       ; returns at once; the FIRQ does the rest
                 puls    x
+* ★★★ AND NOW THE INTERVAL REALLY IS THE SONG (P5.16c). This routine's own header has said
+* since P3.41 what should happen here — "the duration is a CONSEQUENCE of the song, not a
+* designed hold… WHEN SOUND ARRIVES IT REPLACES THIS BODY" — and sound arrived, and the body
+* went on spending a fixed frame count anyway.
+*
+* Measured, and Jay heard it before it was measured: "prolog2 seems to be displayed for a
+* long time after the song ends. longer than needed." Beat 5 holds 1564 frames (26.10 s,
+* taken from the ORACLE's frame numbers, f5753..f7317) and the port's rendition of s_Sumup
+* stops sounding at 18.57 s. SEVEN AND A HALF SECONDS of prolog2 in silence.
+*
+* The frame count stays as a CEILING, not as the duration: it is the oracle's interval and a
+* song that runs longer than the oracle's must not stretch the intro past it. So the hold is
+* min(song, oracle) — which for every beat whose song already fits is exactly what it was.
+                tfr     x,d
+                bsr     hold_song
+                jsr     msys_stop       ; ★ tear down, always
+                rts
 ps_hold
                 tfr     x,d             ; the beat's frame count, unchanged
                 bsr     hold_frames
                 jsr     msys_stop       ; ★ tear down, always
                 rts
+
+* hold_song — wait D frames, but stop early once the song has sounded AND fallen silent.
+*
+* ★★ IT WAITS FOR THE SONG TO START BEFORE IT WATCHES FOR THE END, and that is the whole
+* subtlety. msys_play returns AT ONCE and the FIRQ does the sounding, so msys_playing reads
+* 0 for the first frames — testing it naively would end every beat on its first tick and
+* collapse the intro to nothing. ps_started latches the first non-zero reading; only after
+* that does a zero mean "finished" rather than "not begun".
+hold_song
+                pshs    y
+                clr     ps_started
+                tfr     d,y
+hs_lp           cmpy    #0
+                beq     hs_done
+                jsr     HAL_time_vbl_wait
+                jsr     msys_playing    ; A != 0 while sounding [msys_player.s:290]
+                tsta
+                beq     hs_quiet
+                sta     ps_started      ; A is non-zero — the song is under way
+                bra     hs_next
+hs_quiet        tst     ps_started
+                bne     hs_done         ; it sounded, and it has stopped: the interval is over
+hs_next         leay    -1,y
+                bra     hs_lp
+hs_done         puls    y,pc
+
+ps_started      fcb     0               ; has this beat's song been heard yet?
 
 hold_frames
                 pshs    y
