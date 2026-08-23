@@ -318,3 +318,93 @@ is a candidate I am holding until it has a second instance rather than capturing
 ### 11 — Commit
 
 `b019264` — pushed to `origin/wip` before this report.
+
+---
+
+## ADDENDUM — P5.16b: the gate, and the third delay taken to one read
+
+**Commit `95eb951`.** Written after Jay gated `b019264` live.
+
+### A.1 — the gate
+
+**25.3 — P5.16: PASSED in part, and the part that failed was named precisely.** Jay,
+live-disk, RGB, 512 KB, 2026-08-23, on three runs:
+
+> *"torches run without stalling, whole thing ran."* → **P5.15 PASSED** (the beat-12 freeze)
+> and **P5.14 PASSED** (the 512 KB target). Both stamped into their own reports.
+>
+> *"the sequence from princess trough to silent title looks good."* → **the two transitions
+> this dispatch removed are confirmed gone.**
+>
+> *"there is still a long delay between the first title and prolog 1."* → **the third is
+> not.** §3F predicted it would survive at 5.20 s and called that acceptable. Jay's ruling
+> is that it is not, and §2.1 makes that the answer.
+
+### A.2 — ★ and a claim in this report's own §1 was wrong
+
+I told Jay the attract loop would repeat and that a second cycle would touch the disk zero
+times. **The port's intro runs once and holds on the title; there is no cycle and no demo.**
+Jay: *"also it does not loop back to the beginning as you inplied."*
+
+★★ **P5.13 §3B established exactly that, in writing** — *"The intro runs once; there is no
+cycle and no demo in the port"* — and I contradicted it from memory instead of grepping the
+reports. **That is §2H's third check, the one it calls mechanical, not run.** Nothing
+downstream depended on it; the error was in what I told Jay to expect while he was watching.
+
+### A.3 — what the 3.40 s was, and why it was not the intro's to fix
+
+`room_preloaded`'s two fetches — the cutscene's flame bundle (track 30) and room picture
+(29). They stayed on disk because **that routine lives in the SCENE bundle**, which has its
+own `load_tracks` and cannot see the intro's cache. §3F recorded this as blocked.
+
+★ **It was not blocked; it was a missing argument.** The bundle already takes the disk as an
+argument for the cels — *"the bundle has no HAL and no room; the disk arrives as arguments"* —
+and the fix is that sentence applied one routine further. `room_preloaded` now takes **Y = the
+reader**. The intro passes `tc_fetch`, which has `load_tracks`' contract and clobber set. A
+caller that passes nothing gets `load_tracks` by default, so the standalone path is untouched.
+
+**I had the precedent in front of me in §3A and did not apply it** — the same file, four lines
+away from the code I was reading.
+
+### A.4 — one home for the two tracks
+
+This change hands a track number to a **second link unit**, which is exactly the drift
+`link/pop_scene.link` cost a dispatch to find (§3D). So it does not get a comment:
+`DISK_FLAME_TRK`/`DISK_ROOM_TRK` now live in `build.bat`, which `-D`s **both** assemblies and
+supplies the `raw_tracks` calls that put them on the disk. `cutscene_room.s` keeps its
+literals under `ifndef` so it still assembles alone.
+
+★ **And the SIZE is derived, not written:** `lz_pack.py` emits `FLAME_TRACKS` for the bundle
+it actually produced, so a bundle that outgrew a track would be cached at its real length
+instead of half of one in silence. The room blob has no generated header, so `build.bat`
+asserts it still fits one track.
+
+### A.5 — measured
+
+| | P5.13 | P5.15 | P5.16 | **P5.16b** |
+|---|---|---|---|---|
+| post-boot disk | 16.8 s, 3 groups | 16.8 s | 5.20 s, 2 spans | **1.80 s, 1 span** |
+| title → prolog1 | 7.81 s | 7.81 s | 5.20 s | **1.80 s** |
+| total drive-engaged | 51.18 s | 51.59 s | 45.98 s | **46.36 s** |
+| re-reads | captions, splash | same | 0 of 19 | **0 of 19** |
+
+**The title is now on screen ~12.6 s, of which 10.83 s is the oracle's own `BEAT_PRE` +
+`BEAT_HOLD` for S_TITLE.** The removable part is down to 1.80 s.
+
+`probe_loads` 16 → 18, and **it went up without a single extra read**: the scene's two tracks
+were always fetched, by a routine that does not touch that counter. The check that would catch
+a real regression is the trace, and it says 0 re-reads of 19.
+
+**25.1:** `[map_check] 6 map(s) clean … introseq.map all below $2700, scene.map linked at
+$2700.` / `=== BUILD COMPLETE ===` / `[suites] ALL PASS` (introseq, integ, tile — 512 KB).
+
+**25.3 for P5.16b: PENDING JAY** — motion-bearing, same runner.
+
+### A.6 — what is still not delivered
+
+**The last 1.80 s is the scene's program**, and it is the one asset §3F could not cache: doing
+so breaks the cutscene, with a clean bisect and no root cause. Everything else the intro
+touches now comes from RAM. Removing it needs that root cause, or the absorb-into-the-hold
+approach Jay has not ruled on — offered and deliberately not built, because it is the same
+shape as the drift-free timing he refused at P3.87.
+
