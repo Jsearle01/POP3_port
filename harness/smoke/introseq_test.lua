@@ -463,11 +463,34 @@ local function tick()
                 -- So the number to check is 18 and the schedule to check is CEL_N_READS = 0.
                 -- A 17 here would mean the preload dropped a page; a 19 would mean the
                 -- cutscene read one anyway, which is precisely the thing this removed.
-                check("disk_reads_completed", rd8(ENGINE + 8) == 18,
-                      string.format("probe_loads = %d (want 18: bundle + THE MUSIC PLAYER "
-                                    .. "+ TEN CEL-PAGE TRACKS + splash + prolog1 + the "
-                                    .. "scene's program + the captions again + prolog2 + "
-                                    .. "the splash again; WD1773 status $%02X",
+                --
+                -- ★★★ SIXTEEN SINCE P5.16, AND IT WENT DOWN BECAUSE OF WHAT IT STOPPED
+                -- DOING TWICE. The RAM track cache reads each of the intro's asset tracks
+                -- exactly once and copies at every later use, so two reads disappear
+                -- outright rather than moving: the captions, which used to be read at boot
+                -- AND again after the scene expanded its bundle over them, and the splash,
+                -- which used to be read for beat 1 AND again for beat 6's reprise. The
+                -- other two (prolog1, prolog2) moved from their beats into the batch.
+                --
+                --    4   tc_preload: prolog1 (9), prolog2 (18), captions (25), splash (27)
+                --    1   the music player (32)
+                --   10   the cutscene's cel pages, five units of two tracks   [P5.15]
+                --    1   the scene's program (24), at beat 4 — see below
+                --   --
+                --   16
+                --
+                -- ★★ THE SCENE'S PROGRAM IS DELIBERATELY NOT CACHED, and this count is
+                -- where that decision is visible. Caching it made the cutscene fail: the
+                -- scene ran, room_load_cels failed, and cel_scene_done was never even
+                -- cleared. Bisected — with that one row removed and every other row cached,
+                -- integ passes and the flag sets at frame 9255. The root cause is not yet
+                -- established, so the row stays out and this number stays 16. If it ever
+                -- becomes 15, someone cached it again without fixing that.
+                check("disk_reads_completed", rd8(ENGINE + 8) == 16,
+                      string.format("probe_loads = %d (want 16: FOUR CACHE PRELOADS + THE "
+                                    .. "MUSIC PLAYER + TEN CEL-PAGE TRACKS + the scene's "
+                                    .. "program; the captions and the splash are no longer "
+                                    .. "read twice; WD1773 status $%02X",
                                     rd8(ENGINE + 8), rd8(ENGINE + 9)))
                 check("image_cannot_contain_screen", BIN_BYTES < 30720,
                       string.format("INTROSEQ.BIN is %d B; the framebuffer it put on "

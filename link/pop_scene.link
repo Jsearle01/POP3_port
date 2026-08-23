@@ -61,7 +61,17 @@
 ; Comments here are `;`. lwlink does NOT accept `*`, and a `$`-prefixed load value parses
 ; as ZERO with no error — both documented at length in link/pop_cels_res.link.
 
-section prog load 2600
+; ★★★ RAISED $2600 -> $2700 AT P5.16, AND THIS LINE IS A SECOND HOME FOR SCENE_BASE.
+; build.bat says of SCENE_BASE that "Both assemblies take them from here so there is one
+; home" -- and that is true of the two ASSEMBLIES and false of this LINK SCRIPT, which
+; carries the address as a literal lwlink cannot take from a variable. P5.16 raised the
+; constant in build.bat, left this at 2600, and the scene was LINKED at $2600 while being
+; READ to $2700: every absolute address inside it off by $100. It ran far enough to issue
+; its two preload reads and then died, with the drive still engaged, which looks nothing
+; like "a link address is wrong".
+; map_overlap_check.py now asserts scene.map loads exactly at SCENE_BASE, so the two homes
+; cannot drift again without failing the build.
+section prog load 2700
 section code load 7900
 
 entry room_entry

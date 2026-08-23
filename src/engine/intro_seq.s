@@ -141,6 +141,57 @@ FB_B_BLOCK      equ     $14             ; lwasm's export does not carry equ symb
 DISK_BUNDLE_TRK equ     25              ; two tracks — palette + all three captions
 DISK_BUNDLE_SEC equ     2*SECS_PER_TRACK
 
+* ═══ THE RAM TRACK CACHE (P5.16) ══════════════════════════════════════════════════
+*
+* ★★★ THE POINT IS THE ORACLE'S CADENCE, AND THIS FILE ALREADY NAMED IT TWICE. The batch
+* at seq_boot says "The oracle's cadence, matched: one burst of I/O up front, then
+* silence" -- and then four beats read from disk anyway. sq_flip_in's comment names the
+* same standard from the other side: "the prologue beats were once reading their picture
+* twice and stalling on the previous screen for 18 seconds where the oracle (which
+* batch-loads the whole stage up front) takes none at all."
+*
+* Measured at P5.15, after the cutscene's own read was removed: SIXTEEN AND A HALF SECONDS
+* of drive time still happen after the loading screen is gone --
+*
+*     beat 4   7.81 s   the scene's program, its preload, and prolog1's picture
+*     beat 5   6.00 s   prolog2's picture and the post-scene caption reload
+*     beat 6   3.00 s   the splash, READ A SECOND TIME
+*
+* Jay named all three from the screen without being told where to look, which is the
+* definition of visible. [Jay, 2026-08-22: "there is a delay between the first tilte
+* screen and prolog1, between the princess scene and prolog2, and between prolog2 and the
+* silent title screen."]
+*
+* ★★ WHY A CACHE AND NOT FIVE SEPARATE PRELOADS. Every one of those readers already takes
+* a TRACK NUMBER, because load_tracks' contract is (X = destination, A = track, B =
+* sectors). So the tracks are the natural key, and one routine with load_tracks' own
+* signature replaces the read at every site without changing a single caller's shape:
+* `jsr load_tracks` becomes `jsr tc_fetch`. A miss falls through to the disk, so a track
+* nobody cached still works and the change cannot break a path it did not anticipate.
+*
+* ★★ AND THE DESTINATIONS ARE WHY IT MUST BE A COPY RATHER THAN A MAPPING. A packed screen
+* is expanded from draw_base+LZ_LOAD_OFF, the captions live at $3000 and the scene program
+* at $2600 -- three different homes, none of them block-aligned, and during a draw all four
+* MMU slots are the framebuffer. There is no window to reveal a cached track IN. So the
+* cache borrows $FFA4/$FFA5, whose contents at that moment are the back buffer the caller
+* is about to overwrite entirely, and copies. 9,216 B costs ~0.05 s against the 3.00 s read
+* it replaces.
+*
+* ★ THE BORROW IS INVISIBLE TO THE SCREEN, and that is a GIME fact rather than a hope: the
+* video fetch runs from VOFFSET against PHYSICAL blocks and does not go through the MMU at
+* all, so remapping a CPU window cannot disturb what is displayed. cel_preload borrows
+* $FFA6/$FFA7 the same way and its header sets out the same argument.
+*
+* ★★★ 512 KB IS WHAT PAYS FOR IT, and at 128 KB it is not merely tight but impossible --
+* every one of the sixteen blocks is spoken for (cel_pack.py's header has the census). Nine
+* blocks out of the 56 free at 512 KB, which P5.12 costed.
+TC_BLOCK0       equ     $19             ; $19..$21 — nine blocks, above the cel bank's $18
+TC_MMU          equ     $FFA4           ; the borrowed pair: $8000-$9FFF and $A000-$BFFF
+TC_WIN          equ     $8000           ; where a cached track appears while borrowed
+* Every entry starts at a block boundary, so one entry never needs a third block and the
+* fetch is "map N and N+1, copy from $8000". Two blocks per two-track entry wastes 6,976 B
+* apiece; against 56 free blocks that is the cheaper thing to spend than the arithmetic.
+
 * --- THE MUSIC PLAYER, read like every other asset -------------------------
 * ★★★ IT IS NOT IN THE LOADM IMAGE, AND CLAUDE.md §2L IS WHY: the LOADM ceiling binds on
 * what must be resident when Disk BASIC hands over, and nothing after. The player is
@@ -406,10 +457,18 @@ seq_after_mode
 
 * --- everything the beats will need, in one batch, before the first beat -------
 * The oracle's cadence, matched: one burst of I/O up front, then silence.
+*
+* ★★★ AND SINCE P5.16 THAT SECOND CLAUSE IS TRUE. It was written at P3.3 as the intent and
+* four beats went on reading from disk anyway; the cache is what makes the sentence
+* describe the program. tc_preload runs FIRST, before the captions below, because the
+* captions are themselves one of the cached runs — read once here, copied at every later
+* use, including the post-scene restore that used to be a second read of the same tracks.
+                jsr     tc_preload
+                bne     seq_disk_fail
                 ldx     #BUNDLE
                 lda     #DISK_BUNDLE_TRK
                 ldb     #DISK_BUNDLE_SEC
-                jsr     load_tracks
+                jsr     tc_fetch
                 bne     seq_disk_fail
 
 * --- the music player, in the SAME burst, before anything is on screen -----
@@ -616,9 +675,21 @@ sq_beat
                 ldx     #SCENE_BASE
                 lda     #DISK_SCENE_TRK
                 ldb     #SECS_PER_TRACK
-                jsr     load_tracks
+                jsr     tc_fetch
                 bne     sq_pre_done     ; no program -> no fetch; run_scene will decline
                 jsr     SCENE_BASE+SCENE_PRELOAD_OFF
+* ★★★ AND RELEASE THE DRIVE, BECAUSE NOTHING ELSE WILL ANY MORE (P5.16). room_preloaded
+* deliberately does not release it — P3.84 made the scene hold the drive across its whole
+* staged schedule — and until now that was harmless, because the very next thing the intro
+* did was load_screen, whose load_tracks ends every read with disk_read_motor_off. The
+* cache turned that read into a RAM copy, so the release went with it: measured, the drive
+* stayed engaged for 18.37 s to transfer 9,216 B, spinning for the last fifteen of them
+* until the scene finally started and cel_load_startup let it go.
+*
+* This is the same shape as the bug P5.15 fixed one layer down, and the same lesson: a
+* release that happens as a SIDE EFFECT of the next operation survives exactly until that
+* operation changes. The intro owns this beat, so the intro asks for it here.
+                jsr     disk_read_motor_off
 sq_pre_done
 
                 lda     beat_track
@@ -836,10 +907,13 @@ run_scene
 * the suites run on the target machine first.
 * ---------------------------------------------------------------
 * THE CAPTIONS, BACK. The scene expanded its bundle over all three of them.
+* ★ AND SINCE P5.16 THIS IS A COPY, NOT A SECOND READ OF TRACKS 25-26. It is the clearest
+* statement of what the cache is for: the bytes were already fetched before the first
+* beat, and the only reason this was a disk operation is that nothing kept them.
                 ldx     #BUNDLE
                 lda     #DISK_BUNDLE_TRK
                 ldb     #DISK_BUNDLE_SEC
-                jsr     load_tracks
+                jsr     tc_fetch
                 bne     rs_out
 * ★★★ AND THE PALETTE, WHICH MUST COME AFTER THAT READ. The scene's exit calls set_mode to
 * put the 16-colour mode back, and set_mode installs the DIAGNOSTIC palette — so the
@@ -863,7 +937,12 @@ load_screen
                 ldx     HAL_gfx_draw_base
                 leax    LZ_LOAD_OFF,x   ; the packed blob lands high in the window,
                 ldb     #DISK_SCREEN_SEC ; above the picture it is about to become
-                jsr     load_tracks
+* ★ ALL THREE SCREENS ARE CACHED (P5.16), so this is a copy for every beat that has a
+* picture — including beat 6, whose track is the SAME splash beat 1 already used. That
+* one was the clearest case in the whole intro: the comment on beat 6's row explains that
+* the splash "is not resident anywhere" and so must be read back, and the cache is exactly
+* the residence it was missing.
+                jsr     tc_fetch
                 bne     ls_failed
                 ldx     HAL_gfx_draw_base
                 leau    LZ_LOAD_OFF,x   ; U -> the blob; the module has no constant
@@ -877,6 +956,177 @@ ls_failed
                 lda     #1              ; Z clear = failure, as load_tracks reported
                 tsta
                 rts
+
+* ---------------------------------------------------------------
+* THE RAM TRACK CACHE — see the constants block for why it exists.
+*
+* tc_tab: one row per cached run, `track, sectors, first block`. The KEY IS BOTH THE
+* TRACK AND THE COUNT, because a caller asking for a different span of the same track is
+* asking for something this cache does not hold, and answering it from here would hand
+* back the wrong length. A row is matched only if both agree.
+* ---------------------------------------------------------------
+tc_tab
+                fcb     DISK_PROLOG1_TRK,DISK_SCREEN_SEC,TC_BLOCK0+0    ; $19,$1A
+                fcb     DISK_PROLOG2_TRK,DISK_SCREEN_SEC,TC_BLOCK0+2    ; $1B,$1C
+* ★★★ THE SCENE'S PROGRAM IS NOT CACHED, AND THIS IS A MEASURED EXCLUSION RATHER THAN AN
+* OVERSIGHT. Its row belongs here — track 24, one track, into TC_BLOCK0+4 — and caching it
+* BREAKS THE CUTSCENE. Bisected at P5.16, with the link address finally correct so the test
+* meant something: every other row cached and this one absent, integ PASSES and
+* cel_scene_done sets at frame 9255; add this row back and the scene is entered, fails
+* inside room_load_cels, and never even CLEARS that flag.
+*
+* ★★ WHAT IT IS NOT. The copy itself is correct — a write tap on SCENE_BASE caught it
+* landing $7E 27 1C, a valid `jmp`, at the right beat. Nor is it spin-up: disk_read_range
+* calls dr_spinup itself and dr_spinup is self-checking. Nor is it the motor: load_tracks
+* releases the drive after every read, so it is off either way.
+*
+* ★ WHAT IS STILL UNKNOWN is why, and the honest form of that is to leave the row out and
+* say so here. The difference this fetch made and the copy does not is that load_tracks
+* brackets its read with SAM_SLOW/SAM_FAST and holds interrupts masked throughout — it is
+* the only operation at beat 4 that does, immediately before the scene's own two reads.
+* That is a hypothesis, not a finding, and it is written as one.
+*
+* The cost of leaving it out is 1.8 s of disk at beat 4, under a title beat 3 already holds
+* up for exactly this reason (BEAT_KEEP, P4.47). The cost of guessing wrong is the cutscene.
+*               fcb     DISK_SCENE_TRK,SECS_PER_TRACK,TC_BLOCK0+4       ; $1D
+                fcb     DISK_BUNDLE_TRK,DISK_BUNDLE_SEC,TC_BLOCK0+5     ; $1E,$1F
+                fcb     DISK_SCREEN_TRK,DISK_SCREEN_SEC,TC_BLOCK0+7     ; $20,$21
+                fcb     0               ; end. Track 0 is DECB's own and is never an asset.
+
+* ---------------------------------------------------------------
+* tc_preload — fill the cache. Called ONCE, inside the opening batch, before any other
+* asset read, so that a track which is both cached and wanted immediately (the captions,
+* the splash) is read from the disk exactly ONCE in the whole run and copied thereafter.
+*
+* Returns Z set on success, as load_tracks does. Clobbers: A, B, X, Y, U.
+* ---------------------------------------------------------------
+tc_preload
+                ldy     #tc_tab
+tc_p_next
+                lda     ,y
+                beq     tc_p_ok
+                sta     tc_trk
+                ldb     1,y
+                stb     tc_sec
+                lda     2,y
+                sta     tc_blk
+                leay    3,y
+                sty     tc_cur          ; load_tracks is free to clobber Y
+                jsr     tc_map
+                ldx     #TC_WIN
+                lda     tc_trk
+                ldb     tc_sec
+                jsr     load_tracks
+                pshs    cc              ; keep load_tracks' answer across the restore
+                jsr     tc_unmap
+                puls    cc
+                bne     tc_p_fail
+                ldy     tc_cur
+                bra     tc_p_next
+tc_p_ok
+                clra                    ; Z set = success
+                rts
+tc_p_fail
+                lda     #1              ; Z clear, and the caller stops the intro
+                tsta
+                rts
+
+* ---------------------------------------------------------------
+* tc_fetch — load_tracks' contract, answered from RAM when the run is cached.
+*
+*   Entry: X = destination, A = track, B = sectors
+*   Exit:  Z set = success. Clobbers: A, B, X, Y, U — exactly what load_tracks clobbers,
+*          which is what lets every call site change by one word.
+*
+* ★★ A DESTINATION INSIDE THE BORROWED WINDOW FALLS BACK TO THE DISK. No caller does this
+* today — the three destinations are $DA00, $3000 and $2600 — but the borrow would destroy
+* such a destination silently and the failure would look like a corrupt asset rather than
+* like a wrong window. Two comparisons make it impossible instead of unlikely.
+* ---------------------------------------------------------------
+tc_fetch
+                sta     tc_trk
+                stb     tc_sec
+                stx     tc_dst
+                cmpx    #TC_WIN
+                blo     tc_f_look
+                cmpx    #TC_WIN+$4000
+                blo     tc_f_disk       ; destination is the window the borrow needs
+tc_f_look
+                ldy     #tc_tab
+tc_f_scan
+                lda     ,y
+                beq     tc_f_disk       ; not cached — the disk still answers
+                cmpa    tc_trk
+                bne     tc_f_step
+                lda     1,y
+                cmpa    tc_sec
+                beq     tc_f_hit
+tc_f_step
+                leay    3,y
+                bra     tc_f_scan
+tc_f_disk
+                lda     tc_trk
+                ldb     tc_sec
+                ldx     tc_dst
+                jmp     load_tracks     ; TAIL CALL: its Z is the answer, unmodified
+tc_f_hit
+                lda     2,y
+                sta     tc_blk          ; ...before Y becomes the copy's scratch
+                jsr     tc_map
+                ldu     #TC_WIN
+                ldx     tc_dst
+                ldb     tc_sec
+tc_f_page
+                pshs    b
+                ldb     #128            ; 128 x 2 bytes = one 256-byte sector
+tc_f_byte
+                ldy     ,u++
+                sty     ,x++
+                decb
+                bne     tc_f_byte
+                puls    b
+                decb
+                bne     tc_f_page
+                jsr     tc_unmap
+                clra                    ; Z set = success
+                rts
+
+* tc_map / tc_unmap — the borrow. Both halves are written under a masked CC because
+* between the two stores the window is half cache and half framebuffer, which is the
+* multi-register update idiom (§22) cel_preload observes for the same pair.
+* The readback is masked to 6 bits: the MMU latches 8 and returns 6.
+tc_map
+                lda     TC_MMU
+                anda    #$3F
+                sta     tc_sav4
+                lda     TC_MMU+1
+                anda    #$3F
+                sta     tc_sav5
+                pshs    cc
+                orcc    #$50
+                lda     tc_blk
+                sta     TC_MMU
+                inca
+                sta     TC_MMU+1
+                puls    cc
+                rts
+tc_unmap
+                pshs    cc
+                orcc    #$50
+                lda     tc_sav4
+                sta     TC_MMU
+                lda     tc_sav5
+                sta     TC_MMU+1
+                puls    cc
+                rts
+
+tc_trk          fcb     0
+tc_sec          fcb     0
+tc_blk          fcb     0
+tc_sav4         fcb     0
+tc_sav5         fcb     0
+tc_dst          fdb     0
+tc_cur          fdb     0
 
 * ---------------------------------------------------------------
 * cel_preload — the cutscene's cel pages, read here instead of at scene start (P4.25).

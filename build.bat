@@ -143,7 +143,16 @@ REM which load_screen still needs for beats 3, 4 and 5. The intro prog grew past
 REM BEAT_KEEP was added; the map tool LISTED the two regions overlapping and did not flag it.
 REM $2600 puts the scene at $2600..$2A54 and leaves 242 B of prog headroom, taking the free
 REM span above the scene from 1565 B to 1309 B. Nothing else moves.
-set SCENE_BASE=0x2600
+REM ★★ RAISED $2600 -> $2700 at P5.16, AND IT IS THE SAME FAILURE AGAIN. The RAM track
+REM cache added ~400 B to intro_seq.o, which spent the 242 B of headroom above and pushed
+REM lz_unpack.o to $2578..$2606 -- SIX BYTES past SCENE_BASE. The symptom was not a build
+REM error: the intro ran three beats, then the scene fetch overwrote the tail of lz_unpack
+REM and beat 4 died with the drive still engaged, 1,650 frames after the byte that caused it.
+REM ★ AND THE LINE ABOVE PREDICTED THIS EXACTLY -- "the map tool LISTED the two regions
+REM overlapping and did not flag it" -- so the constant is only half the fix. map_check.py
+REM now FAILS the build when the intro's prog overruns SCENE_BASE, because a note asking a
+REM future reader to check the headroom is what did not work the first two times.
+set SCENE_BASE=0x2700
 REM ★ Where the intro's program lives on disk, and the offset of the entry the stage-1
 REM loader jumps to (P4.46). Both the loader and intro_seq.s take these from here, and
 REM intro_seq.s asserts that intro_seq_boot really is at INTRO_BOOT_OFF -- so a drift is a
@@ -851,7 +860,7 @@ REM
 REM It also asserts the LOADM FLOOR. DECB's file buffers reach above $0A00; bisection
 REM found $0D00 loads and RUNS with silently damaged data, and $0E00 is clean.
 REM ======================================================================
-python harness\tools\map_overlap_check.py build/obj/introseq.map build/obj/interp.map build/obj/scene.map build/obj/room.map build/obj/song.map build/obj/tile.map
+python harness\tools\map_overlap_check.py --ceiling introseq.map=%SCENE_BASE% --loadat scene.map=%SCENE_BASE% build/obj/introseq.map build/obj/interp.map build/obj/scene.map build/obj/room.map build/obj/song.map build/obj/tile.map
 if errorlevel 1 (
     echo *** BUILD BLOCKED: linked sections collide or sit below the LOADM floor ***
     exit /b 1
