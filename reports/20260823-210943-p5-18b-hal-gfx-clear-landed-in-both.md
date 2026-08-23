@@ -232,3 +232,53 @@ it as a fresh row would give the reconciler two rows for one lesson.
 ### 11 — Commit
 
 POP `a7664bf` · Karateka `072ddcf` — both pushed to their `origin/wip` before this report.
+
+---
+
+## ADDENDUM — P5.18c: the collapse, and the gate
+
+**Commit `8029e26`.** Written after Jay gated it.
+
+### A.1 — ★ 25.3: PASSED — Jay, live-disk, RGB, 512 KB, 2026-08-23: *"looks good."*
+
+**This closes the whole `HAL_gfx_clear` arc**, which ran across five dispatches and started with
+Jay noticing something on screen:
+
+| | |
+|---|---|
+| **P5.16f** | Jay: *"the bottom half of the screen … disappears."* Cause found; `blackout_page` written as an engine stand-in for a broken HAL export |
+| **P5.17 §4.3** | predicted, without testing it, that a HAL fix *"would NOT pass the sync check"* |
+| **P5.18** | that prediction confirmed by experiment, twice, and **stopped** for a ruling |
+| **P5.18b** | Jay: *"land it in both."* Fixed in POP and Karateka together; Karateka byte-identical, measured |
+| **P5.18c** | Jay: *"do it."* The stand-in collapses into the now-correct HAL call. **Gated.** |
+
+### A.2 — what the collapse actually did
+
+`run_scene`'s two calls now go to `HAL_gfx_clear`; `blackout_page` is deleted.
+**`intro_seq.bin` 2,714 → 2,695 B — exactly its 19 bytes and nothing else.**
+
+★ **Equivalence was checked rather than assumed** (§3.3 asked for this): in 16-colour the fixed
+export resolves to `ldx HAL_gfx_draw_base` / `ldy HAL_gfx_cur_words`, instruction for instruction
+what the stand-in did, with matching clobbers (A, B, X, Y) and `U` preserved on both sides.
+
+★★ **And it was measured INERT before Jay was asked to look** — P5.16d's lesson applied
+deliberately. Every beat frame-identical across the change:
+
+```
+428 / 381 / 655 / 4629 / 1177 / 527      (beat 4 contains the blackout)
+```
+
+**A change that should be invisible is verified by showing nothing moved**, not by asking whether
+it looks different.
+
+### A.3 — the cost, which is real
+
+★ **`HAL_gfx_clear` had NO engine caller before this**, and that is precisely why its defect
+survived to be found by eye rather than by a test. **It has one now.** That is the whole reason
+this half needed a gate instead of a byte diff, and why it was held back from P5.18b rather than
+folded into it — §4's *"say so before doing it, not after."*
+
+**25.1:** `[hal-sync] OK` · `[map_check] … all below $2700, scene.map linked at $2700` ·
+`=== BUILD COMPLETE ===` · `[suites] ALL PASS` (introseq, integ, tile — 512 KB).
+
+**`main` untouched:** `32b5fe23a49bf43e86c64f867ff59fb40c1ce0db`.
