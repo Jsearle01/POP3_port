@@ -344,7 +344,21 @@ gfx_init_clear_b:
 * the mode it wants; this file never uses them by name because its table is
 * positional (row 0 = mode 0, row 1 = mode 1). One home each.
 *   [ref: src/hal.inc — GFX_MODE_320x192x4 / GFX_MODE_320x192x16]
-GFX_MODE_MAX        equ 1           ; highest supported id
+* ★★ GFX_MODE_MAX AND THE DESCRIPTOR TABLE ARE PROJECT-LOCAL (POP-HAL-01).
+* They moved to src/hal/coco3-dsk/hal_globals.s, which hal_sync_check.py lists as
+* PROJECT_LOCAL. The reason is not tidiness: this file is SHARED, and a shared table is a
+* shared BINARY -- adding one 7-byte row for another project shifted every address after it
+* and changed 27 of POP's artifacts. Shared mechanism, project-local data.
+*
+* ★★★ REQUIREMENT, DOCUMENTED RATHER THAN GUARDED: a project that defines
+* HAL_GFX_MODE_SERVICE MUST define GFX_MODE_MAX and gfx_mode_table in its own hal_globals.s.
+* Omit them and lwasm fails with "Undefined symbol gfx_mode_table" -- which NAMES the missing
+* thing at assembly time. A guard was considered and rejected: it would replace a loud,
+* self-describing failure with either a silent compile-out (the service present but inert) or
+* a second symbol every project must keep in sync, which is more coupling, not less.
+*
+* GFX_MODE_ENTSZ stays HERE because the row LAYOUT is what this file's code indexes with; a
+* project that changed it would break the shared service. Layout is mechanism, rows are data.
 GFX_MODE_ENTSZ      equ 7           ; bytes per mode-descriptor row
 
 * ===============================================================
@@ -763,26 +777,19 @@ gfx_cw_lp:
         rts
 
 * ---------------------------------------------------------------
-* Mode descriptor table. Adding a mode is a row plus a palette — the service
-* itself does not change. Row layout (GFX_MODE_ENTSZ = 7):
+* The mode descriptor table lives in hal_globals.s (PROJECT_LOCAL) -- see the note at
+* GFX_MODE_ENTSZ above. Row layout, which IS shared and is what the code below indexes with
+* (GFX_MODE_ENTSZ = 7):
 *   +0  $FF99 VRES value
 *   +1  stride, bytes per row
 *   +2  framebuffer size in WORDS (bytes / 2, the clear loop's unit)
 *   +4  pointer to palette table
 *   +6  palette entry count
+*
+* The PALETTES stay here, below, and are shared: a project-local row may point at gfx_pal4 or
+* gfx_pal16, or at a palette of its own defined beside its table. gfx_pal4 in particular has a
+* checked consumer -- harness/tools/palette_check.py reads it out of THIS file by path.
 * ---------------------------------------------------------------
-gfx_mode_table:
-        fcb     $15                     ; mode 0: 320x192x4  VRES  [GIME-RM §10]
-        fcb     80                      ;   80 bytes/row
-        fdb     $1E00                   ;   15,360 B / 2 = $1E00 words
-        fdb     gfx_pal4
-        fcb     4                       ;   palette regs $FFB0-$FFB3
-
-        fcb     $1E                     ; mode 1: 320x192x16 VRES  [GIME-RM §10]
-        fcb     160                     ;   160 bytes/row
-        fdb     $3C00                   ;   30,720 B / 2 = $3C00 words
-        fdb     gfx_pal16
-        fcb     16                      ;   palette regs $FFB0-$FFBF
 
 * ---------------------------------------------------------------
 * Default test palettes — RGB monitor format, bits 5:0 = R1 G1 B1 R0 G0 B0,
