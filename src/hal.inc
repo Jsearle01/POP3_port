@@ -326,6 +326,7 @@ HAL_gfx_set_palette equ *       ; STUB-P3 — not yet implemented
 ; is positional — so there is exactly one home for the value.
 GFX_MODE_320x192x4  equ 0        ; $FF99=$15,  80 B/row, 15,360 B,  4 palette regs
 GFX_MODE_320x192x16 equ 1        ; $FF99=$1E, 160 B/row, 30,720 B, 16 palette regs
+GFX_MODE_320x200x16 equ 2        ; $FF99=$3E, 160 B/row, 32,000 B, 16 palette regs
 
 ; HAL_gfx_set_mode                                    [P2.5 — kernel service]
 ;   Switch the display to a graphics mode. Generalizes the register
