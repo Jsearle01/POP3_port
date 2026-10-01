@@ -527,7 +527,7 @@ blind spot. Pushed to the pool as `0fdcc65`.
 
 ### 11 — Commit
 
-Phase 1: `e6b83d8` (the `$80` answer, alone, before the routine). Phase 2–3: see the commit following
-this report. **NOT pushed to `origin/wip`:** `git push` fails with `Permission denied (publickey)`, and
+Phase 1: `e6b83d8` (the `$80` answer, alone, before the routine). Phase 2–3: **`d9cf353`** (the probe,
+tools, idioms §41, this report); this hash line follows in its own commit. **NOT pushed to `origin/wip`:** `git push` fails with `Permission denied (publickey)`, and
 this environment has no key for `git@github.com` (`C:\Users\jayse\.ssh` holds only `known_hosts`).
 **`main` untouched at `32b5fe2`.**
