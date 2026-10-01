@@ -19,6 +19,8 @@ a MAME **failure** on coco3 is a **shipping bug** (C-11 / I-BOTH), not deferrabl
 ---
 
 ## 0. Measuring the port's per-frame COST: no Lua cycle counter — count **VBLs via frame_number**
+> **★ P5.20: for a LEAF ROUTINE there is an exact counter — the debugger's `totalcycles`,
+> headless. See §41.** VBL counting below remains the right tool for whole-frame budgets.
 **MAME 0.281's Lua device wrapper exposes neither `cpu.clock` nor `cpu:total_cycles()`** (both
 `nil` — probed, `build/logs/b2_probe.txt`), and **`manager.machine.time` is quantised to the
 scheduler timeslice**, so an intra-frame `machine.time` delta around a routine reads as ~4 cycles
@@ -2153,3 +2155,41 @@ e.g. to dither), add its own latency on top, and note it is not one number:
 **Measure it, do not derive it:** `harness/smoke/song_live.lua` `P_PULSE=1` times the
 `$FF20` writes on the bus and splits the offset by whether `sp_ptr` moved — *by mechanism,
 not by the tick value, which merely correlates with it in one particular song.*
+
+---
+
+## 41. There IS an exact cycle counter: the debugger's `totalcycles`, headless (P5.20)
+
+§0 is right that **Lua** exposes no cycle counter (`cpu.clock`, `total_cycles()` are nil). The
+**debugger's expression evaluator** does: `totalcycles` (also `cycles`,
+`lastinstructioncycles`). It works headless under **`-debug -debugger none`** with
+`execution_state="run"` set from Lua (§10), and it counts **CPU cycles**, so it is
+independent of the `$FFD9` clock — no ×2 to get wrong (the P3.41 trap).
+
+**Bracket a call with two breakpoints and let the debugger write the difference to RAM**,
+where Lua reads it at the next frame — no trace file, no `printf` (not captured headless):
+```lua
+cpu.debug:bpset(CALL, "1", "temp0=totalcycles; go")                 -- the jsr
+cpu.debug:bpset(RET,  "1", "pd@0x1F04=totalcycles-temp0; go")       -- the instruction after it
+-- later: mem:read_u32(0x1F04)   (pd@ writes CPU-endian, read_u32 reads CPU-endian)
+```
+A bp fires BEFORE its instruction executes, so RET−CALL = the `jsr` + the routine + its
+`rts`. **Measure the bracket**, do not assume it: the same bracket around a bare `rts` read
+**15 cy** for `jsr [,y]` + `rts`, and that is subtracted.
+
+**Calibrated before use, against a hand count** — `ldy #`/`ldb #`/`lda b,y`/`mul`/`nop` is
+4+2+5+11+2 = **24**; it read 24 on 8 of 8 iterations. Corroborated a second way at P5.20: the
+measured `blit_cel` cost agrees with a static decode of the built listing (`opt c`, below).
+
+**`opt c` in an lwasm source prints per-instruction cycles in the listing** (`[5]`, `[5+?]`
+for long branches). Static, so it cannot see data-dependent paths, but it is the right
+cross-check for a measured figure. Assemble a scratch file that does `opt c` and `include`s
+the module — the module itself does not need editing.
+
+**⚠ Silence interrupt SOURCES, not just CC, when timing `blit_cel`:** it opens an IRQ/FIRQ
+window on every row (`andcc #$AF`, P4.29), so a masked CC alone lets BASIC's 60 Hz IRQ land
+inside the bracket. Clear bit 0 of `$FF01/$FF03/$FF21/$FF23` (PIA — outside the register
+ratchet's `$FF80-$FFDF` scope) and read `$FF00/02/20/22` to drop latched flags.
+
+Tool: `harness/tools/xform_probe.lua` + `harness/smoke/run_xform_probe.sh`.
+*Candidate:* `the-emulator-may-have-the-instrument-the-scripting-layer-lacks`.
