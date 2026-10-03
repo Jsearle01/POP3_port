@@ -262,5 +262,5 @@ None.
 
 ### 11 — Commit
 
-See the push line in the chat report. The hash is not written into this file, to avoid a second commit
-for one line.
+**`1a84948`**; this hash line follows in its own commit. Pushed to `origin/wip`. `main` untouched at
+`32b5fe2`.
