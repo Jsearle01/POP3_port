@@ -2193,3 +2193,29 @@ ratchet's `$FF80-$FFDF` scope) and read `$FF00/02/20/22` to drop latched flags.
 
 Tool: `harness/tools/xform_probe.lua` + `harness/smoke/run_xform_probe.sh`.
 *Candidate:* `the-emulator-may-have-the-instrument-the-scripting-layer-lacks`.
+
+---
+
+## 42. Authoring a side: what is measured, and the two hazards that make it unreadable (P5.22)
+
+**A side is authored by explicit track map** — `harness/tools/make_side_dmk.py`, modelled on
+karateka's `make_game_dmk.sh` / `make_decb_boot_disk.sh` and on POP's own `raw_tracks.py`:
+`imgtool create coco_dmk_rsdos --tracks=35 --sectors=18 --sectorlength=256 --interleave=0`, payload
+by `writesector` at (track, logical sector). Read it back through the shipped primitive with
+`harness/smoke/run_side_read.sh <side.dmk>`.
+
+**Measured on authored images, through `disk_read_range` (m=1, HALT-paced, normal speed):**
+marginal **1.10–1.20 s per track (mean 1.166)**; a single-track call **1.2–1.6 s** (it Restores to
+track 0 and Seeks first, every call). All 35 tracks byte-exact against imgtool's independent parse
+— **track 17 included on a RAW side**, where it is payload, not a directory.
+
+**Capacity, per side:** raw **35 tracks = 161,280 B**; DECB-formatted **34 tracks = 156,672 B**
+(track 17 = directory + FAT). **The "directory tax" is exactly one track, 4,608 B** — karateka's
+"153 KB usable vs 157.5 KB raw".
+
+**★★ NEVER `DSKINI` THESE TRACKS.** DECB's sequential format (skip 0) writes inter-sector gaps too
+tight for the m=1 read → **Lost Data, unreadable**; its default (skip 4) reads clean but slow. The
+imgtool-authored gaps are what make the 1:1 layout work. **★★ AND THERE IS NO STOCK FAST-COPY:**
+`DSKINI drive,0` + `BACKUP` produces an unreadable disk (karateka, refuted); plain `BACKUP` is
+correct but slow. Ship as an image copy or a flux write. Both need real-hardware confirmation —
+MAME models a WD1773, it is not one.

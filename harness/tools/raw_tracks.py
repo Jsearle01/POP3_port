@@ -52,6 +52,16 @@ allocator will not reuse it, FREE reports the right number, and DIR shows no
 phantom file. Each reserved granule is written **$C9** — last-granule, 9 sectors —
 so no forward link dangles.
 
+★★ TWO HAZARDS THAT BREAK THIS LAYOUT AND DO NOT LOOK LIKE IT (karateka, measured; P5.22 §3):
+  1. NEVER REFORMAT THESE TRACKS WITH DECB `DSKINI`. Its sequential format (skip 0) writes
+     inter-sector gaps too tight for disk_read_range's m=1 whole-track read -> LOST DATA,
+     UNREADABLE (not slow). Its default (skip 4) reads clean but ~2.5x slower. The gaps imgtool
+     authors are what make the 1:1 layout read clean. (MAME models a WD1773, it is not one: the
+     gap margin still wants a real-hardware confirmation.)
+  2. NO STOCK-TOOL FAST-COPY PATH EXISTS. DECB BACKUP onto a default-formatted disk is correct but
+     slow; `DSKINI drive,0` + BACKUP produces an UNREADABLE disk (refuted on karateka). A release
+     ships as an image copy or a flux write -- this belongs in the release notes.
+
 TRACK 17 IS THE DIRECTORY and is mid-disk, not at the end. Granules 0..33 are
 tracks 0..16; granules 34..67 are tracks 18..34. A raw span must not cross track
 17, which is why the default span sits above it.

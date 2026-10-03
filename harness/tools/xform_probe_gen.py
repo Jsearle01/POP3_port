@@ -311,6 +311,34 @@ def peel_cases(table, idx, start_col, tag, seen):
     return cases, meta
 
 
+def lz_case(spec, i):
+    """P5.22: time the SHIPPED lz_unpack on a real blob. spec = PATH:OFFSET:LEN of the RAW
+    input; it is packed here with the shipped packer and decoded by the 6809 into the checked
+    buffer, so the case is byte-verified AND timed. The output must fit the dump window."""
+    import lz_pack as LZ
+    path, off, n = spec.rsplit(":", 2)
+    raw = pathlib.Path(path).read_bytes()[int(off):int(off) + int(n)]
+    stream_ = LZ.compress(raw)
+    assert LZ.decompress(stream_, len(raw)) == raw
+    # THE SHIPPED BLOB FORMAT, not the bare stream: lz_unpack reads a 6-byte header first --
+    # $00 unpacked length, $02 packed length, $04 stream offset [lz_pack.pack]. The first cut
+    # of this case passed the bare stream and lz_unpack took its first two bytes as a length.
+    # Source and destination do not overlap here, so the stream follows the header directly.
+    import struct
+    blob = struct.pack(">HHH", len(raw), len(stream_), 6) + stream_
+    h = -(-(len(raw) + C_REF) // STRIDE)
+    total = STRIDE * (h + 2)
+    if XP_BUF + total > XP_BUF_END:
+        raise SystemExit("%s: %d B does not fit the dump window" % (spec, len(raw)))
+    want = bg(total)
+    o = STRIDE + C_REF
+    want[o:o + len(raw)] = list(raw)
+    tag = "lz_%d" % i
+    case = dict(tag=tag, f=0, k=0, mode="lz", fn="lz_unpack", stream="%s_blob" % tag, col=C_REF,
+                a=0, b=0, h=h, want=want, raw_bytes=len(raw), lz_bytes=len(blob), src=spec)
+    return {"%s_blob" % tag: list(blob)}, [case], dict(tag=tag, footprint=len(raw), h=h)
+
+
 def batch_asm(streams, cases, hmax):
     buflen = STRIDE * (hmax + 2)
     assert XP_BUF + buflen <= XP_BUF_END, "a cel of %d rows does not fit the buffer" % hmax
@@ -348,6 +376,8 @@ def main():
     ap.add_argument("--shipped", action="append", default=[],
                     help="a content/cutscene/chars stem with _src.s and shipped bakes, e.g. p11")
     ap.add_argument("--out-prefix", default="b", help="batch file prefix (keeps runs apart)")
+    ap.add_argument("--lz", action="append", default=[],
+                    help="P5.22: PATH:OFFSET:LEN -- time lz_unpack on that slice of a raw file")
     ap.add_argument("--peel", action="store_true",
                     help="P5.21: blit_save/blit_erase at every pose's (rows, width), not draws")
     ap.add_argument("--start-col", type=int, default=0)
@@ -372,7 +402,8 @@ def main():
         for old in OUT.glob(pat % pre):
             old.unlink()
 
-    units = [("cel", s) for s in sel] + [("ship", s) for s in a.shipped]
+    units = [("cel", s) for s in sel] + [("ship", s) for s in a.shipped] + \
+            [("lz", (s, i)) for i, s in enumerate(a.lz)]
     batches, cur = [], None
     seen, peel_metas = set(), []
     for kind, u in units:
@@ -386,6 +417,8 @@ def main():
             # the checker keys its table by tag; give each (rows, width) pair a meta of its own
             pair_metas = [dict(tag=c["tag"], footprint=c["a"] * c["b"], h=c["h"])
                           for c in cases if c["mode"] == "save"]
+        elif kind == "lz":
+            streams, cases, meta = lz_case(*u)
         elif kind == "cel":
             table, idx, sc = u
             tag = "c_%s_%d" % (table.replace("IMG.", "").replace(".", "").lower(), idx)

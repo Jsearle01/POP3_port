@@ -590,6 +590,9 @@ xf_fl_x         rmb     1
 * --- the shipped blitter, assembled from the SAME source, for the baseline cases ---------
                 include "src/engine/blit_core.s"
 
+* --- P5.22: the shipped LZ expander, timed on real gameplay-class blobs (X = out, U = blob) ---
+                include "src/engine/lz_unpack.s"
+
 xp_code_end
                 ifgt    xp_code_end-(XF_DPPAGE*256)
                 error   "probe code overruns the DP page"
