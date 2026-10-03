@@ -31,7 +31,7 @@ cd "$(dirname "$0")/../.." || exit 1
 MAME="${MAME:-/c/mame/mame.exe}"
 MAME_ROMS="${MAME_ROMS:-C:/mame/roms}"
 
-SRC_DSK="build/probe.dmk"
+SRC_DSK="${SRC_DSK:-build/probe.dmk}"   # P5.22: override to gate a re-authored image
 DSK="build/run_introseq.dmk"
 # ~~ P4.46: the LOADM target is now the STAGE-1 LOADER, not the intro. The intro is no
 # ~~ longer a DECB file at all -- the loader reads its program off a raw track and jumps

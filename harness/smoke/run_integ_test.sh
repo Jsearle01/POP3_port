@@ -14,7 +14,7 @@ cd "$(dirname "$0")/../.." || exit 1
 
 MAME="${MAME:-/c/mame/mame.exe}"
 MAME_ROMS="${MAME_ROMS:-C:/mame/roms}"
-SRC_DSK="build/probe.dmk"
+SRC_DSK="${SRC_DSK:-build/probe.dmk}"   # P5.22: override to gate a re-authored image
 DSK="build/run_integ.dmk"
 IMAP="build/obj/introseq.map"
 SMAP="build/obj/scene.map"

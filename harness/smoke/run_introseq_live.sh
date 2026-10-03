@@ -42,7 +42,7 @@ MAME="${MAME:-/c/mame/mame.exe}"
 MAME_ROMS="${MAME_ROMS:-C:/mame/roms}"
 MONITOR="${MONITOR:-rgb}"
 BIN="build/loader.bin"
-SRC_DSK="build/probe.dmk"
+SRC_DSK="${SRC_DSK:-build/probe.dmk}"   # P5.22: override to gate a re-authored image
 DSK="build/run_introseq_live.dmk"
 
 [ -f "$BIN" ] || { echo "[run_introseq_live] missing $BIN — run build.bat first"; exit 1; }
