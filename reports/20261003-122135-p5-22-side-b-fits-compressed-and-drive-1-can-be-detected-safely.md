@@ -380,4 +380,5 @@ the number.
 
 ### 11 — Commit
 
-See the follow-up commit for the hash. Pushed to `origin/wip`. `main` untouched at `32b5fe2`.
+**`b52efb8`** (tools, probes, idioms §42, `raw_tracks.py` header, this report); this hash line follows in
+its own commit. Pool row pushed as `2638fea`. Pushed to `origin/wip`. `main` untouched at `32b5fe2`.
