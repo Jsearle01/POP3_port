@@ -252,4 +252,5 @@ None. The pattern (a residency figure quoted as a draw volume) was captured at P
 
 ### 11 — Commit
 
-See the follow-up commit. Pushed to `origin/wip`. `main` untouched at `32b5fe2`.
+**`8c21b7b`**; this hash line follows in its own commit. Pushed to `origin/wip`. `main` untouched at
+`32b5fe2`.
