@@ -285,5 +285,5 @@ armed an unbounded HALT.
 
 ### 11 — Commit
 
-POP: see the follow-up commit. karateka `59ac6c1`, coco_agi `1b9b548` (both pushed to `wip`). All
-`main`s untouched.
+POP **`9be92b5`** (this hash line follows in its own commit), karateka `59ac6c1`, coco_agi `1b9b548` —
+all three pushed to `wip`. Pool row `b49234e`. All `main`s untouched.
