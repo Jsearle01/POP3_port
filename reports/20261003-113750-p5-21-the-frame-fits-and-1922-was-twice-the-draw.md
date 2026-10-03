@@ -431,5 +431,5 @@ correction trustworthy.
 
 ### 11 — Commit
 
-See the commit following this report's first save; hash recorded in the follow-up commit.
-`main` untouched at `32b5fe2`.
+**`b93bdfe`** (tools, probe extension, apple2e idioms §13, this report); this hash line follows in its
+own commit. Pool row pushed as `733cadc`. Pushed to `origin/wip`. `main` untouched at `32b5fe2`.
