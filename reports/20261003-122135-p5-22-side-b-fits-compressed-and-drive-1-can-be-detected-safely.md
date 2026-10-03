@@ -317,7 +317,20 @@ run_side_read.sh side_a.dmk: 35 of 35 byte-exact; PASS
 run_xform_probe.sh --lz ×7: PASS all byte-exact; lz_unpack 21.5–33.7 cy per output byte
 run_drive_probe.sh: right POPB | wrong no-sig | empty idx=0 skipped | nodrive restore TIMEOUT idx=0 skipped
 ```
-**25.2:** N/A. **25.3:** N/A. Nothing on screen changed; no gate spent.
+**25.2:** N/A. **25.3:** N/A for the dispatch itself — nothing on screen changed. **Post-report gate, at
+Jay's request (below).**
+
+**★ 25.3 (follow-up, 2026-10-03): PASSED — Jay, live-disk, RGB, 512 KB, motion and sound observed
+live** — on `build/p522/gate/gate_side_a.dmk`. `harness/tools/gate_image.py` re-authored that image
+from scratch with `make_side_dmk.py`: `create --interleave=0` (sequential, as shipped since P3.6),
+every one of the 25 raw tracks (9–34) laid by `writesector` at its **shipped** track number and
+byte-identical to `probe.dmk`, and **`LOADER.BIN` the only DECB file** (the four harness probes and
+`TILE.BIN` absent). Boot path: real `LOADM"LOADER"` + `EXEC` off the mounted floppy
+(`run_introseq_live.sh`, `SRC_DSK` override). Headless before the window: `introseq` PASS, `integ`
+PASS. **Jay: "yes everything looked and sounded the same."**
+**Scope of the pass:** the authoring METHOD on the CURRENT track map. It does **not** gate §3G's
+proposed layout or compressed cel pages, which need the loader's track constants changed first.
+Commits `4fea095` (tooling) + this record.
 
 ---
 
