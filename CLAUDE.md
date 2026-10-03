@@ -1,6 +1,6 @@
 # CLAUDE.md — POP → CoCo3 Port Project (Clyde standing rules)
-## Working Agreement v1.1 (adapted from Karateka CLAUDE.md v1.0)
-**Version:** 1.1
+## Working Agreement v1.2 (adapted from Karateka CLAUDE.md v1.0)
+**Version:** 1.2
 **Instantiates:** CODM v0.7. Where this doc and v0.7 overlap, v0.7 governs; this doc adds POP invariants.
 
 **Changelog v1.0 → v1.1 (2026-07-24, Orchestrator-authored per §2D):** resolved the five `<FILL>` markers
@@ -8,6 +8,11 @@
 monitor mode). Corrected the §2 ground-truth hierarchy: the source of record is the **adamgreen `build`
 branch pinned at `ec78dbf`** — the tree the oracle is built from — not jmechner's separate archive. No other
 substantive rule changed; every v1.0 invariant is preserved.
+
+**Changelog v1.1 → v1.2 (2026-10-03, Orchestrator-authored per §2D):** §2K rewritten — 512 KB is the
+verification target and 128 KB is the aliasing detector, at Jay's ruling (2026-08-22 "lets move to the
+512kb as the standard"; 2026-10-03 on the suite). The masking rationale, the HAL mechanism and the P3.10
+precedent are unchanged; what changed is which machine is primary and that only `tile` runs at 128 KB.
 
 ---
 
@@ -289,15 +294,25 @@ Both failures produce a file that looks plausible and is wrong.
 
 ---
 
-## 2K. 128 KB is the verification target
+## 2K. 512 KB is the verification target; 128 KB is the aliasing detector
 
-**Verify on stock 128 KB first. It is the target machine and it is strictly the harder case:** the GIME
-masks a block number to the RAM actually installed, so the framebuffers alias and the bank occupies the
-top of real RAM. **512 KB can pass while a masking assumption is wrong; the reverse does not happen.**
+**Verify on 512 KB first. It is the target machine** (Jay, 2026-08-22: *"lets move to the 512kb as the
+standard"*; P5.12: the game needs 16-44 blocks and 128 KB has 8). **Report 512 KB first in every case.**
 
-**512 KB is confirmation, not the primary run, and most dispatches do not need it.** Run it when a change
-touches the MMU, the bank, the framebuffers or the loader — **because a DIVERGENCE between the two is
-itself informative: it means something depends on aliasing.** Report 128 KB first in every case.
+**128 KB is still run, for one reason: it is strictly the harder case for block MASKING.** The GIME masks
+a block number to the RAM actually installed, so the framebuffers alias and the bank occupies the top of
+real RAM. **512 KB can pass while a masking assumption is wrong; the reverse does not happen.** The port
+still uses only `$0C-$0F` / `$10-$17` / `$38-$3F`, real on 512 KB and correctly aliased on 128 KB, so a
+128 KB run is a detector that fires the moment anything claims a block above `$0F`. **At 128 KB only
+`tile` runs** (`harness/smoke/run_suites.sh`); `introseq` and `integ` are red there by design since P5.15,
+and a suite that is always red reports nothing. **And a DIVERGENCE between the two is itself informative:
+it means something depends on aliasing.**
+
+**★ So a 128 KB `tile` failure is not a tile defect. It is the detector firing** — read it as "something
+now claims a block above `$0F`" and find the claim before touching `tile`.
+
+**★ `harness/tools/run_block_budget.sh` keeps its hardcoded 128K and is not swept by this.** Its whole
+subject is what the GIME aliases away on a stock machine, so it is a 128 KB question by definition.
 
 **The mechanism, from the HAL rather than from memory** [`src/hal/coco3-dsk/gfx.s:405-417`]: *"The GIME
 masks a block number to the RAM actually installed, so on a 128 KB machine only `$00-$0F` exist and every
