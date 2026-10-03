@@ -66,7 +66,7 @@ local function tick()
     end
     local st = mem:read_u8(sym.XP_STATUS)
     if st == 1 then
-        local rec = sym.XP_CASES + 10 * idx
+        local rec = sym.XP_CASES + 12 * idx       -- P5.21: + fill seed, pad
         local dlen = mem:read_u8(rec + 8) * 256 + mem:read_u8(rec + 9)
         local cyc = mem:read_u32(sym.XP_CYC)
         local hex = {}

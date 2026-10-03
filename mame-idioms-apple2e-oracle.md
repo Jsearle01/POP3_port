@@ -857,3 +857,30 @@ segment each cycle (deterministic — good for a stable side-by-side reference).
 climb→fight comparison loop 2026-07-19 (Jay-requested visual-comparison view). *(Cross-target: the save/load
 Lua API is MAME-general; coco3 supports save-states too — the port equivalent for a boot-excluded `.bin` is the
 load-`.bin`+set-PC flow in `climb_live.lua`, a different mechanism.)*
+
+---
+
+## 13. `setimage` has a caller that DRAWS NOTHING — tap the caller, not the funnel (P5.21, VERIFIED FOR POP)
+
+A write tap on `IMAGE+1` (`$05`) fires on every `setimage` [HIRES.S:264] — the instrument P5.2, P5.7
+and P5.10 used. **`HIRES.S` calls `setimage` from two places, and only one of them draws:**
+`GETWIDTH` [:287-301] is a width/height QUERY; `PREPREP` [:311-329] is what `LAY`, `LAYRSAVE` and every
+`MLAY` variant call. **Measured return addresses: `$EF06` = GETWIDTH, `$EF26` = PREPREP** — 32 bytes
+apart, exactly the code between the two `jsr setimage`, GETWIDTH first as in the source.
+
+**What counting both cost:** P5.7's "characters 1,828 B at frame 9328" includes **three cels GETWIDTH
+queried and nothing drew** (`chtab4gd_11`, `chtab5_3`, `chtab5_17` = 1,092 B — the next poses, for
+geometry). Drawn: **4 cels, 736 B.** Over the demo the drawn peak is **963 B**, not 1,828. The "per-frame
+draw volume" carried by four dispatches was ~2× high.
+
+**And one PREPREP is not one draw:** `LAYRSAVE` and `LAY` each call PREPREP for ONE character, so the tap
+sees every saved character twice in a row. For a MIRRORED one the second record has OPACITY bit 7
+cleared — `LAY` does `and #$7f / sta OPACITY / jmp MLAY` first [HIRES.S:658-664] — so collapse with bit 7
+masked or every mirrored character counts twice.
+
+**Read the caller from the 6502 stack inside the tap:** return address = `($100+SP+1) | ($100+SP+2)<<8`,
++1. **The register is `cpu.state["SP"]`; `cpu.state["S"]` is nil on MAME's 6502** — the first cut read 0
+there and every caller came back as `$0001`/`$0100`, which looks like data rather than an error.
+
+Tool: `harness/tools/oracle_step_trace.lua` + `oracle_step_analysis.py`. *Candidate:*
+`a-funnel-tap-counts-every-caller-identify-the-caller-before-counting`.

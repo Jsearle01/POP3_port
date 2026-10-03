@@ -130,7 +130,9 @@ XF_M            equ     $2D00           ; 256 B, natural order: M[b] = 11 per ze
 XF_T1           equ     $2E00           ; mirror, permuted (index b^$80), use base+128
 XF_T2           equ     $2F00           ; mirror + blue<->orange swap, permuted
 XF_TABS         equ     $3000           ; 9 pairs x 512 B: (k-1)*3+t, F then C, permuted
-XP_CASES        equ     $4200           ; generated: 8-byte records, then the streams
+XP_CASES        equ     $4200           ; generated: 12-byte records, then the streams
+XP_PEEL         equ     $1800           ; P5.21: the peel buffer handed to blit_save/erase in Y
+XP_PEEL_END     equ     $1C00           ;   (1 KB; the generator refuses a pose that needs more)
 XP_BUF          equ     $6C00           ; the destination, 80-byte stride (64 rows to $8000;
 *                                         the tallest gameplay cel is 57, CHTAB2 #41)
 
@@ -171,32 +173,38 @@ xp_next
                 sty     xp_cur
                 ldd     ,y
                 beq     xp_alldone
-                lbsr    xp_fill
+                std     xp_fn
+                lda     10,y                    ; P5.21: the fill seed is per case, so an
+                sta     xp_seed                 ;   erase lands on a DIFFERENT background
+                lbsr    xp_fill                 ;   from the save it restores
                 ldy     xp_cur
                 ldx     4,y
                 ldu     2,y
                 lda     6,y
                 ldb     7,y
-xp_call         jsr     [,y]
+                ldy     #XP_PEEL                ; blit_save/blit_erase take the peel in Y;
+*                                                 the draws ignore it
+xp_call         jsr     [xp_fn]
 xp_ret          lda     #1
                 sta     XP_STATUS
 xp_wait         lda     XP_GO
                 beq     xp_wait
                 clr     XP_GO
                 ldy     xp_cur
-                leay    10,y                    ; fn, stream, dest, A, B, dump length
+                leay    12,y                    ; fn, stream, dest, A, B, dump length, seed, pad
                 bra     xp_next
 xp_alldone
                 lda     #2
                 sta     XP_STATUS
 xp_halt         bra     xp_halt
 
-* The background: bg[o] = $5B + $9D*o (mod 256) over the whole buffer. $9D is odd, so every
+* The background: bg[o] = seed + $9D*o (mod 256) over the whole buffer (seed $5B unless the
+* case record says otherwise). $9D is odd, so every
 * byte value appears and every pixel position sees every index -- a mask that keeps the
 * wrong pixel cannot hide behind a uniform fill. xform_probe_gen.py computes the same.
 xp_fill
                 ldx     #XP_BUF
-                lda     #$5B
+                lda     xp_seed                 ; $5B for every P5.20 case
 xp_fill_lp      sta     ,x+
                 adda    #$9D
                 cmpx    #XP_BUF+XP_BUFLEN
@@ -207,6 +215,8 @@ xp_fill_lp      sta     ,x+
 xp_null         rts
 
 xp_cur          rmb     2
+xp_fn           rmb     2
+xp_seed         rmb     1
 
 * ---------------------------------------------------------------
 * xf_blit — draw a phase-0 facing-0 stream at phase k, optionally mirrored.

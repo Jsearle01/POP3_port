@@ -41,14 +41,17 @@ OUT = ROOT / "build/xform"
 XP_CASES = 0x4200
 XP_BUF = 0x6C00
 XP_BUF_END = 0x8000
-REC = 10
+REC = 12                        # fn, stream, dest, A, B, dump length, fill seed, pad (P5.21)
+SEED = 0x5B                     # the P5.20 background; P5.21's erase cases use ERASE_SEED
+ERASE_SEED = 0xA7
+XP_PEEL_CAP = 0x0400            # src/harness/xform_probe.s XP_PEEL..XP_PEEL_END
 C_REF = 8                       # the reference's byte column; leaves room for d < 0 and > 0
 STRIDE = 80
 SWAP = (0, 2, 1, 3)
 
 
-def bg(n):
-    return [(0x5B + 0x9D * o) & 0xFF for o in range(n)]
+def bg(n, seed=SEED):
+    return [(seed + 0x9D * o) & 0xFF for o in range(n)]
 
 
 # ------------------------------------------------------------------ tables
@@ -259,6 +262,55 @@ def shipped_cases(stem):
     return streams, cases, meta
 
 
+def peel_cases(table, idx, start_col, tag, seen):
+    """P5.21: the PEEL every pose of one cel needs, under BOTH storage models.
+
+    blit_save/blit_erase cost depends only on (rows, bytes per row), so a case is emitted for
+    each (rows, width) pair not already `seen`; the cel's own record lists which pair each of
+    its eight poses uses. A peel covers the frame the draw wrote:
+      baked        facing 0: w0 (+1 at phase > 0)      facing 1: the MIRRORED bake's own width
+                   (+1) -- its trailing trim differs, so it is a different width, not w0
+      transformed  facing 0: as baked                  facing 1: the runtime frame, w0 (+1 when
+                   the phase actually drawn, (k - pad) mod 4, is > 0)
+    Every pair is a SAVE (onto the P5.20 background) then an ERASE onto a different one, and
+    the erase is checked: everything keeps the erase background except the footprint, which
+    must come back as what the save took."""
+    raw = SC.get_cel(IMG / table, idx)
+    aw, h = raw["w"], raw["h"]
+    W = 7 * aw
+    src = convert(table, idx, start_col, False, False, "%s_f0" % tag)
+    mir = convert(table, idx, start_col, True, W % 2 == 0, "%s_f1" % tag)
+    w0, wm = src.w, mir.w
+    d = 4 * w0 - W
+    baked, xf = [], []
+    for f in (0, 1):
+        for k in range(4):
+            baked.append((w0 if f == 0 else wm) + (1 if k else 0))
+            kk = k if f == 0 else (k - d) % 4
+            xf.append(w0 + (1 if kk else 0))
+    cases = []
+    n = STRIDE * (h + 2)
+    for wd in sorted(set(baked) | set(xf)):
+        if (h, wd) in seen:
+            continue
+        seen.add((h, wd))
+        if h * wd > XP_PEEL_CAP:
+            raise SystemExit("%s: a %dx%d peel overruns the probe's buffer" % (tag, h, wd))
+        ptag = "peel_h%d_w%d" % (h, wd)
+        want_e = bg(n, ERASE_SEED)
+        save_bg = bg(n, SEED)
+        for r in range(h):
+            for c in range(wd):
+                o = STRIDE * (r + 1) + C_REF + c
+                want_e[o] = save_bg[o]
+        common = dict(tag=ptag, f=0, k=0, fn=None, stream="0", col=C_REF, a=h, b=wd, h=h)
+        cases.append(dict(common, mode="save", fn="blit_save_full", seed=SEED, want=save_bg))
+        cases.append(dict(common, mode="erase", fn="blit_erase_full", seed=ERASE_SEED, want=want_e))
+    meta = dict(tag=tag, table=table, idx=idx, apple_w=aw, W=W, h=h, w0=w0, wm=wm, d=d,
+                footprint=((W + 3) // 4) * h, peel_baked=baked, peel_xf=xf)
+    return cases, meta
+
+
 def batch_asm(streams, cases, hmax):
     buflen = STRIDE * (hmax + 2)
     assert XP_BUF + buflen <= XP_BUF_END, "a cel of %d rows does not fit the buffer" % hmax
@@ -268,11 +320,13 @@ def batch_asm(streams, cases, hmax):
     L += ["                org     $%04X" % XP_CASES,
           "xp_cases"]
     L.append("                fdb     xp_null,0,$%04X,$0000,%d" % (XP_BUF, STRIDE))
+    L.append("                fcb     $%02X,0" % SEED)
     for c in cases:
         dest = XP_BUF + STRIDE + c["col"]
         L.append("                fdb     %s,%s,$%04X" % (c["fn"], c["stream"], dest))
         L.append("                fcb     %d,%d" % (c["a"], c["b"]))
         L.append("                fdb     %d" % (STRIDE * (c["h"] + 2)))
+        L.append("                fcb     $%02X,0" % c.get("seed", SEED))
     L.append("                fdb     0")
     for name, data in streams.items():
         L.append(name)
@@ -294,6 +348,8 @@ def main():
     ap.add_argument("--shipped", action="append", default=[],
                     help="a content/cutscene/chars stem with _src.s and shipped bakes, e.g. p11")
     ap.add_argument("--out-prefix", default="b", help="batch file prefix (keeps runs apart)")
+    ap.add_argument("--peel", action="store_true",
+                    help="P5.21: blit_save/blit_erase at every pose's (rows, width), not draws")
     ap.add_argument("--start-col", type=int, default=0)
     ap.add_argument("--cap", type=int, default=XP_BUF - XP_CASES - 64,
                     help="bytes of case records + streams per batch")
@@ -318,8 +374,19 @@ def main():
 
     units = [("cel", s) for s in sel] + [("ship", s) for s in a.shipped]
     batches, cur = [], None
+    seen, peel_metas = set(), []
     for kind, u in units:
-        if kind == "cel":
+        if kind == "cel" and a.peel:
+            table, idx, sc = u
+            tag = "c_%s_%d" % (table.replace("IMG.", "").replace(".", "").lower(), idx)
+            cases, pm = peel_cases(table, idx, sc, tag, seen)
+            peel_metas.append(pm)
+            streams = {}
+            meta = dict(tag=tag, footprint=pm["footprint"], h=pm["h"])
+            # the checker keys its table by tag; give each (rows, width) pair a meta of its own
+            pair_metas = [dict(tag=c["tag"], footprint=c["a"] * c["b"], h=c["h"])
+                          for c in cases if c["mode"] == "save"]
+        elif kind == "cel":
             table, idx, sc = u
             tag = "c_%s_%d" % (table.replace("IMG.", "").replace(".", "").lower(), idx)
             streams, cases, meta = cel_cases(table, idx, sc, tag, baseline=not a.no_baseline)
@@ -333,7 +400,10 @@ def main():
             batches.append(cur)
         cur["streams"].update(streams)
         cur["cases"] += cases
-        cur["metas"].append(meta)
+        if kind == "cel" and a.peel:
+            cur["metas"] += pair_metas
+        else:
+            cur["metas"].append(meta)
         cur["size"] += size
         cur["hmax"] = max(cur["hmax"], meta["h"])
 
@@ -343,6 +413,8 @@ def main():
         recs = [dict(tag="calib", mode="null", dlen=STRIDE)] + [
             {k: v for k, v in c.items()} for c in b["cases"]]
         (OUT / ("%s%03d_cases.json" % (pre, i))).write_text(json.dumps(dict(cels=b["metas"], cases=recs)))
+    if a.peel:
+        (OUT / ("%s_peel_poses.json" % pre)).write_text(json.dumps(peel_metas))
     print("xform_probe_gen: %d units -> %d batch(es) '%s': %s"
           % (len(units), len(batches), pre,
              ", ".join("%d cases/%d B" % (len(b["cases"]), b["size"]) for b in batches)))
