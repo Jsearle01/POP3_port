@@ -58,6 +58,7 @@ import lz_pack as LZ                                          # noqa: E402
 SECTOR, SPT, NTRACK, DIR_TRACK, TRACK = 256, 18, 35, 17, 4608
 CHUNK = 8192
 FMT = "coco_dmk_rsdos"
+SIG_VERSION = 1
 
 
 class Img:
@@ -96,6 +97,12 @@ def main():
     ap.add_argument("--out", required=True)
     ap.add_argument("--decb-boot", default=None, help="a DECB binary to `put` (makes a DECB side)")
     ap.add_argument("--imgtool", default=shutil.which("imgtool") or r"C:\mame\imgtool.exe")
+    # P5.24: a SIDE SIGNATURE in one sector. On a DECB side it may only go in track 17 sectors
+    # 12..18, which DECB never writes (it uses 2 = FAT, 3..11 = directory); elsewhere it must not
+    # land inside a payload track. Content: the text (<= 32 B), then a format-version byte.
+    ap.add_argument("--sig-track", type=int, default=None)
+    ap.add_argument("--sig-sector", type=int, default=None)
+    ap.add_argument("--sig-text", default=None)
     a = ap.parse_args()
 
     out = pathlib.Path(a.out)
@@ -120,6 +127,20 @@ def main():
                 raise SystemExit("%s: track %d already holds %s" % (e["name"], t, owner[t]))
             owner[t] = e["name"]
         laid.append((e, raw, data, span))
+
+    sig = None
+    if a.sig_text is not None:
+        st, ss = a.sig_track, a.sig_sector
+        if st is None or ss is None or not (0 <= st < NTRACK and 1 <= ss <= SPT):
+            raise SystemExit("--sig-text needs a valid --sig-track and --sig-sector")
+        if decb and st == DIR_TRACK and not 12 <= ss <= 18:
+            raise SystemExit("on a DECB side the signature may only use track 17 sectors 12..18")
+        if st in owner:
+            raise SystemExit("signature sector T%d S%d is inside %s's payload" % (st, ss, owner[st]))
+        text = a.sig_text.encode("ascii")
+        if len(text) > 32:
+            raise SystemExit("signature text over 32 bytes")
+        sig = (st, ss, (text + bytes([SIG_VERSION])).ljust(SECTOR, b"\0"))
 
     out.parent.mkdir(parents=True, exist_ok=True)
     if out.exists():
@@ -154,8 +175,13 @@ def main():
                 fat[g] = 0xC9
         img.write(DIR_TRACK, 2, bytes(fat), tmp)
 
+    if sig:
+        img.write(sig[0], sig[1], sig[2], tmp)
+
     # ---- READ BACK every written sector ----
     bad = 0
+    if sig and img.read(sig[0], sig[1], tmp) != sig[2]:
+        bad += 1
     for e, raw, data, span in laid:
         buf = (pay / (e["name"] + ".bin")).read_bytes()
         for k, t in enumerate(span):

@@ -2219,3 +2219,24 @@ imgtool-authored gaps are what make the 1:1 layout work. **★★ AND THERE IS N
 `DSKINI drive,0` + `BACKUP` produces an unreadable disk (karateka, refuted); plain `BACKUP` is
 correct but slow. Ship as an image copy or a flux write. Both need real-hardware confirmation —
 MAME models a WD1773, it is not one.
+
+---
+
+## 43. Asking drive 1 a question without hanging (P5.22 measured, P5.24 shipped in the HAL)
+
+**`-ext:fdc:wd17xx:1 ""` removes drive 1; omitting `-flop2` leaves it empty.** What the WD1773 does:
+
+| drive 1 | Restore | index-pulse edges (Type I status b1, ~0.6 s) | HALT-paced read |
+|---|---|---|---|
+| a disk | completes | 6–8 | completes |
+| **empty** | completes | **0** | **never ends** |
+| **no drive** | **Busy never clears** | **0** | **never ends** |
+| **unformatted disk** (DMK with no sector IDs) | completes | 6 | **ends: RNF, status `$10`, ~2 s** |
+
+**★★ So: never arm HALT on a drive you have not seen turning.** `disk_present` (HAL, guarded
+`HAL_DISK_DRIVE_SELECT`) polls with HALT off, bounds the Restore AND REPORTS its timeout
+(`dr_wait_notbusy` returns as if Busy cleared — that bound alone does not protect a read), then counts
+index edges. **A polled read cannot replace the HALT read**: at 0.894 MHz it loses data after one byte.
+
+**Decision times (MAME):** a match 0.80 s warm / 1.22 s cold; empty 0.65 / 1.08; no drive 0.75 /
+1.19; unformatted 1.6–2.0. Tool: `harness/smoke/run_side_check.sh` (11 configurations, hang-detected).

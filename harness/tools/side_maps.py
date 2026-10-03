@@ -74,7 +74,9 @@ def main():
         rows.append(("side B", t, n, name, "reserved"))
         t += n
     # the directory: signature + one (track, tracks) pair per AUTHORED entry
-    d = bytearray(b"POPB")
+    # P5.24: the 16-byte signature + format version that make_side_dmk.py --sig-text writes on
+    # side A (there at T17 S18) -- here it heads side B's directory sector, T0 S1.
+    d = bytearray(b"POP COCO3 SIDE B" + bytes([1]))
     for e in entries:
         n, _, _ = tracks_for(e["file"], e["lz"])
         d += struct.pack(">BB", e["track"], n) + e["name"].encode()[:14].ljust(14, b"\0")
