@@ -22,6 +22,13 @@
 # the first time anything claims a block above $0F. Until then, MAME_RAM=128K is a live
 # configuration and the suites pass on it.
 #
+# ★ CORRECTED AT P5.23 — "the suites pass on it" has been FALSE since P5.15. What is true now:
+#   * the port still RUNS on 128 KB (nothing claims a block above $0F);
+#   * `tile` still passes there, and is the 128 KB run's whole job (run_suites.sh);
+#   * `introseq` and `integ` are DELIBERATELY red at 128 KB, so run_suites.sh no longer runs them
+#     at that size (Jay, 2026-10-03).
+# The P3.10 rationale below is unchanged: it is the reason a 128 KB path exists at all.
+#
 # ★ THE INVERTED PRECEDENT IS KEPT, because it is still true and still the reason to run
 # both. P3.10: buffer B at $18 was "fine on 512 KB and fatal on 128 KB: the port loaded,
 # started, and died at the first framebuffer access." 512 KB can pass while a masking

@@ -86,6 +86,13 @@ the live (w,h) must equal the vendored file's. Costs are port-side packed 4-colo
 **WINDOW residency — SET OF: the distinct cels ONE FRAME draws. INTERVAL: one frame. EXTENT: the
 15,872 B window ($FFA6 8,192 + $FFA7 7,680).**
 
+> **★ SCOPE NOTE (P5.23, from P5.21 §3D): "draws" in the line above should read "touches".** The tap
+> behind this set fires on every `setimage`, and `GETWIDTH` — a size query that draws nothing — calls it
+> too. Frame 9328 **drew** 736 B of characters and only **queried** 1,092 B more. **The WINDOW conclusion
+> stands** (a queried cel must be mapped to be read), so these figures are correct as residency. **They
+> are ~2× high as a draw volume**, and were later used as one (P5.10, P5.11, P5.20); the drawn character
+> peak is 963 B.
+
 | set | min | median | p90 | p99 | MAX |
 |---|---|---|---|---|---|
 | character cels/frame | 164 | 543 | 1,284 | 1,633 | **1,828** |

@@ -16,7 +16,8 @@ import json
 
 CLOCK_HZ = 894886 * 2
 STEP = CLOCK_HZ * (1681 / 60.0) / 266          # P5.2 -> 188,509 cy (P5.20 §3G)
-PEAK = 1922
+PEAK = 1922   # ★ P5.23: P5.7's RESIDENCY figure, used here as the dispatch asked; ~2x the drawn
+#               volume (963 B peak, P5.21 §3D). frame_fit_by_frame.py is the per-frame answer.
 
 
 def main():

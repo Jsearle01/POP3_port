@@ -233,6 +233,14 @@ and 7 from the animated list entirely.
 
 *Authority: trace.*
 
+> **★ SCOPE NOTE (P5.23, from P5.21 §3D) — this figure is right for what it was measured for, and was
+> later quoted as something else.** 1,922 B is what must be **mapped into the CPU window** in that frame:
+> every distinct cel `setimage` touched. `setimage` is called by `GETWIDTH` (a size query that reads the
+> cel and draws nothing) as well as by `PREPREP` (every draw), so the set includes cels that are only
+> **measured**. Frame 9328 **drew** 736 B of characters; the other 1,092 B were queried. **As a
+> residency figure, as used here, it stands** — a queried cel must be readable. **As a draw volume
+> (P5.10, P5.11, P5.20) it is ~2× high: the drawn character peak is 963 B.**
+
 Per-frame animated scenery, over the 262 frames of 266 that draw any: **min 21, median 216, p90 453,
 MAX 836 B.**
 

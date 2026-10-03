@@ -253,6 +253,17 @@ of the same cel back to back and is already on the disk.
 
 #### 3F — AC10/AC11/AC12: cycle cost
 
+> **★★★ CORRECTED AT P5.23 — the figures in this section were measured later, and the text below is
+> left as written because it was quoted onward (P3.88's precedent).**
+> - **"Mirror 6.8, joint 20.6 cy/byte — an upper bound" was not an upper bound.** It scaled the
+>   snippet's ratios onto `blit_core`'s 4.5 cy/byte, which is the `pulu`/`pshs` mover's rate; a
+>   transformed blast cannot use that mover at all (P5.20 §3A). **P5.20 measured mirror 45.6 and joint
+>   61.6 cy per footprint byte** (3.0× above 20.6), against the shipped baked blit's 78.5.
+> - **1,922 B is not a draw volume** (P5.21 §3D): it includes cels the oracle only measured
+>   (`GETWIDTH`). The drawn character peak is **963 B**.
+> - **The proposal in §4.2 survives**: the runtime transform is cheaper than drawing the bake
+>   (0.58–0.78×, P5.20).
+
 **AC10 — yes, cycle cost is now the operative question**, because A.1 closed correctness. §3.4's
 condition (*"if a Path-B mirror could be acceptable"*) is satisfied by a hardware gate rather than by
 a measurement.

@@ -28,6 +28,9 @@ CLOCK_HZ = 894886 * 2        # mame -listxml coco3 maincpu clock, x2 for $FFD9 (
 # clock, is the step -- the feel the port has to match.
 FPS = 266 / (1681 / 60.0)
 PEAK = 1922                  # P5.7 frame 9328: characters 1,828 + scenery 94
+# ★ P5.23: PEAK is P5.7's WINDOW-residency figure, kept so this tool reproduces what P5.20
+# reported. It is ~2x high as a DRAW volume -- it includes cels GETWIDTH only measured -- and
+# the drawn character peak is 963 B (P5.21 §3D). Read the "% of step" column with that in mind.
 PEAK_CHARS = 1828
 
 

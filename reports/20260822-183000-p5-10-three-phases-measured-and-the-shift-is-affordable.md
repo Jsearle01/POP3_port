@@ -184,6 +184,19 @@ rather than an estimate"* (lines 195, 345).
 computed the shift per byte with 2-6 `LSR` + 2-6 `ROR` and stack-pushed its loop counter per byte.
 Both are properties of that implementation.
 
+> **★★★ CORRECTED AT P5.23 — this section's two inputs were later measured, and both were wrong.
+> The text below is left as written because it was quoted onward (P3.88's precedent).**
+> - **The rate:** "~14 cy/byte" was an estimate scaled from `blit_core`'s 4.5 cy/byte, which is the
+>   `pulu`/`pshs` mover's rate, not the draw's. **P5.20 measured a runtime shift at 60.3 cy per
+>   footprint byte** (joint shift+mirror 61.6), and the shipped baked blit at **78.5**: ~61.5% / ~80%
+>   of the step on 1,922 B, not ~14% / 4.6%.
+> - **The volume:** **1,922 B is not a draw volume.** It counts cels the oracle only **measured**
+>   (`GETWIDTH`, a size query) as well as those it drew (P5.21 §3D: frame 9328 drew 736 B). **The drawn
+>   character peak is 963 B.** It remains a valid *residency* figure (P5.6/P5.7's use).
+> - **The conclusion survives, for a different reason:** shifting is cheaper than drawing the bake
+>   (0.76×, P5.20), and per oracle frame draw + peel is ≤ ~40–44% of the oracle's own frame time
+>   (P5.21 §3G).
+
 Against P5.7's joint per-frame peak of **1,922 B** (characters + scenery at the frame that maximises
 the pair):
 
@@ -253,6 +266,9 @@ the code.**
 ### 4 — Phase 4: the proposal (AC9-AC11)
 
 **4.1 — AC9: bake ONE phase and shift at run time.**
+
+> **★ P5.23: "~14% of one animation step" below is superseded — see the banner at §3G.** The
+> recommendation stands (P5.20 confirmed it on measurement); its cycle figure does not.
 
 The trade is not close. Baking costs **~24 blocks against 8 free**; shifting costs **~14% of one
 animation step**. §3G's table is the whole argument, and it turns on §3F's distinction between the

@@ -58,6 +58,15 @@ today's baked draw.
 step on either storage model**, before peel, game logic or sound. Baked or transformed, the draw path
 is the budget's largest consumer. The storage model is not what threatens it.
 
+> **★★★ CORRECTED AT P5.23 (from P5.21) — the paragraph above and the table's last column use 1,922 B as
+> a DRAW volume, and it is not one.** It counts cels the oracle only **measured** (`setimage` is also
+> called by `GETWIDTH`, a size query, `HIRES.S:287-301`) as well as those it drew: frame 9328 drew
+> **736 B**, and **the drawn character peak over the demo is 963 B** (P5.21 §3D). At the measured rates
+> that is ~31% of the step transformed and ~40% baked, not 63–80%. Per oracle frame, draw + peel stays
+> ≤ ~40–44% of the oracle's own time for that frame (P5.21 §3G). **The per-byte rates and ratios in
+> this report are unaffected**; only the volume they were multiplied by was wrong. Left as written
+> because it was quoted onward (P3.88's precedent).
+
 ---
 
 ### 2 — Files modified
@@ -317,6 +326,10 @@ not parse as a current stream. Recorded in §8, not touched.
 - **Step = 1,789,772 × 0.105326 = 188,509 cy.** P5.10's ~188,400 holds to 0.06%. (It took 6.31
   display frames × 29,859, which agrees, but the step is a wall-clock quantity and needs no coco3 frame
   rate at all.)
+
+> **★ P5.23: the volume in this table is ~2× the real draw — see the banner in §1.** Drawn character
+> peak 963 B: **31.5%** transformed (joint 61.6), **40.1%** baked (78.5). The step re-derivation above
+> stands.
 
 **Against P5.7's 1,922 B** (frame 9328: characters 1,828 + scenery 94):
 

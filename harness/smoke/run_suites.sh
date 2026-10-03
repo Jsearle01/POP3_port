@@ -14,6 +14,9 @@
 # not skip.
 #
 #   MAME_RAM=512K  ...  the confirmation machine; 128 KB is the target and the default.
+#
+# ★ CORRECTED AT P5.23: the line above is stale. 512 KB has been the TARGET and the DEFAULT since
+# P5.14 (ramsize.sh); 128 KB is now run as a block-ALIASING detector, `tile` only -- see below.
 set -u
 
 cd "$(dirname "$0")/../.." || exit 1
@@ -58,9 +61,27 @@ SUITES="introseq integ tile"
 # tracks. What was costing time was RUNNING them, and that is what stopped.
 RETIRED="probe cel compiled mode anim room walk"
 
+. "$(dirname "$0")/ramsize.sh"
+
+# ── ★★ 128 KB RUNS `tile` ONLY (P5.23, Jay: "im not sure what value there is in running the 128k
+# suite. we know its going to fail, and we've moved to 512kb.") ──────────────────────────────
+# `introseq` and `integ` are DELIBERATELY red at 128 KB since P5.15, and a suite that is always red
+# reports nothing: a second, unrelated failure in either would be invisible.
+# ★★★ BUT THE 128 KB PASS IS NOT DELETED, because ramsize.sh's reason for it still holds. It is a
+# BLOCK-ALIASING DETECTOR, not a claim that 128 KB is supported: every block the port uses is still
+# $0C-$0F / $10-$17 / $38-$3F, real on 512 KB and correctly aliased on 128 KB, and P3.10's buffer B
+# at $18 was "fine on 512 KB and fatal on 128 KB". `tile` boots the port off the disk and compares a
+# displayed framebuffer byte for byte, so it fails the moment something claims a block above $0F.
+# A green 128 KB run therefore means "nothing has started depending on aliasing" -- earned by
+# SCOPING the run, not by fixing the two suites. (run_block_budget.sh keeps its own 128K: its
+# subject IS the stock machine.)
+case "${MAME_RAM:-}" in
+    128K|128k) SUITES="tile"
+               echo "[suites] 128 KB: aliasing detector -- running 'tile' only (introseq/integ red by design since P5.15)" ;;
+esac
+
 echo "[suites] running: $SUITES"
 echo "[suites] retired at P3.103 (see harness/smoke/retired.sh): $RETIRED"
-. "$(dirname "$0")/ramsize.sh"
 echo "[suites] $RAMOPT"
 echo
 

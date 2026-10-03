@@ -36,6 +36,21 @@
 * 59.92 Hz display, so a character is drawn once per ~6.3 display frames and the real
 * budget is ~188,400 cy, not 29,859. A runtime shift costs ~14% of that. [P5.10]
 *
+* ★★★ CORRECTED AT P5.23 -- THE "~14%" ABOVE WAS AN ESTIMATE, AND IT WAS QUOTED ONWARD. It was
+* P5.10's ~14 cy/byte (an unwritten routine, scaled from this file's 4.5 cy/byte) times P5.7's
+* 1,922 B. Both inputs have since been measured, and both were wrong:
+*   * THE RATE. P5.20 built the runtime transform and timed it on all 290 gameplay cels (the
+*     debugger's totalcycles, byte-exact): SHIFT 60.3, joint shift+mirror 61.6 cy per phase-0
+*     footprint byte -- and THIS blitter, drawing the pre-baked pose, 78.5. On 1,922 B that is
+*     ~61.5% of the step for a shift, ~80% baked: the shift is CHEAPER than drawing the bake.
+*   * THE VOLUME. 1,922 B is NOT a draw volume. P5.21 found it counts cels the oracle only
+*     MEASURED -- `setimage` is also called by GETWIDTH [HIRES.S:287-301], a size query -- as
+*     well as cels it drew: frame 9328 drew 736 B and merely queried 1,092. The drawn character
+*     peak over the demo is 963 B, which at 61.6 is ~31% of a 188,509 cy step.
+*   * THE BUDGET. Per oracle game frame, draw + peel is at most ~40-44% of the time the ORACLE
+*     itself took over that same frame (P5.21 §3G) -- the step above is a MEAN, and heavy frames
+*     take the original longer too. Logic, scenery and sound are not in that figure.
+*
 * ---------------------------------------------------------------
 * THE CORE: PULU ASCENDS, PSHS DESCENDS, AND THAT IS LOAD-BEARING
 * ---------------------------------------------------------------
@@ -52,6 +67,13 @@
 * FOUR-BYTE GROUPS, NOT SIX. `pulu d,x,y` would move six, but X is this blitter's
 * destination pointer and PULU would clobber it. `pulu d,y` moves four for 18 cy
 * = 4.5 cy/byte, inside the 4.5-5.8 band P3.19 measured for real 4-9 byte rows.
+*
+* ★★ SCOPE (P5.23): 4.5 cy/byte IS THE MOVER'S RATE ON A FOUR-BYTE GROUP, NOT THIS ROUTINE'S.
+* Measured on all 290 gameplay cels, blit_cel draws at 78.5 cy per footprint byte -- about
+* 101 cy per SEGMENT + 2.6 per byte + 92 per row (P5.20 §3D, corroborated by a static decode of
+* this file's listing) -- because most segments are one byte long [P3.79], so the per-segment
+* walk, not the mover, is four-fifths of the cost. Every estimate from P5.10 to P5.11 scaled
+* from the 4.5 and came out 3-7x low. The number above is right; it is a number about pulu/pshs.
 *
 * S IS THE STACK POINTER. Every entry point here masks interrupts and parks the
 * real S. The masked window is the cost P3.19 flagged: a full character draw is a
