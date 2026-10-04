@@ -269,7 +269,17 @@ run_suites.sh 128K: [run_tile_test] PASS / [suites] ALL PASS
 ```
 **25.2:** N/A — no sibling-import artifact. `xf_blit.s` is POP's own, and the HAL is untouched.
 
-**25.3 operator-runtime-smoke: PENDING JAY.** Runner: `harness/smoke/run_char_live.sh`, which is
+**25.3 operator-runtime-smoke: PENDING JAY — observed, verdict not yet given.**
+
+> **Gate run 1 (2026-10-04), live-disk, RGB, 512 KB, `run_char_live.sh`.** Jay: *"i typed exec and
+> closed it. i did see 3 kids two facing left and one facing right."* That is the drawn arrangement
+> (two in the stored facing, the mirror opposite). It is recorded as an OBSERVATION, not a pass:
+> colour, proportion, placement and the mirrored kid's look have not been ruled on.
+>
+> The run's log read `status=4` one frame after the script's EXEC, because Jay's own EXEC had already
+> run the program during the script's 1,500-frame wait. A headless re-run of the same script on the same
+> image walks every stage (boot → mode 1867 → page 1986 → drawn 2008 → shown 2017), so the program
+> is unaffected. The wait is now 900 frames (`run_char_live.sh`). Runner: `harness/smoke/run_char_live.sh`, which is
 **`live-disk`** (`LOADM"CHAR"` + `EXEC` off `build/char_gate.dmk`), RGB (`dist/mame-cfg/rgb`), 512 KB,
 throttled and windowed. **The picture is static, so a live observation is complete for it.**
 
