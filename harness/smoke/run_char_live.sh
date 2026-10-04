@@ -28,7 +28,9 @@ export P_FILE="CHAR" P_OUT="build/char_live.log"
 # settle tile_test.lua uses; LOADM's first byte lands ~540 frames after it is typed. The first
 # gate ran at 1500 (25 s of a silent prompt) and Jay typed EXEC himself, which is harmless to
 # the program but leaves the log watching only after the picture is already up.
-export P_EXEC_WAIT="${P_EXEC_WAIT:-900}"
+export P_EXEC_WAIT="${P_EXEC_WAIT:-1800}"
+# P5.29: CHAR.BIN grew to 13.9 KB (seven granules); 900 frames is no longer enough for LOADM
+# (run_char_test.sh measured it), so this is 1,800 -- ~30 s at the BASIC prompt, throttled.
 
 . "$(dirname "$0")/ramsize.sh"
 . "$(dirname "$0")/cfgdir.sh"

@@ -82,8 +82,9 @@ XF_DPPAGE       equ     $2C
 XF_M            equ     $2D00           ; 256 B, natural order: M[b] = 11 per zero pixel
 XF_T1           equ     $2E00           ; mirror, permuted (index b^$80), use base+128
 XF_T2           equ     $2F00           ; mirror + blue<->orange swap, permuted
-XF_TABS         equ     $3000           ; 9 pairs x 512 B: (k-1)*3+t, F then C, permuted
-XP_CASES        equ     $4200           ; generated: 12-byte records, then the streams
+XF_TABS         equ     $3000           ; 13 pairs x 512 B, F then C, permuted (xf_blit.s)
+XP_CASES        equ     $4A00           ; generated: 12-byte records, then the streams
+*                                         (P5.29: was $4200 -- XF_TABS now runs to $49FF)
 XP_PEEL         equ     $1800           ; P5.21: the peel buffer handed to blit_save/erase in Y
 XP_PEEL_END     equ     $1C00           ;   (1 KB; the generator refuses a pose that needs more)
 XP_BUF          equ     $6C00           ; the destination, 80-byte stride (64 rows to $8000;

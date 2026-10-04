@@ -44,7 +44,7 @@ IMG = ROOT / "oracle/source/01 POP Source/Images"
 OUT = ROOT / "build/xform"
 
 # --- the probe's fixed layout (src/harness/xform_probe.s says the same) -------------
-XP_CASES = 0x4200
+XP_CASES = 0x4A00               # P5.29: was $4200; the four swap-only pairs take $4200-$49FF
 XP_BUF = 0x6C00
 XP_BUF_END = 0x8000
 REC = 12                        # fn, stream, dest, A, B, dump length, fill seed, pad (P5.21)
@@ -114,7 +114,21 @@ def tables_asm():
             L.append("* pair k=%d t=%d: F then C (permuted)" % (k, t))
             L += fcb(permuted(F))
             L += fcb(permuted(C))
+    # P5.29: the SWAP-ONLY pairs (t = 3), k = 0..3, contiguous after the nine. S is the
+    # blue<->orange swap with NO reversal; for k = 0, F = S and C = SHL_0 = 0, so the ascending
+    # loop draws an unshifted swapped frame (xf_blit.s, xf_swap).
+    for k in (0, 1, 2, 3):
+        F = (lambda b, k=k: shr(S(b), k))
+        C = (lambda b, k=k: shl(S(b), k))
+        L.append("* pair k=%d t=3 (swap only): F then C (permuted)" % k)
+        L += fcb(permuted(F))
+        L += fcb(permuted(C))
     return L
+
+
+def S(b):
+    """Blue<->orange (pixel indices 1<->2) with no reversal -- the colour phase alone."""
+    return pk4([SWAP[v] for v in px4(b)])
 
 
 def fcb(vals):

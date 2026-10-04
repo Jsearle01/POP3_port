@@ -925,11 +925,20 @@ REM draw that touches a foreground rectangle or leaves the screen, and writes th
 REM framebuffer run_char_test.sh compares against. Layout: link/pop_charprobe.link.
 python harness/tools/xf_tables.py --out build/gen/xf_tables.s
 if errorlevel 1 goto :error
+REM P5.29: the frame table (Fcheck per frame, cel_table.s's shape) is generated from FRAMEDEF.S
+REM and COMMITTED like char_cels.s; regenerating it here and comparing keeps the two from drifting.
+python harness/tools/gen_frame_table.py --out build/gen/frame_table_check.s
+if errorlevel 1 goto :error
+fc /b build\gen\frame_table_check.s content\chars\frame_table.s >nul
+if errorlevel 1 (
+    echo *** BUILD BLOCKED: content/chars/frame_table.s is not what FRAMEDEF.S generates ***
+    exit /b 1
+)
 python harness/tools/char_probe_plan.py --asm build/gen/char_probe_place.s --ref build/assets/char_ref.bin
 if errorlevel 1 goto :error
 lwasm --obj -DOBJTARGET -DCHAR_PROBE -DDR_VARBASE=%DR_VARBASE% -DTILE_TRK=%TILE_TRK% -I . -o build/obj/char_tile.o src/engine/tile_probe.s
 if errorlevel 1 goto :error
-lwasm --obj -DOBJTARGET -DXF_DPPAGE=0x57 -DXF_M=0x4200 -DXF_T1=0x4300 -DXF_T2=0x4400 -DXF_TABS=0x4500 -I . -o build/obj/xf_blit.o src/engine/xf_blit.s
+lwasm --obj -DOBJTARGET -DXF_DPPAGE=0x5F -DXF_M=0x4200 -DXF_T1=0x4300 -DXF_T2=0x4400 -DXF_TABS=0x4500 -I . -o build/obj/xf_blit.o src/engine/xf_blit.s
 if errorlevel 1 goto :error
 lwasm --obj -DOBJTARGET -I . -o build/obj/xf_tables.o build/gen/xf_tables.s
 if errorlevel 1 goto :error

@@ -5,9 +5,9 @@ The probe gets its tables from xform_probe_gen.tables_asm(), as absolute `org` b
 own addresses. An engine link places them where its map says instead, so this emits the same
 bytes, in the same order, as one relocatable section:
 
-    M (256, natural)  T1 (256, permuted)  T2 (256, permuted)  9 pairs x (F 256, C 256)
+    M (256, natural)  T1 (256, permuted)  T2 (256, permuted)  13 pairs x (F 256, C 256)
 
-5,376 B. The section must load PAGE-ALIGNED: xf_blit patches the LOW byte of an `andb >XF_M`
+7,424 B (5,376 to P5.28; P5.29 added four swap-only pairs, 2,048 B). The section must load PAGE-ALIGNED: xf_blit patches the LOW byte of an `andb >XF_M`
 operand with the index, so M's high byte must be the whole of its page. The build passes the
 section's load address as XF_M and derives the rest (XF_T1 = XF_M+$100, XF_T2 = +$200,
 XF_TABS = +$300); this file states that layout and the link map is checked against it.
@@ -26,7 +26,7 @@ HERE = pathlib.Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE))
 import xform_probe_gen as G                                 # noqa: E402
 
-SIZE = 256 * 3 + 9 * 512
+SIZE = 256 * 3 + 13 * 512      # P5.29: + the four swap-only pairs
 
 
 def table_bytes():
@@ -43,6 +43,9 @@ def table_bytes():
                 C = (lambda b, k=k, s=(t == 2): G.shr(G.T(b, s), k))
             out += G.permuted(F)
             out += G.permuted(C)
+    for k in (0, 1, 2, 3):                                  # P5.29: swap only, t = 3
+        out += G.permuted(lambda b, k=k: G.shr(G.S(b), k))
+        out += G.permuted(lambda b, k=k: G.shl(G.S(b), k))
     assert len(out) == SIZE
     return out
 

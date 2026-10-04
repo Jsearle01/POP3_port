@@ -1,28 +1,34 @@
-; link/pop_charprobe.link — THE CHARACTER PROBE's memory map (P5.28).
+; link/pop_charprobe.link — THE CHARACTER PROBE's memory map (P5.28; re-laid P5.29).
 ;
-; tile_probe.s assembled with -DCHAR_PROBE, plus char_probe.s (the draw list, the baked stream,
-; the registry), xf_blit.s (the transform), blit_core.o (its identity case) and xf_tables.
+; tile_probe.s assembled with -DCHAR_PROBE, plus char_probe.s (the draw list; its streams, the
+; registry and the frame table in section chdata), xf_blit.s (the transform), blit_core.o (its
+; identity case) and xf_tables.
 ;
-;   $3000-$41FF   the packed tile page, staged one whole track (tile_probe.s LZ_STAGE)
-;   $4200-$56FF   xf_blit's TABLES, 5,376 B: M $4200 (PAGE-ALIGNED -- the patched operand's
-;                 low byte is the index), T1 $4300, T2 $4400, the nine pairs $4500-$56FF.
-;                 build.bat passes these to xf_blit.s as -DXF_M/-DXF_T1/-DXF_T2/-DXF_TABS.
-;   $5700-$570D   xf_blit's direct page (-DXF_DPPAGE=0x57), fourteen bytes, nothing else
-;   $5800-....    the program (section `prog`), EXEC address = tile_entry
+;   $0E00-....    the program (section `prog`), EXEC address = tile_entry. $0E00 is the LOADM
+;                 floor build.bat's map_overlap_check enforces (DECB's buffers end below it).
+;   $3000-$41FF   the packed tile page, staged one whole track (tile_probe.s LZ_STAGE) --
+;                 written by the program's own disk read, so nothing LOADM'd may live here
+;   $4200-$5EFF   xf_blit's TABLES, 7,424 B: M $4200 (PAGE-ALIGNED -- the patched operand's
+;                 low byte is the index), T1 $4300, T2 $4400, the nine shift pairs $4500-$56FF,
+;                 and P5.29's four SWAP-ONLY pairs $5700-$5EFF (k = 0..3; the colour phase
+;                 without the mirror). build.bat passes -DXF_M/-DXF_T1/-DXF_T2/-DXF_TABS.
+;   $5F00-$5F0D   xf_blit's direct page (-DXF_DPPAGE=0x5F), fourteen bytes, nothing else
 ;   $6A00-$6A06   the disk driver's parameter block (-DDR_VARBASE)
+;   $6B00-....    section chdata: the baked streams, char_cels.s, frame_table.s
+;   $7800-$78FF   trace ring buffer
 ;   $7900-....    KERNEL (section `code` = hal_build.o)
 ;   $7F00         stack top
 ;   $8000-$BBFF   the back buffer; $C000-$DFFF the tile page through $FFA6
 ;
-; ★ WHY $5800 AND NOT $2000 LIKE THE TILE PROBE. Jay, 2026-10-04: "since we are using a
-; loader to start the program, after that loadm areas arent important since we only use
-; loadm to boot." The LOADM ceiling at $2488..$2535 (link/pop_engine.link) is a constraint on
-; BOOTING, and this program's prog (renderer + blit_core + xf_blit + glue) is past it -- so
-; it is simply placed above the staging area instead, where a LOADM of 6,912 B at $4000 was
-; measured to load (idioms §23). map_overlap_check sees this map like every other.
+; ★ WHY NOT $2000 LIKE THE TILE PROBE. Jay, 2026-10-04: "since we are using a loader to start
+; the program, after that loadm areas arent important since we only use loadm to boot." The
+; LOADM ceiling at $2488..$2535 (link/pop_engine.link) is a constraint on BOOTING; this
+; program's code is past it at $2000, so it sits at the floor instead, and its data above the
+; driver block. A LOADM of 6,912 B at $4000 was measured to load (idioms §23).
 
+section prog load 0E00
 section xftab load 4200
-section prog load 5800
+section chdata load 6B00
 section code load 7900
 
 entry tile_entry

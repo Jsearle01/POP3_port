@@ -32,6 +32,7 @@ local WANT_ENTS = tonumber(os.getenv("P_WANT_ENTS") or "0")
 -- verifier. These three default to exactly what the tile suite always used.
 local FILE     = os.getenv("P_FILE") or "TILE"                  -- what LOADM types
 local MARK     = os.getenv("P_MARK") or "build/tile_test"       -- <MARK>_PASS / _FAIL
+local SETTLE   = tonumber(os.getenv("P_SETTLE") or "900")       -- frames from LOADM to EXEC
 
 local FB_BASE, FB_SIZE = 0x8000, 15360
 local PAGE_MAGIC = 0x7B1E           -- bake_screen.py's; NOT the cutscene's $C35A
@@ -112,7 +113,7 @@ local function tick()
             loaded = fn
             log("# LOADM first byte landed at frame " .. fn)
         end
-        if fn > t0 + 900 then
+        if fn > t0 + SETTLE then
             log(string.format("# at EXEC: $2000=%02X %02X %02X, $7900=%02X",
                               rd8(0x2000), rd8(0x2001), rd8(0x2002), rd8(0x7900)))
             nk:post('EXEC\n')

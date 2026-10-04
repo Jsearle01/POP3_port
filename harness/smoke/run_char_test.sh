@@ -50,6 +50,10 @@ export P_BLK_B=$(printf '0x%02X' $(( 0x$BLK_B - 0x$CODEBASE )))
     export P_WANT_ENTS=$(python -c "import sys;print(open('build/assets/tile_page.raw','rb').read(4)[3])")
 
 export P_OUT="$LOG" P_DUMP="$GOT" P_FILE="CHAR" P_MARK="build/char_test"
+# CHAR.BIN is 13.9 KB (seven granules) since P5.29: LOADM is still loading at tile_test.lua's
+# default 900 frames, the EXEC keystroke is lost and the program never starts (status 0,
+# BASIC's palette). Measured: 900 fails, 2,000 passes; 1,800 is the default here.
+export P_SETTLE="${P_SETTLE:-1800}"
 SHOT="${P_SHOT:-build/char_screen1.png}"
 export P_PAL="${P_PAL:-build/char_palette.bin}"
 rm -f "$SHOT" "$P_PAL"

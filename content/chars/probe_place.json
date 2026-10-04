@@ -1,9 +1,11 @@
 {
-  "_": "P5.28 placement table: the ONE home for where the character-probe draws (CLAUDE.md 2F). Read by harness/tools/char_probe_plan.py, which emits the 6809 draw list AND the predicted framebuffer from it. The kid's frame 15 ('stand', FRAMEDEF.S:37: Fimage $0F -> CHTAB1 #15, Fdx 0, Fdy 0) on LEVEL0 screen 1's top floor: CharY = FloorY[block row 0] = 191-126-10 = 55 [TABLES.S:179-185], so the cel's bottom row is yco = CharY + Fdy = 55 [CTRLSUBS.S:823-828]. col = byte column of the frame in the port framebuffer, the REFERENCE's column (P5.20's semantics: a mirrored draw is registered to the bake's mirror, the routine's own frame sits d px left of it). Columns chosen on block columns 4-5 (port bytes 33..46): floor underfoot, clear of every foreground rectangle and of the gate bars that bg_compose omits at block column 0.",
+  "_": "Placement table for the character probe: the ONE home for where it draws (CLAUDE.md 2F). Read by harness/tools/char_probe_plan.py, which emits the 6809 draw list AND the predicted framebuffer from it. LEVEL0 screen 1's top floor: CharY = FloorY[block row 0] = 191-126-10 = 55 [TABLES.S:179-185]; a cel's bottom row is yco = CharY + Fdy [CTRLSUBS.S:823-828]. col = the REFERENCE frame's byte column (a mirrored draw is registered to the reference's mirror; the routine's own frame sits d px left of it). Columns are on block columns 4-8 (port bytes 33..67): floor underfoot (block columns 2-3 are a pit), clear of every foreground rectangle, of the gate bars bg_compose omits at block column 0, and of each other. P5.28: identity/shifted/mirrored of frame 15 ('stand', Fcheck $43, PL 0). P5.29 adds frame 1 ('run-4', Fcheck $C4: PL 1, drawn UNMIRRORED -- the half of the colour defect P5.28's gate could not show) and frame 3 ('run-6', CHTAB1 #3, apple_w 3 = ODD, MIRRORED -- the case where MLayGen's 7*apple_w shift decides the swap).",
   "screen": {"level": "LEVEL0", "screen": 1},
   "draws": [
-    {"name": "identity", "table": "IMG.CHTAB1", "image": 15, "frame": 15, "char_y": 55, "fdy": 0, "col": 34, "phase": 0, "facing": 0},
-    {"name": "shifted",  "table": "IMG.CHTAB1", "image": 15, "frame": 15, "char_y": 55, "fdy": 0, "col": 39, "phase": 1, "facing": 0},
-    {"name": "mirrored", "table": "IMG.CHTAB1", "image": 15, "frame": 15, "char_y": 55, "fdy": 0, "col": 44, "phase": 0, "facing": 1}
+    {"name": "identity", "table": "IMG.CHTAB1", "image": 15, "frame": 15, "char_y": 55, "fdy": 0, "col": 33, "phase": 0, "facing": 0},
+    {"name": "shifted",  "table": "IMG.CHTAB1", "image": 15, "frame": 15, "char_y": 55, "fdy": 0, "col": 37, "phase": 1, "facing": 0},
+    {"name": "mirrored", "table": "IMG.CHTAB1", "image": 15, "frame": 15, "char_y": 55, "fdy": 0, "col": 42, "phase": 0, "facing": 1},
+    {"name": "pl1",      "table": "IMG.CHTAB1", "image": 1,  "frame": 1,  "char_y": 55, "fdy": 0, "col": 47, "phase": 0, "facing": 0},
+    {"name": "oddmirror","table": "IMG.CHTAB1", "image": 3,  "frame": 3,  "char_y": 55, "fdy": 0, "col": 53, "phase": 0, "facing": 1}
   ]
 }

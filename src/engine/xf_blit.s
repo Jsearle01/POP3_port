@@ -20,7 +20,9 @@
 *               index, so the high byte must be the whole of the page
 *   XF_T1       256 B, mirror, permuted (index b^$80; the routine uses base+128)
 *   XF_T2       256 B, mirror + blue<->orange swap, permuted
-*   XF_TABS     9 pairs x 512 B: pair (k-1)*3+t, F then C, permuted
+*   XF_TABS     13 pairs x 512 B, F then C, permuted: pair (k-1)*3+t for the nine shift
+*               pairs (t = 0 plain, 1 mirror, 2 mirror+swap), then pair 9+k for the four
+*               SWAP-ONLY pairs (t = 3, k = 0..3; P5.29)
 * The tables' contents are xform_probe_gen.tables_asm()'s; harness/tools/xf_tables.py emits
 * the same bytes as a linkable section and checks them against it.
 *
@@ -162,7 +164,9 @@ M0_D            macro
 *   Entry: X = the output frame's byte 0, top row
 *          U = stream: rows, width, segments (cel_blit_prep.py format)
 *          A = k, 0..3
-*          B = flags: bit0 mirror, bit1 blue<->orange swap (with mirror)
+*          B = flags: bit0 mirror, bit1 blue<->orange swap -- with OR without the mirror
+*              (P5.29: the oracle picks the colour phase per frame and per facing, so an
+*              UNMIRRORED draw can need the swap too; see char_probe.s for the rule)
 *   Exit:  A,B,X,Y,U clobbered. CC and DP restored.
 *
 * The output frame is w+1 bytes when k > 0 (the last carry lands in byte w), w when k = 0.
@@ -193,11 +197,17 @@ xf_go
                 ldd     ,u++                    ; A = rows, B = width
                 sta     <xf_rows
                 stb     <xf_w
-* t = 0 plain, 1 mirror, 2 mirror+swap
+* t = 0 plain, 1 mirror, 2 mirror+swap, 3 swap alone (P5.29)
                 lda     xf_fl_x
                 anda    #1
-                beq     xf_t_ok
+                bne     xf_t_m
                 lda     xf_fl_x
+                anda    #2
+                beq     xf_t_ok                 ; A = 0: plain
+                lda     #3
+                sta     <xf_t
+                bra     xf_swap
+xf_t_m          lda     xf_fl_x
                 lsra
                 anda    #1
                 inca                            ; 1 or 2
@@ -219,6 +229,21 @@ xf_t_ok         sta     <xf_t
                 std     <xf_ctab
                 lda     <xf_t
                 lbne    xd_go                   ; mirrored -> descending writes
+                lds     <xf_ctab
+                lbra    xa_row
+
+* --- swap alone (t = 3, P5.29): pair 9+k through the SAME ascending loop. For k = 0 the
+* pair is F = S (the swap) and C = 0, so the loop's carry is always zero and the frame is w
+* bytes, not w+1: an unshifted swapped draw with no loop of its own to verify. Every byte the
+* loop treats as possibly partial still goes through M, so a merge keeps its background.
+xf_swap         lda     xf_k_x
+                adda    #9
+                ldy     #xf_ptab
+                lsla
+                ldy     a,y
+                tfr     y,d
+                adda    #1                      ; C = F + 256
+                std     <xf_ctab
                 lds     <xf_ctab
                 lbra    xa_row
 
@@ -528,6 +553,9 @@ xf_exit
 xf_ptab         fdb     XF_TABS+0*512+128,XF_TABS+1*512+128,XF_TABS+2*512+128
                 fdb     XF_TABS+3*512+128,XF_TABS+4*512+128,XF_TABS+5*512+128
                 fdb     XF_TABS+6*512+128,XF_TABS+7*512+128,XF_TABS+8*512+128
+* P5.29: the swap-only pairs, k = 0..3
+                fdb     XF_TABS+9*512+128,XF_TABS+10*512+128,XF_TABS+11*512+128
+                fdb     XF_TABS+12*512+128
 
 xf_k_x          rmb     1
 xf_fl_x         rmb     1
