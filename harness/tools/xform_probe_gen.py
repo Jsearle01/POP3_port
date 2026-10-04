@@ -188,24 +188,64 @@ def baked_stream(table, idx):
     return fcb_values(BAKED / t / ("%s_%03d_p0.s" % (t, idx)))
 
 
-def cel_cases(table, idx, start_col, tag, baseline=True, baked=None):
+def cel_cases(table, idx, start_col, tag, baseline=True, baked=None, pl=None, draw="p520"):
     """All (facing, phase) cases for one cel. Returns (streams, cases, meta).
 
     baked (P5.27): None, or the registry from baked_registry(). When given, the stream the
     probe DRAWS is the committed content/chars bake and apple_w comes from the registry;
-    the REFERENCE is still generated here, exactly as P5.20 generated it."""
+    the REFERENCE is still generated here.
+
+    ★★ pl (P5.29): the ORACLE's colour phase for this use of the cel -- the parity of the
+    draw X facing LEFT, from cel_parity_rule.gameplay_uses() (bit7(Fcheck) vs CharFace, plus
+    SWORDTAB's dx for a sword). None reproduces P5.20's reference exactly: both facings
+    coloured at `start_col`, the mirror flipped iff 7*apple_w is even. P5.28's gate showed
+    that reference is wrong against the oracle (the mirrored kid blue, not orange) and that
+    every check built on it agreed with the wrong colour. With pl, the reference is coloured
+    the way the shipped cutscene is (bake_scene.convert_src, Jay-gated at P3.72h on an
+    ODD-width mirror), from where the ORACLE draws it:
+        facing 0: sprite_convert at a column of parity PL
+        facing 1: the oracle's X is the OTHER parity (the face bit flips the comparison), and
+                  MLayGen lays the mirror 7*apple_w px left of it [HIRES.S:1202-1208;
+                  cel_parity_rule.draw_x], so its left column has parity
+                  (1 - PL) XOR (apple_w odd); sprite_convert --mirror there, flipped iff
+                  7*apple_w is even (bake_scene.py:626-631).
+    Nothing here reads the bake's colouring or the draw's flag: the reference's only parity
+    input is the ORACLE's Fcheck, through cel_parity_rule.
+
+    draw: the swap flag the CALLER hands xf_blit, i.e. the half of the draw that is
+    placement arithmetic.
+        "p520"   P5.20's: facing 0 never swaps; facing 1 swaps iff 7*apple_w is even
+        "oracle" P5.29's: swap = PL in BOTH facings. Derived: the stored cel is coloured at
+                 even; facing 0 wants parity PL, so swap iff PL; facing 1 wants
+                 [(1-PL) xor aw_odd] then the even-width flip [aw_even], and
+                 aw_odd xor aw_even = 1, so swap iff PL again.
+    """
     raw = SC.get_cel(IMG / table, idx)
     aw, h = raw["w"], raw["h"]
     if baked is not None:
         aw = baked[(table.replace("IMG.", "").replace(".", "").lower(), idx)]
     W = 7 * aw
     flip = (W % 2 == 0)
-    src = convert(table, idx, start_col, False, False, "%s_f0" % tag)
-    mir = convert(table, idx, start_col, True, flip, "%s_f1" % tag)
-    if baked is None:
+    if pl is None:
+        sc0 = sc1 = start_col
+    else:
+        sc0 = pl
+        sc1 = (1 - pl) ^ (aw & 1)
+    src = convert(table, idx, sc0, False, False, "%s_f0" % tag)
+    mir = convert(table, idx, sc1, True, flip, "%s_f1" % tag)
+    if draw == "p520":
+        swap0, swap1 = False, flip
+    else:
+        swap0 = swap1 = bool(pl)
+    # The DRAWN stream is the STORED colouring -- the bake's, at `start_col` -- never the
+    # reference's: a draw fed the reference's colouring would agree with it by construction.
+    if baked is not None:
+        streams = {"%s_src" % tag: baked_stream(table, idx)}
+    elif pl is None:
         streams = {"%s_src" % tag: stream(src, 0)}
     else:
-        streams = {"%s_src" % tag: baked_stream(table, idx)}
+        stored = convert(table, idx, start_col, False, False, "%s_st" % tag)
+        streams = {"%s_src" % tag: stream(stored, 0)}
     w0 = streams["%s_src" % tag][1]
     d = 4 * w0 - W
     cases = []
@@ -220,17 +260,17 @@ def cel_cases(table, idx, start_col, tag, baseline=True, baked=None):
                                   stream=refname, col=C_REF, a=0, b=0, h=h, want=want,
                                   nseg=nseg(ref), sbytes=len(ref)))
             if f == 0:
-                col, a, b = C_REF, k, 0
+                col, a, b = C_REF, k, (2 if swap0 else 0)
             else:
                 p = 4 * C_REF + k - d
-                col, a, b = p // 4, p % 4, 1 | (2 if flip else 0)
+                col, a, b = p // 4, p % 4, 1 | (2 if swap1 else 0)
             src0 = streams["%s_src" % tag]
             cases.append(dict(tag=tag, f=f, k=k, mode="xform", fn="xf_blit",
                               stream="%s_src" % tag, col=col, a=a, b=b, h=h, want=want,
                               nseg=nseg(src0), sbytes=len(src0)))
     meta = dict(tag=tag, table=table, idx=idx, start_col=start_col, apple_w=aw, W=W, h=h,
                 w0=w0, d=d, flip=flip, footprint=((W + 3) // 4) * h, stored=w0 * h,
-                src_bytes=len(streams["%s_src" % tag]))
+                src_bytes=len(streams["%s_src" % tag]), pl=pl, draw=draw)
     return streams, cases, meta
 
 
@@ -425,6 +465,13 @@ def main():
     ap.add_argument("--baked", action="store_true",
                     help="P5.27: draw the committed content/chars streams (apple_w from its "
                          "registry) instead of generating them; the reference is unchanged")
+    ap.add_argument("--parity", choices=("oracle", "even"), default="oracle",
+                    help="P5.29: the REFERENCE's colour phase. oracle = per USE, from the oracle's "
+                         "Fcheck (cel_parity_rule.gameplay_uses); even = P5.20's, every cel at "
+                         "--start-col (shown wrong by Jay at P5.28)")
+    ap.add_argument("--draw", choices=("oracle", "p520"), default="oracle",
+                    help="P5.29: the swap flag the caller gives xf_blit. p520 = the UNCHANGED draw "
+                         "(swap only with the mirror, iff 7*apple_w even); oracle = swap = PL")
     ap.add_argument("--start-col", type=int, default=0)
     ap.add_argument("--cap", type=int, default=XP_BUF - XP_CASES - 64,
                     help="bytes of case records + streams per batch")
@@ -446,6 +493,31 @@ def main():
                     sel.append((t, c["idx"], a.start_col))
     reg = baked_registry() if a.baked else None
 
+    # ★ P5.29: THE UNIT BECOMES THE (cel, PL) USE. A cel the oracle draws at both colour phases
+    # gets two units, tagged _pl0/_pl1; a cel no frame table names keeps one unit at PL 0 (P5.20's
+    # reference, said so in the case file). So `--all-gameplay` is no longer 290 x 16 = 4,640
+    # cases, and the new count is not comparable with the old under the same name.
+    unused = []
+    if a.parity == "oracle" and not a.peel:
+        sys.path.insert(0, str(HERE))
+        import cel_parity_rule as R
+        uses = R.gameplay_uses()
+        slot = {"IMG.CHTAB1": 0, "IMG.CHTAB2": 1, "IMG.CHTAB3": 2, "IMG.CHTAB5": 4}
+        exp = []
+        for t, i, sc in sel:
+            s = 3 if t.startswith("IMG.CHTAB4") else slot[t]
+            pls = sorted(uses.get((s, i), {}))
+            if not pls:
+                unused.append("%s:%d" % (t, i))
+                pls = [0]
+            for p in pls:
+                exp.append((t, i, sc, p, len(pls) > 1))
+        sel = exp
+        print("xform_probe_gen: parity=oracle draw=%s -> %d (cel, PL) units; %d cel(s) no frame "
+              "table names (reference at PL 0): %s" % (a.draw, len(sel), len(unused), " ".join(unused)))
+    else:
+        sel = [(t, i, sc, None, False) for t, i, sc in sel]
+
     OUT.mkdir(parents=True, exist_ok=True)
     pre = a.out_prefix
     for pat in ("%s[0-9][0-9][0-9]_gen.s", "%s[0-9][0-9][0-9]_cases.json",
@@ -459,7 +531,7 @@ def main():
     seen, peel_metas = set(), []
     for kind, u in units:
         if kind == "cel" and a.peel:
-            table, idx, sc = u
+            table, idx, sc = u[:3]
             tag = "c_%s_%d" % (table.replace("IMG.", "").replace(".", "").lower(), idx)
             cases, pm = peel_cases(table, idx, sc, tag, seen)
             peel_metas.append(pm)
@@ -471,10 +543,12 @@ def main():
         elif kind == "lz":
             streams, cases, meta = lz_case(*u)
         elif kind == "cel":
-            table, idx, sc = u
+            table, idx, sc, pl, dual = u
             tag = "c_%s_%d" % (table.replace("IMG.", "").replace(".", "").lower(), idx)
+            if dual:
+                tag += "_pl%d" % pl
             streams, cases, meta = cel_cases(table, idx, sc, tag, baseline=not a.no_baseline,
-                                             baked=reg)
+                                             baked=reg, pl=pl, draw=a.draw)
         else:
             streams, cases, meta = shipped_cases(u)
         size = sum(len(v) for v in streams.values()) + REC * len(cases)

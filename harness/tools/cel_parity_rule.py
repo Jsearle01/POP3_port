@@ -40,7 +40,10 @@ import pathlib
 import re
 import sys
 
-ROOT = pathlib.Path("C:/Projects/POP3_port")
+# ★ P5.29: was pathlib.Path("C:/Projects/POP3_port") -- a stale second clone (CLAUDE.md §2G
+# v1.3). Derived from this file instead, like hal_sync_check.py. Six other tools still carry
+# the literal (P5.29 report §7); they are not swept here.
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 FRAMEDEF = ROOT / "oracle/source/01 POP Source/Source/FRAMEDEF.S"
 
 # CharFace = -1 for both cutscene characters at startP0/startV0 [SUBS.S:1131,1147]
@@ -189,6 +192,108 @@ def awid(cel):
             except Exception:
                 pass                    # empty slot; the caller gets None and skips it
     return _AWID.get(cel)
+
+
+# ── GAMEPLAY (P5.29): the same rule over Fdef, ALTSET1 and SWORDTAB ──────────────────
+#
+# ★★ altset2() ABOVE IS LEFT EXACTLY AS IT WAS, because the shipped cutscene is baked through
+# it and must not move. But its ENTRY regex silently SKIPS any line whose fields are
+# expressions or bare decimals -- and the gameplay tables are full of them:
+#
+#     :135 db $0d,$80,-5+5,51-63,$00+1        Fdx/Fdy are expressions
+#     :206 db $a3,0,0,0,0                     Fcheck is a bare decimal
+#
+# Those are real frames (135-140 are the CHTAB3 #13-18 climb cels; 206 is CHTAB5 #35). A
+# count taken through the regex (P5.28's "220 frames", P5.27's "named by NO frame def") is
+# missing them without a word. So the gameplay side evaluates every field as the
+# assembler does -- terms joined by + and -, each $hex or decimal -- and refuses a line it
+# cannot read rather than dropping it.
+
+_LINE = re.compile(r"^:(\d+)\s+db\s+(.*)$")
+
+
+def _expr(s):
+    """A Merlin `db` operand: terms joined by + / -, each $hex or decimal."""
+    s = s.strip().replace(" ", "")
+    total, sign, tok = 0, 1, ""
+    for ch in s + "+":
+        if ch in "+-" and tok:
+            total += sign * (int(tok[1:], 16) if tok.startswith("$") else int(tok))
+            sign, tok = (1 if ch == "+" else -1), ""
+        elif ch in "+-":
+            sign = -sign if ch == "-" else sign
+        else:
+            tok += ch
+    return total
+
+
+def frame_table(name):
+    """{n: (Fimage, Fsword, Fdx, Fdy, Fcheck)} for Fdef / ALTSET1 / ALTSET2, every field
+    EVALUATED. All-zero entries (blank slots) are kept; the caller decides."""
+    lines = FRAMEDEF.read_text(errors="replace").splitlines()
+    start = next(i for i, l in enumerate(lines) if l.strip() == name)
+    out = {}
+    for l in lines[start + 1:]:
+        s = l.split(";", 1)[0].strip()
+        if s in ("Fdef", "ALTSET1", "ALTSET2", "SWORDTAB") or "Sword images" in l:
+            break
+        m = _LINE.match(s)
+        if not m:
+            continue
+        f = [_expr(t) & 0xFF if i in (0, 1, 4) else _expr(t)
+             for i, t in enumerate(m.group(2).split(","))]
+        if len(f) != 5:
+            raise SystemExit("FRAMEDEF %s :%s has %d fields, not 5: %r" % (name, m.group(1), len(f), s))
+        out[int(m.group(1))] = tuple(f)
+    return out
+
+
+def swordtab():
+    """{n: (image, dx, dy)} -- SETUPSWORD's table [CTRLSUBS.S:867-895]; the image is always
+    chtable3 (decodeswim, CTRLSUBS.S:1050)."""
+    lines = FRAMEDEF.read_text(errors="replace").splitlines()
+    start = next(i for i, l in enumerate(lines) if l.strip() == "SWORDTAB")
+    out = {}
+    for l in lines[start + 1:]:
+        m = _LINE.match(l.split(";", 1)[0].strip())
+        if m:
+            f = [_expr(t) for t in m.group(2).split(",")]
+            out[int(m.group(1))] = (f[0] & 0xFF, f[1], f[2])
+    return out
+
+
+def decode_table(fimage, fsword):
+    """decodeim [CTRLSUBS.S:1017-1037] -> (slot, image): the same arithmetic chartable() does."""
+    return ((((fsword & 0xC0) >> 1) + (fimage & 0x80)) & 0xFF) >> 5, fimage & 0x7F
+
+
+def gameplay_uses():
+    """Every way a gameplay cel is drawn, as {(slot, image): {PL: [why, ...]}}.
+
+    PL = the PARITY of the draw X when the character FACES LEFT (unmirrored). Facing right,
+    the same frame's X has the OPPOSITE parity: for a character cel parity() flips with the
+    face bit; for a sword the X is the character's FCharX plus SWORDTAB's dx, NOT doubled
+    [CTRLSUBS.S:887-888 -> ADDFCHARX], so it inherits the flip and adds dx's parity.
+
+      character cel (Fdef, ALTSET1):  PL = parity(Fcheck, FACE_LEFT)
+      sword cel (frame's Fsword&$3F): PL = parity(Fcheck, FACE_LEFT) XOR (dx odd)
+
+    Fdef is the kid's and the guard's main set; ALTSET1 is the guard's (usealtsets,
+    CTRLSUBS.S:1680-1707). ALTSET2 is the cutscene's and is not a gameplay use."""
+    uses = {}
+    sw = swordtab()
+    for tab in ("Fdef", "ALTSET1"):
+        for n, (fi, fs, fdx, fdy, fc) in frame_table(tab).items():
+            if fi == 0 and fs == 0:
+                continue
+            pl = parity(fc, FACE_LEFT)
+            if fi:
+                uses.setdefault(decode_table(fi, fs), {}).setdefault(pl, []).append("%s:%d" % (tab, n))
+            k = fs & 0x3F
+            if k and k in sw and sw[k][0]:
+                spl = pl ^ (sw[k][1] & 1)
+                uses.setdefault((2, sw[k][0]), {}).setdefault(spl, []).append("%s:%d sword%d" % (tab, n, k))
+    return uses
 
 
 GROUPS = [("Vwalk", [48, 49, 50, 51, 52, 53], 197),
