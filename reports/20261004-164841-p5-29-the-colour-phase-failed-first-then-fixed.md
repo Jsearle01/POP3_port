@@ -337,7 +337,26 @@ run_suites.sh 512K: introseq PASS / integ PASS / tile PASS / ALL PASS;  128K: ti
 ```
 **25.2:** N/A.
 
-**25.3 operator-runtime-smoke: PENDING JAY — the re-gate.** Runner `harness/smoke/run_char_live.sh`:
+**25.3 operator-runtime-smoke: PASSED — Jay, live-disk, RGB, 512 KB** (2026-10-04; static picture, so a
+live observation is complete for it). The run's log walked every stage: EXEC at frame 2101, status
+0 → 1 (2168) → 2 (2286) → 3 (2310) → 4 shown (2320), dskerr 00, magic $7B1E, 80 entries. Jay, asked the
+four questions below about the five kids: ***"all as described."***
+
+| asked | verdict |
+|---|---|
+| kids 1–2 (identity, shifted) unchanged from P5.28's pass | **PASS** |
+| kid 3, the mirrored kid, orange (P5.28's failure) | **PASS: fixed** |
+| kid 4, unmirrored PL = 1 frame, colours right | **PASS** |
+| kid 5, the odd-width mirror (`oddmirror`), colours right | **PASS: §3D settled for the cutscene model** |
+
+**★ §3D is settled by the gate, not by argument.** Kid 5 was drawn by the model (no swap, PL 0, apple_w
+3). The dispatch's formula would have drawn him in the opposite colour phase, 41 bytes different (§3F).
+Jay passed him, so for gameplay mirrors **the swap is PL in both facings: MLayGen's −7·apple_w shift
+belongs in the rule.** §7.1's uncertainty is closed.
+
+The original request text follows, kept as asked at the time.
+
+**25.3 operator-runtime-smoke (as filed before the gate): PENDING JAY — the re-gate.** Runner `harness/smoke/run_char_live.sh`:
 **live-disk** (`LOADM"CHAR"` + `EXEC` off `build/char_gate.dmk`), RGB, 512 KB, throttled. The picture is
 static, so a live observation is complete for it. ★ **The script waits ~30 s at the BASIC prompt
 before it types EXEC itself**, because LOADM takes that long.
@@ -393,7 +412,7 @@ differently from P5.28's formula.
 
 ### 7 — Uncertainty flags
 
-1. **§3D is unsettled until Jay sees `oddmirror`.** If the dispatch's formula is right, the model in
+1. **[CLOSED by 25.3: Jay passed `oddmirror`; the model holds.]** §3D was unsettled until Jay saw `oddmirror`. If the dispatch's formula is right, the model in
    `cel_parity_rule.draw_x` is wrong for gameplay, and so are the reference, the glue and
    `--draw oracle`. They all follow the cutscene model and would all agree with each other wrongly
    again, which is exactly the class P5.28 exposed. Only the gate can tell.
