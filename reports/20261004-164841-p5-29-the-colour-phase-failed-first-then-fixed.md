@@ -434,4 +434,5 @@ None.
 ### 11 — Commit
 
 Phases 1–2 alone: **`adbcc3b`** (the corrected reference, before any draw change). Phases 3–4 and this
-report: HASH_LINE
+report: **`347b386`**. This hash line follows in its own commit. Pushed to `origin/wip`. `main`
+untouched at `32b5fe2`. 25.3 will be recorded in a further commit.
