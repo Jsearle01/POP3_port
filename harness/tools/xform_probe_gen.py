@@ -20,6 +20,12 @@ That is placement arithmetic, the caller's, exactly as the phase is.
 
 Each case is a 10-byte record: fn, stream, dest, A, B, dump length. Case 0 is always the
 calibration case (fn = xp_null): the bracket's own cost, subtracted from every other.
+
+--baked (P5.27): the probe draws the COMMITTED bake (content/chars/<tab>/<tab>_<nnn>_p0.s, with
+apple_w read from content/chars/char_cels.s) in place of the stream generated here. Nothing
+else moves -- the reference, the columns and the flags are computed exactly as before -- so
+the run asks P5.20's question of the shipping artifact. bake_chars_check.py confirms the case
+records are unchanged and compares every verdict and cycle count with P5.20's own logs.
 """
 import argparse
 import json
@@ -157,17 +163,51 @@ def expect(ref, h):
     return [fb[o - base] for o in range(n)]
 
 
-def cel_cases(table, idx, start_col, tag, baseline=True):
-    """All (facing, phase) cases for one cel. Returns (streams, cases, meta)."""
+BAKED = ROOT / "content/chars"
+
+
+def baked_registry():
+    """P5.27: content/chars/char_cels.s -> {(tab, image): apple_w}. Parsed from the file the
+    bake emits, so a probe run with --baked exercises the REGISTRY as well as the streams."""
+    reg, tab, i = {}, None, 0
+    for line in (BAKED / "char_cels.s").read_text(encoding="utf-8").splitlines():
+        s = line.split(";")[0].strip()
+        if s.endswith("_aw") and " " not in s:
+            tab, i = s[:-3], 0
+        elif tab and s.lower().startswith("fcb"):
+            i += 1
+            reg[(tab, i)] = int(s[3:].strip())
+        elif s and not s.startswith("*") and "equ" not in s:
+            tab = None
+    return reg
+
+
+def baked_stream(table, idx):
+    """P5.27: the BAKED facing-0 phase-0 stream, as its committed .s assembles."""
+    t = table.replace("IMG.", "").replace(".", "").lower()
+    return fcb_values(BAKED / t / ("%s_%03d_p0.s" % (t, idx)))
+
+
+def cel_cases(table, idx, start_col, tag, baseline=True, baked=None):
+    """All (facing, phase) cases for one cel. Returns (streams, cases, meta).
+
+    baked (P5.27): None, or the registry from baked_registry(). When given, the stream the
+    probe DRAWS is the committed content/chars bake and apple_w comes from the registry;
+    the REFERENCE is still generated here, exactly as P5.20 generated it."""
     raw = SC.get_cel(IMG / table, idx)
     aw, h = raw["w"], raw["h"]
+    if baked is not None:
+        aw = baked[(table.replace("IMG.", "").replace(".", "").lower(), idx)]
     W = 7 * aw
     flip = (W % 2 == 0)
     src = convert(table, idx, start_col, False, False, "%s_f0" % tag)
     mir = convert(table, idx, start_col, True, flip, "%s_f1" % tag)
-    w0 = src.w
+    if baked is None:
+        streams = {"%s_src" % tag: stream(src, 0)}
+    else:
+        streams = {"%s_src" % tag: baked_stream(table, idx)}
+    w0 = streams["%s_src" % tag][1]
     d = 4 * w0 - W
-    streams = {"%s_src" % tag: stream(src, 0)}
     cases = []
     for f in (0, 1):
         for k in range(4):
@@ -380,6 +420,11 @@ def main():
                     help="P5.22: PATH:OFFSET:LEN -- time lz_unpack on that slice of a raw file")
     ap.add_argument("--peel", action="store_true",
                     help="P5.21: blit_save/blit_erase at every pose's (rows, width), not draws")
+    ap.add_argument("--all-guards", action="store_true",
+                    help="P5.27: every non-empty cel of CHTAB4.FAT/SHAD/SKEL/VIZ")
+    ap.add_argument("--baked", action="store_true",
+                    help="P5.27: draw the committed content/chars streams (apple_w from its "
+                         "registry) instead of generating them; the reference is unchanged")
     ap.add_argument("--start-col", type=int, default=0)
     ap.add_argument("--cap", type=int, default=XP_BUF - XP_CASES - 64,
                     help="bytes of case records + streams per batch")
@@ -394,6 +439,12 @@ def main():
             for c in SC.load_chtable(IMG / t):
                 if c is not None and c["w"] and c["h"]:
                     sel.append((t, c["idx"], a.start_col))
+    if a.all_guards:
+        for t in ("IMG.CHTAB4.FAT", "IMG.CHTAB4.SHAD", "IMG.CHTAB4.SKEL", "IMG.CHTAB4.VIZ"):
+            for c in SC.load_chtable(IMG / t):
+                if c is not None and c["w"] and c["h"]:
+                    sel.append((t, c["idx"], a.start_col))
+    reg = baked_registry() if a.baked else None
 
     OUT.mkdir(parents=True, exist_ok=True)
     pre = a.out_prefix
@@ -422,7 +473,8 @@ def main():
         elif kind == "cel":
             table, idx, sc = u
             tag = "c_%s_%d" % (table.replace("IMG.", "").replace(".", "").lower(), idx)
-            streams, cases, meta = cel_cases(table, idx, sc, tag, baseline=not a.no_baseline)
+            streams, cases, meta = cel_cases(table, idx, sc, tag, baseline=not a.no_baseline,
+                                             baked=reg)
         else:
             streams, cases, meta = shipped_cases(u)
         size = sum(len(v) for v in streams.values()) + REC * len(cases)

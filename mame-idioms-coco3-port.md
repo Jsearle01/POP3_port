@@ -2240,3 +2240,10 @@ index edges. **A polled read cannot replace the HALT read**: at 0.894 MHz it los
 
 **Decision times (MAME):** a match 0.80 s warm / 1.22 s cold; empty 0.65 / 1.08; no drive 0.75 /
 1.19; unformatted 1.6–2.0. Tool: `harness/smoke/run_side_check.sh` (11 configurations, hang-detected).
+
+## 44. Text encoding on this toolchain: PowerShell and Python both default to something other than UTF-8 (P5.25, P5.27)
+
+**PowerShell 5.1's `>` writes a BOM** (a phantom line-1 diff on an extracted `CLAUDE.md`), and **`Get-Content`
+→ `Set-Content -Encoding utf8` reads ANSI and re-encodes**, which mangled every `★`/`—`/`→` in a report (fixed in `3b7ca6d`). **Python's
+`write_text()` with no `encoding=` writes cp1252 here**: shipped `content/cutscene/chars/*_p<k>.s` carry a one-byte `0x97` dash.
+**Avoid:** compare against git as bytes (`git show REV:path | cmp - path` in bash), edit with the Edit tool, and pass `encoding="utf-8"` to every Python text write.
