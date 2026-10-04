@@ -269,7 +269,56 @@ run_suites.sh 128K: [run_tile_test] PASS / [suites] ALL PASS
 ```
 **25.2:** N/A — no sibling-import artifact. `xf_blit.s` is POP's own, and the HAL is untouched.
 
-**25.3 operator-runtime-smoke: PENDING JAY — observed, verdict not yet given.**
+**25.3 operator-runtime-smoke: FAILED ON ONE POINT — Jay, live-disk, RGB, 512 KB (static picture;
+a live observation is complete for it).** Jay: *"they look to be standing properly in the top level.
+the sprites look right. the mirrored kid looks coreect except he has bule color instead of orange."*
+
+| judged | verdict |
+|---|---|
+| placement (standing on the top floor) | **PASS** |
+| proportion / the sprites | **PASS** |
+| colour, the two left-facing kids (identity, shifted) | **PASS** (no objection) |
+| **colour, the mirrored kid** | **FAIL — blue where the oracle has orange** |
+
+#### ★ 25.3's finding, and why the byte-exact prediction could not catch it
+
+*Authority: Jay (the colour) and source (the mechanism), CTRLSUBS.S:805-839; the port's own rule is
+`harness/tools/cel_parity_rule.py`, P3.22/P3.65/P3.72h.*
+
+**The oracle picks a character's colour phase per FRAME and per FACING, not per cel.** The draw X is
+`2*(CharX + Fdx - ScrnLeft)`, which is always even, **plus 1 iff bit7(Fcheck) == bit7(CharFace)**.
+Apple artifact colour is decided by column parity, so this decides orange against blue.
+
+- **Frame 15** has Fcheck = `$43` (bit 7 = 0).
+- **Facing left** (`CharFace` bit 7 = 1): no match, so **even** X. That is what the bake assumes
+  (`start_col` 0), and it is why the two left-facing kids are right.
+- **Facing right** (bit 7 = 0): match, so **odd** X. Mirroring a 14-px (even-width) image flips every
+  pixel's parity, and the odd X flips it back, so **the correct mirrored draw needs NO swap**. I drew
+  it with the swap, following P5.20's rule (*"swap iff 7·apple_w is even"*, from `bake_scene.py:626`).
+  Hence blue.
+
+**Why the prediction agreed with the wrong picture.** The prediction is P5.20's reference: the bake's
+mirror at the SAME `start_col` as facing 0, swapped iff the width is even. The cutscene bake gets this
+right because it ALSO applies the Fcheck rule. It colours each (cel, facing) at its own `start_col`, and
+the two shipped mirrors in P5.20's cross-check (`p11`, `v54`) happened to sit at matching parities. **So
+the 4,640 + 2,048 cases and this 15,360/15,360 prove the runtime equals the BAKE. They say nothing about
+the bake's colour phase against the ORACLE's, and that is exactly where this fails.** §3E's caveat
+anticipated a silhouette difference. The real difference is chroma, and larger.
+
+**★ IT IS NOT ONLY THE MIRROR.** Over FRAMEDEF.S's kid table (`Fdef`), counting the 220 frames with an
+image:
+- **94 have Fcheck bit 7 = 1**: drawn at ODD X when facing LEFT, i.e. UNMIRRORED. P5.27 coloured every
+  cel at even, so those draws would show the same swap.
+- **28 of the 147 cels Fdef names are used at BOTH parities** by different frames, so no single baked
+  colouring is right for them.
+
+**So the runtime needs a colour swap that is independent of the mirror**, decided per draw from
+(Fcheck, CharFace, apple_w). `xf_blit` has no such swap today: the swap is offered only together with
+the mirror (`t = 2`). An unmirrored swapped draw would need a swap-only T table and three swap-only shift
+pairs (+1,792 B of tables), plus the selection.
+
+**This dispatch stops at the gate and I have not changed anything** (CLAUDE.md §6: no fix attempted
+without a ruling). §8.0 names the route.
 
 > **Gate run 1 (2026-10-04), live-disk, RGB, 512 KB, `run_char_live.sh`.** Jay: *"i typed exec and
 > closed it. i did see 3 kids two facing left and one facing right."* That is the drawn arrangement
@@ -348,6 +397,18 @@ overlay above `$4000`. Jay's ruling simplified it, and **this commit contains al
 
 ### 8 — Follow-up candidates
 
+0. **★ The colour phase (25.3's failure), NOT built.** The per-draw swap should be
+   `parity(oracle X) XOR (mirrored AND 7·apple_w even)`, where `parity(oracle X)` = bit7(Fcheck) ==
+   bit7(CharFace). Making that possible needs:
+   - a **swap-without-mirror** path in `xf_blit`: a T table that only swaps, plus three shift pairs
+     built on it, +1,792 B;
+   - **Fcheck in the registry**, or per frame where the draw is selected (the cutscene's
+     `cel_table.s` +3 carries exactly this, P3.65);
+   - **P5.20's reference corrected** to colour by the oracle's rule, so the probe can catch this class
+     of error, followed by a re-gate.
+
+   P5.27's bake is unaffected: one stored colouring plus a runtime swap covers all 220 frames, so this
+   needs no re-bake.
 1. **Plane ordering:** the plane split (§2 option 2), or a placement that deliberately overlaps the
    pillar front, as the test it needs.
 2. **Add `run_char_test.sh` to `run_suites.sh`**, so the composition check does not rot (P5.5's own
