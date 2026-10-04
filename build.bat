@@ -911,6 +911,51 @@ if errorlevel 1 (
     exit /b 1
 )
 
+echo --- P5.28: the character probe (the kid on LEVEL0 screen 1, through xf_blit) ---
+REM NOT ON probe.dmk AND NOT IN TILE.BIN. tile_probe.s is assembled a SECOND time with
+REM -DCHAR_PROBE; the tile probe above is unchanged by it and the tile suite still holds it to
+REM the bare page. The character probe goes on its OWN gate disk, made here from the FINISHED
+REM probe.dmk (so the packed tile page is on track 34 exactly as the tile probe reads it), with
+REM INTRO.BIN's granules -- the image has none free -- given to CHAR.BIN.
+REM
+REM xf_blit.s is the routine P5.20/P5.27 measured byte-exact (the harness probe includes the
+REM same file); xf_tables.py refuses to emit unless its bytes equal the probe's tables;
+REM char_probe_plan.py reads content/chars/probe_place.json (the placement table), refuses a
+REM draw that touches a foreground rectangle or leaves the screen, and writes the PREDICTED
+REM framebuffer run_char_test.sh compares against. Layout: link/pop_charprobe.link.
+python harness/tools/xf_tables.py --out build/gen/xf_tables.s
+if errorlevel 1 goto :error
+python harness/tools/char_probe_plan.py --asm build/gen/char_probe_place.s --ref build/assets/char_ref.bin
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -DCHAR_PROBE -DDR_VARBASE=%DR_VARBASE% -DTILE_TRK=%TILE_TRK% -I . -o build/obj/char_tile.o src/engine/tile_probe.s
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -DXF_DPPAGE=0x57 -DXF_M=0x4200 -DXF_T1=0x4300 -DXF_T2=0x4400 -DXF_TABS=0x4500 -I . -o build/obj/xf_blit.o src/engine/xf_blit.s
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -I . -o build/obj/xf_tables.o build/gen/xf_tables.s
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -I . -o build/obj/char_probe.o src/engine/char_probe.s
+if errorlevel 1 goto :error
+lwlink --decb --script=link/pop_charprobe.link --entry=tile_entry --map=build/obj/charprobe.map -o build/char_probe.bin build/obj/char_tile.o build/obj/char_probe.o build/obj/xf_blit.o build/obj/blit_core.o build/obj/xf_tables.o build/obj/lz_unpack.o build/obj/hal_build.o
+if errorlevel 1 goto :error
+call :size build/char_probe.bin
+python harness\tools\map_overlap_check.py build/obj/charprobe.map
+if errorlevel 1 (
+    echo *** BUILD BLOCKED: the character probe's sections collide ***
+    exit /b 1
+)
+copy /y build\probe.dmk build\char_gate.dmk >nul
+if errorlevel 1 goto :error
+"%IMGTOOL%" del coco_dmk_rsdos build\char_gate.dmk INTRO.BIN
+if errorlevel 1 goto :error
+"%IMGTOOL%" put coco_dmk_rsdos build\char_gate.dmk build\char_probe.bin CHAR.BIN --ftype=binary --ascii=binary
+if errorlevel 1 goto :error
+python harness\tools\disk_file_readback_check.py --dsk build/char_gate.dmk --imgtool "%IMGTOOL%" ^
+    CHAR.BIN=build/char_probe.bin TILE.BIN=build/tile_probe.bin
+if errorlevel 1 (
+    echo *** BUILD BLOCKED: the character gate disk is not what the build produced ***
+    exit /b 1
+)
+
 echo === BUILD COMPLETE ===
 exit /b 0
 

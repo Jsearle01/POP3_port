@@ -1,0 +1,28 @@
+; link/pop_charprobe.link — THE CHARACTER PROBE's memory map (P5.28).
+;
+; tile_probe.s assembled with -DCHAR_PROBE, plus char_probe.s (the draw list, the baked stream,
+; the registry), xf_blit.s (the transform), blit_core.o (its identity case) and xf_tables.
+;
+;   $3000-$41FF   the packed tile page, staged one whole track (tile_probe.s LZ_STAGE)
+;   $4200-$56FF   xf_blit's TABLES, 5,376 B: M $4200 (PAGE-ALIGNED -- the patched operand's
+;                 low byte is the index), T1 $4300, T2 $4400, the nine pairs $4500-$56FF.
+;                 build.bat passes these to xf_blit.s as -DXF_M/-DXF_T1/-DXF_T2/-DXF_TABS.
+;   $5700-$570D   xf_blit's direct page (-DXF_DPPAGE=0x57), fourteen bytes, nothing else
+;   $5800-....    the program (section `prog`), EXEC address = tile_entry
+;   $6A00-$6A06   the disk driver's parameter block (-DDR_VARBASE)
+;   $7900-....    KERNEL (section `code` = hal_build.o)
+;   $7F00         stack top
+;   $8000-$BBFF   the back buffer; $C000-$DFFF the tile page through $FFA6
+;
+; ★ WHY $5800 AND NOT $2000 LIKE THE TILE PROBE. Jay, 2026-10-04: "since we are using a
+; loader to start the program, after that loadm areas arent important since we only use
+; loadm to boot." The LOADM ceiling at $2488..$2535 (link/pop_engine.link) is a constraint on
+; BOOTING, and this program's prog (renderer + blit_core + xf_blit + glue) is past it -- so
+; it is simply placed above the staging area instead, where a LOADM of 6,912 B at $4000 was
+; measured to load (idioms §23). map_overlap_check sees this map like every other.
+
+section xftab load 4200
+section prog load 5800
+section code load 7900
+
+entry tile_entry

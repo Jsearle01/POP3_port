@@ -28,6 +28,10 @@ local OUT      = os.getenv("P_OUT") or "build/tile_test.log"
 local DUMP     = os.getenv("P_DUMP") or "build/tile_front.bin"
 local PAL      = os.getenv("P_PAL") or "build/tile_palette.bin"
 local WANT_ENTS = tonumber(os.getenv("P_WANT_ENTS") or "0")
+-- P5.28: the character probe is the same program with characters on top, so it reuses this
+-- verifier. These three default to exactly what the tile suite always used.
+local FILE     = os.getenv("P_FILE") or "TILE"                  -- what LOADM types
+local MARK     = os.getenv("P_MARK") or "build/tile_test"       -- <MARK>_PASS / _FAIL
 
 local FB_BASE, FB_SIZE = 0x8000, 15360
 local PAGE_MAGIC = 0x7B1E           -- bake_screen.py's; NOT the cutscene's $C35A
@@ -84,7 +88,7 @@ local state, t0, started, loaded = "boot", nil, nil, nil
 local function finish(reason)
     log(string.format("# checks=%d passed=%d failed=%d", #checks, #checks - failed, failed))
     log("# VERDICT: " .. ((failed == 0) and "PASS" or "FAIL") .. "  (" .. reason .. ")")
-    local mark = io.open((failed == 0) and "build/tile_test_PASS" or "build/tile_test_FAIL", "w")
+    local mark = io.open(MARK .. ((failed == 0) and "_PASS" or "_FAIL"), "w")
     if mark then mark:write(reason .. "\n"); mark:close() end
     manager.machine:exit()
 end
@@ -93,7 +97,7 @@ local function tick()
     local fn = scr:frame_number()
     if state == "boot" then
         if fn >= 300 then
-            nk:post('LOADM"TILE"\n')
+            nk:post('LOADM"' .. FILE .. '"\n')
             state, t0 = "loadm", fn
         end
         return
@@ -104,7 +108,7 @@ local function tick()
         -- grows with the renderer. $2000 holding $7E is DECB's first byte landing, not
         -- the load finishing, so the settle stays generous. Under -nothrottle waiting
         -- costs nothing.
-        if loaded == nil and rd8(0x2000) == 0x7E then
+        if loaded == nil and rd8(ENGINE) == 0x7E then
             loaded = fn
             log("# LOADM first byte landed at frame " .. fn)
         end

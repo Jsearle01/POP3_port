@@ -1,0 +1,9 @@
+{
+  "_": "P5.28 placement table: the ONE home for where the character-probe draws (CLAUDE.md 2F). Read by harness/tools/char_probe_plan.py, which emits the 6809 draw list AND the predicted framebuffer from it. The kid's frame 15 ('stand', FRAMEDEF.S:37: Fimage $0F -> CHTAB1 #15, Fdx 0, Fdy 0) on LEVEL0 screen 1's top floor: CharY = FloorY[block row 0] = 191-126-10 = 55 [TABLES.S:179-185], so the cel's bottom row is yco = CharY + Fdy = 55 [CTRLSUBS.S:823-828]. col = byte column of the frame in the port framebuffer, the REFERENCE's column (P5.20's semantics: a mirrored draw is registered to the bake's mirror, the routine's own frame sits d px left of it). Columns chosen on block columns 4-5 (port bytes 33..46): floor underfoot, clear of every foreground rectangle and of the gate bars that bg_compose omits at block column 0.",
+  "screen": {"level": "LEVEL0", "screen": 1},
+  "draws": [
+    {"name": "identity", "table": "IMG.CHTAB1", "image": 15, "frame": 15, "char_y": 55, "fdy": 0, "col": 34, "phase": 0, "facing": 0},
+    {"name": "shifted",  "table": "IMG.CHTAB1", "image": 15, "frame": 15, "char_y": 55, "fdy": 0, "col": 39, "phase": 1, "facing": 0},
+    {"name": "mirrored", "table": "IMG.CHTAB1", "image": 15, "frame": 15, "char_y": 55, "fdy": 0, "col": 44, "phase": 0, "facing": 1}
+  ]
+}

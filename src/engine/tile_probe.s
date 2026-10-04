@@ -66,6 +66,9 @@
                 import  disk_read_init
                 import  disk_read_range
                 import  lz_unpack
+                ifdef   CHAR_PROBE
+                import  char_probe_draw
+                endc
                 endc
 
                 include "src/hal.inc"
@@ -153,6 +156,14 @@ tile_start
                 sta     probe_status
 
                 jsr     tile_draw
+* P5.28: the character probe draws its characters onto the same back buffer, after the
+* page. Assembled only with -DCHAR_PROBE (src/engine/char_probe.s); this file's own build
+* is byte-identical without it. ★ Drawing AFTER the whole page is exactly the
+* undifferentiated pass the header warns about -- the plan's placements avoid every
+* foreground rectangle so that the picture does not depend on it.
+                ifdef   CHAR_PROBE
+                jsr     char_probe_draw
+                endc
                 lda     #3
                 sta     probe_status
 

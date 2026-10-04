@@ -29,6 +29,9 @@
 
 local OUT = os.getenv("P_OUT") or "build/tile_live.log"
 local ENTRY = tonumber(os.getenv("P_ENGINE") or "0x2000")
+-- P5.28: the character probe reuses this runner. Both default to the tile gate's values.
+local FILE = os.getenv("P_FILE") or "TILE"
+local EXEC_WAIT = tonumber(os.getenv("P_EXEC_WAIT") or "500")   -- frames LOADM is given
 
 local cpu = manager.machine.devices[":maincpu"]
 local mem = cpu.spaces["program"]
@@ -46,10 +49,10 @@ local STATUS_NAME = {[0] = "boot", [1] = "mode set", [2] = "page in",
 local function tick()
     local fn = manager.machine.screens:at(1):frame_number()
     if state == "boot" and fn >= 300 then
-        nk:post('LOADM"TILE"\n')
+        nk:post('LOADM"' .. FILE .. '"\n')
         log("# posted LOADM at frame " .. fn)
         state, t0 = "loadm", fn
-    elseif state == "loadm" and fn > t0 + 500 then
+    elseif state == "loadm" and fn > t0 + EXEC_WAIT then
         nk:post('EXEC\n')
         log("# posted EXEC at frame " .. fn)
         state, t0 = "run", fn
