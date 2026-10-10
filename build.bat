@@ -628,8 +628,13 @@ REM The stale number outlived its correction by sixty-nine dispatches and then m
 REM design report into costing a mid-scene read at 3.3 s instead of 1.2. A measurement
 REM quoted in a comment needs the date of the tree it was taken on, or it becomes a
 REM claim about a build nobody can identify.
+REM
+REM DMK_IL overrides the interleave for a comparison build (Jay, 2026-10-10: "test and see which
+REM interleave is faster"). Disk BASIC's LOADM wants 4 -- KIDRUN.BIN loads in 9.6 s at il=4 and
+REM 20.2 s at il=0 (P5.31 sweep) -- while the whole-track driver above wants 0. Default stays 0.
+if not defined DMK_IL set DMK_IL=0
 if exist build\probe.dmk del /q build\probe.dmk
-"%IMGTOOL%" create coco_dmk_rsdos build\probe.dmk --tracks=35 --sectors=18 --sectorlength=256 --interleave=0
+"%IMGTOOL%" create coco_dmk_rsdos build\probe.dmk --tracks=35 --sectors=18 --sectorlength=256 --interleave=%DMK_IL%
 if errorlevel 1 goto :error
 "%IMGTOOL%" put coco_dmk_rsdos build\probe.dmk build\loop_probe.bin PROBE.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error

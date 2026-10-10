@@ -1748,6 +1748,24 @@ Per-track **3.31 s → 1.31 s**, against karateka's 3.33 → 1.33. Byte-for-byte
 identical throughout (5/5 screens). A **~6 rev/track wd_fdc floor remains** that
 interleave cannot touch, so shippable perceived time still wants load-masking.
 
+**★ BUT DISK BASIC'S `LOADM` WANTS THE OPPOSITE (P5.31, 2026-10-10).** RS-DOS reads a
+file one sector per command, so at il=0 each next sector has just passed the head and every
+read costs about a revolution. Swept 0..17 with `KIDRUN.BIN` (18,460 B) alone on the disk, from
+`LOADM` typed to `OK` printed: **il=0 20.2 s, il=1-3 ~20 s, il=4 9.6 s (the minimum), then
++0.8 s per step up to 18.6 s at il=16; il=17 is il=0 again.** imgtool's il=4 lays out
+1,12,5,16,9,2,… which is Disk BASIC's own `DSKINI` skip factor.
+The whole build at il=4 versus il=0 (`set DMK_IL=4` before build.bat), suites green both ways:
+
+| | il=0 | il=4 |
+|---|---:|---:|
+| `KIDRUN` LOADM | 20.1 s | 9.7 s |
+| intro first picture (`1_base`) | frame 2986 | frame 3992 (+16.8 s) |
+| driver drive-engaged total | 43.8 s | 61.3 s |
+| one-track driver read | 1.8 s | 2.6 s |
+
+**So no single interleave suits the disk.** DMK stores each track's order separately, so one
+disk could carry il=4 on the DECB-file tracks and il=0 on the raw driver tracks. Not built yet.
+
 **Two free consequences:**
 - **`raw_tracks.py` can no longer compute byte offsets.** JVC is linear
   (`(T*18+S-1)*256`); DMK is raw tracks with IDAM/DAM/gaps/CRCs. Place payload with
