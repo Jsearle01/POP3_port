@@ -298,7 +298,20 @@ render_fb.py: build/char_front.bin: 15360 B, 2 bpp -> build/char_screen1.png (96
 ```
 **25.2:** N/A.
 
-**25.3 operator-runtime-smoke — RULING 1: PENDING JAY.** `run_char_live.sh`: **live-disk**
+**25.3 operator-runtime-smoke — RULING 1: PASSED — Jay, live-disk, RGB, 512 KB** (2026-10-10; static
+picture, so a live observation is complete for it). The log reached status 4 (frame 2337), dskerr 00,
+magic `$7B1E`, 80 entries. Jay: ***"ruling 1 looks correct."*** The wall occludes the MID kid; the
+FLAT control stands in front of his. **Plane ordering is no longer untested for SURE's static case.**
+It remains untested for FAST's running assignment (§3A) and for keyed fore pieces over a character.
+
+**RULING 2: no picture was put to Jay, and he said so:** *"not sure what im looking for ruling 2. I
+don't see a gate."* That is correct: the probe shows screen 1, and the gate is on screen 2. The gate-bar
+pair was dropped at §3D's finding (identical, 0 px). Ruling 2 is open pending his direction; the
+recommendation put to him is in §8.1.
+
+The request text as filed before the gate follows.
+
+**25.3 operator-runtime-smoke (as filed) — RULING 1: PENDING JAY.** `run_char_live.sh`: **live-disk**
 (`LOADM"CHAR"` + `EXEC`, `build/char_gate.dmk`), RGB, 512 KB, throttled. The picture is static, so a
 live observation is complete for it. The script waits about 30 s at the BASIC prompt before typing EXEC
 itself.
