@@ -994,14 +994,51 @@ if errorlevel 1 (
     echo *** BUILD BLOCKED: the walk probe's sections collide ***
     exit /b 1
 )
+REM ★ P5.31b: THE PROBE IS NO LONGER A DECB FILE. LOADM read all 18,460 B of it one sector per
+REM command -- 20.1 s on these interleave-0 disks, measured (idiom 29) -- so KIDRUN.BIN is now a
+REM small loader (src/boot/kidrun_boot.s) and the probe goes on raw tracks, the intro's and
+REM karateka's shape. Two whole-track images out of the one binary, either side of the loader:
+REM   A  $0E00-$31FF  tracks KR_TRK_A..+1   prog + kd2
+REM   B  $3400-$69FF  tracks KR_TRK_B..+2   xftab + kd1, ending at the driver's block $6A00
+REM The kernel segment is dropped from both: the loader brings the same one (checked below).
+REM Tracks 2-7 are the free whole tracks on this image once KIDRUN.BIN is not a file.
+set KR_TRK_A=2
+set KR_TRK_B=4
+for /f "tokens=2 delims==" %%A in ('findstr /r /c:"^Symbol: wk_stop " build\obj\kidrun.map') do set KR_WKSTOP=%%A
+for /f "tokens=2 delims==" %%A in ('findstr /r /c:"^Symbol: tile_entry " build\obj\kidrun.map') do set KR_GO=%%A
+set KR_WKSTOP=%KR_WKSTOP: =%
+set KR_GO=%KR_GO: =%
+python harness/tools/decb_to_raw.py --bin build/kidrun_probe.bin --out build/assets/kidrun_a.raw --base 0x0E00 --span-end 0x3000
+if errorlevel 1 goto :error
+python harness/tools/decb_to_raw.py --bin build/kidrun_probe.bin --out build/assets/kidrun_b.raw --base 0x3400 --allow-gap --span-start 0x3400 --span-end 0x6A00
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DKR_TRK_A=%KR_TRK_A% -DKR_TRK_B=%KR_TRK_B% ^
+      -DKR_GO=0x%KR_GO% -DKR_WKSTOP=0x%KR_WKSTOP% -I . -o build/obj/kidrun_boot.o src/boot/kidrun_boot.s
+if errorlevel 1 goto :error
+lwlink --decb --script=link/pop_kidboot.link --entry=kr_entry --map=build/obj/kidboot.map ^
+       -o build/kidrun_boot.bin build/obj/kidrun_boot.o build/obj/hal_build.o
+if errorlevel 1 goto :error
+call :size build/kidrun_boot.bin
+python harness/tools/kernel_identical_check.py --resident build/kidrun_boot.bin --staged build/kidrun_probe.bin
+if errorlevel 1 goto :error
+python harness\tools\map_overlap_check.py build/obj/kidboot.map
+if errorlevel 1 (
+    echo *** BUILD BLOCKED: the kid-run loader's sections collide ***
+    exit /b 1
+)
 copy /y build\probe.dmk build\kidrun_gate.dmk >nul
 if errorlevel 1 goto :error
 "%IMGTOOL%" del coco_dmk_rsdos build\kidrun_gate.dmk INTRO.BIN
 if errorlevel 1 goto :error
-"%IMGTOOL%" put coco_dmk_rsdos build\kidrun_gate.dmk build\kidrun_probe.bin KIDRUN.BIN --ftype=binary --ascii=binary
+REM raw tracks FIRST, reserved, so the loader's file cannot be allocated over them
+python harness/tools/raw_tracks.py --dsk build/kidrun_gate.dmk --asset build/assets/kidrun_a.raw --track %KR_TRK_A% --tracks 2 --reserve --imgtool "%IMGTOOL%"
+if errorlevel 1 goto :error
+python harness/tools/raw_tracks.py --dsk build/kidrun_gate.dmk --asset build/assets/kidrun_b.raw --track %KR_TRK_B% --tracks 3 --reserve --imgtool "%IMGTOOL%"
+if errorlevel 1 goto :error
+"%IMGTOOL%" put coco_dmk_rsdos build\kidrun_gate.dmk build\kidrun_boot.bin KIDRUN.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error
 python harness\tools\disk_file_readback_check.py --dsk build/kidrun_gate.dmk --imgtool "%IMGTOOL%" ^
-    KIDRUN.BIN=build/kidrun_probe.bin TILE.BIN=build/tile_probe.bin
+    KIDRUN.BIN=build/kidrun_boot.bin TILE.BIN=build/tile_probe.bin
 if errorlevel 1 (
     echo *** BUILD BLOCKED: the walk gate disk is not what the build produced ***
     exit /b 1

@@ -6,9 +6,9 @@
 # that gates delivery), RGB via dist/mame-cfg/rgb, and it does not exit. A still cannot gate this
 # (CLAUDE.md §4: "Endpoints are not motion"); this is the run Jay watches.
 #
-# SRC_DSK overrides the image. The script waits 1,500 frames (25 s) after typing LOADM before EXEC:
-# the load MEASURED 1,210 frames (20.2 s) -- see run_kidrun_test.sh for the correction of an
-# earlier "53 s" that was a misread crash.
+# SRC_DSK overrides the image. ★ P5.31b: KIDRUN.BIN is now a ~1.3 KB LOADER (src/boot/kidrun_boot.s)
+# that reads the probe off raw tracks after EXEC, the intro's shape -- P5.31's 18,460 B LOADM took
+# 20.1 s on these interleave-0 disks. The script waits 600 frames after typing LOADM before EXEC.
 set -u
 cd "$(dirname "$0")/../.." || exit 1
 
@@ -23,7 +23,7 @@ cp -f "$SRC_DSK" "$DSK" || exit 1
 
 export P_ENGINE="0x$(grep -E "^Symbol: tile_entry " "$MAP" | sed -E "s/.*= *//")"
 export P_FILE="KIDRUN" P_OUT="build/kidrun_live.log"
-export P_EXEC_WAIT="${P_EXEC_WAIT:-1500}"
+export P_EXEC_WAIT="${P_EXEC_WAIT:-600}"
 
 . "$(dirname "$0")/ramsize.sh"
 . "$(dirname "$0")/cfgdir.sh"

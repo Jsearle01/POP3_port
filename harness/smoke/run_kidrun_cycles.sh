@@ -9,7 +9,7 @@ MAME="${MAME:-/c/mame/mame.exe}"
 MAME_ROMS="${MAME_ROMS:-C:/mame/roms}"
 MAP="build/obj/kidrun.map"
 cp -f build/kidrun_gate.dmk build/run_kidrun_cyc.dmk || exit 1
-for n in wk_t_seq wk_t_erase wk_t_save wk_t_draw wk_t_fore wk_t_end wk_steps wk_frame wk_x wk_k; do
+for n in wk_t_seq wk_t_erase wk_t_save wk_t_draw wk_t_fore wk_t_end wk_steps wk_frame wk_x wk_k probe_status; do
     export "S_$n=$(grep -E "^Symbol: $n " "$MAP" | sed -E 's/.*= *//')"
 done
 export P_OUT="build/kidrun_cycles.log" P_NSTEPS="${P_NSTEPS:-50}"

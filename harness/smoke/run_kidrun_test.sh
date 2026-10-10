@@ -46,18 +46,21 @@ export P_BLK_A=$(printf '0x%02X' $(( 0x$(sym GFX_DB_A_BLOCK) - 0x$CODEBASE )))
 export P_BLK_B=$(printf '0x%02X' $(( 0x$(sym GFX_DB_B_BLOCK) - 0x$CODEBASE )))
 export P_WANT_ENTS=$(python -c "print(open('build/assets/tile_page.raw','rb').read(4)[3])")
 export P_OUT="$LOG" P_DUMP="$GOT" P_FILE="KIDRUN" P_MARK="build/kidrun_test"
-# MEASURED: every byte of the 18,460 B image is in RAM 1,210 frames (20.2 s) after LOADM is posted
-# (a per-frame RAM-vs-file check). 1,500 leaves margin. ★ An earlier note here said 3,200 and "53 s":
-# that misread a CRASH (the lz_unpack overrun, palette 00 00 00 00) as a slow load. Jay: "it does
-# not take 53 sec to load."
-export P_SETTLE="${P_SETTLE:-1500}"
-export P_POKE16="$(sym wk_stop)=$N"
+# ★ P5.31b: KIDRUN.BIN IS THE LOADER (src/boot/kidrun_boot.s), ~1.3 KB, and the probe comes off raw
+# tracks AFTER EXEC. So the LOADM settle is the loader's, and the run limit carries the reads.
+# (P5.31's 18,460 B LOADM measured 1,206 frames; an earlier "53 s" here misread a CRASH -- the
+# lz_unpack overrun -- as a slow load. Jay: "it does not take 53 sec to load.")
+export P_SETTLE="${P_SETTLE:-600}"
+export P_RUN_LIMIT="${P_RUN_LIMIT:-1500}"
+# the stop word is the LOADER's: the probe's own wk_stop is inside read A and would be overwritten
+KBMAP="build/obj/kidboot.map"
+export P_POKE16="$(grep -E "^Symbol: kr_stop " "$KBMAP" | sed -E "s/.*= *//")=$N"
 SHOT="build/kidrun_step${N}.png"
 export P_PAL="build/kidrun_palette.bin"
 
 . "$(dirname "$0")/ramsize.sh"
 . "$(dirname "$0")/cfgdir.sh"
-echo "[run_kidrun_test] step $N, $MAME_RAM, wk_stop at \$$(sym wk_stop)"
+echo "[run_kidrun_test] step $N, $MAME_RAM, stop word kr_stop at \$${P_POKE16%%=*} (copied to wk_stop \$$(sym wk_stop))"
 
 "$MAME" coco3 -rompath "$MAME_ROMS" $RAMOPT $CFGOPT -ext fdc -flop1 "$DSK" -video none \
     -nothrottle -sound none -seconds_to_run 90 \

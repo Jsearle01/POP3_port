@@ -38,6 +38,10 @@ def main():
     # exactly the kind of thing that should never be inferred from a size.
     ap.add_argument('--span-end', type=lambda s: int(s, 0), default=None,
                     help='drop segments whose load address is >= this (they are reported)')
+    # P5.31b — AND BELOW ONE. The kid-run probe is read in two whole-track pieces either side of
+    # its loader, so each piece is one address window out of the same binary.
+    ap.add_argument('--span-start', type=lambda s: int(s, 0), default=None,
+                    help='drop segments whose load address is < this (they are reported)')
     a = ap.parse_args()
 
     d = pathlib.Path(a.bin).read_bytes()
@@ -64,8 +68,17 @@ def main():
         if not keep:
             sys.exit(f"--span-end ${a.span_end:04X} dropped every segment")
         segs = keep
+    if a.span_start is not None:
+        keep = [(ad, b) for ad, b in segs if ad >= a.span_start]
+        for ad, b in segs:
+            if ad < a.span_start:
+                print(f"  DROPPED seg ${ad:04X}..${ad + len(b) - 1:04X} "
+                      f"({len(b)} B) — below --span-start ${a.span_start:04X}")
+        if not keep:
+            sys.exit(f"--span-start ${a.span_start:04X} dropped every segment")
+        segs = keep
 
-    lo = min(ad for ad, _ in segs)
+    lo =min(ad for ad, _ in segs)
     hi = max(ad + len(b) for ad, b in segs)
     if lo < a.base:
         sys.exit(f"segment at ${lo:04X} is below the stated base ${a.base:04X}")

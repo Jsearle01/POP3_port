@@ -16,7 +16,7 @@
 -- LAUNCH: the delivery path (LOADM"KIDRUN" + EXEC off the gate disk), headless, -debug.
 local OUT = os.getenv("P_OUT") or "build/kidrun_cycles.log"
 local NSTEPS = tonumber(os.getenv("P_NSTEPS") or "50")
-local SETTLE = tonumber(os.getenv("P_SETTLE") or "1500")   -- the load measures 1,210 frames
+local SETTLE = tonumber(os.getenv("P_SETTLE") or "600")    -- P5.31b: KIDRUN.BIN is the small loader
 local SLOTS = 0x3400                       -- scratch: inside the staging area, clear of the peel
 
 local cpu = manager.machine.devices[":maincpu"]
@@ -29,7 +29,7 @@ local function log(s) f:write(s .. "\n"); f:flush() end
 pcall(function() manager.machine.debugger.execution_state = "run" end)
 
 local sym = {}
-for name in ("wk_t_seq wk_t_erase wk_t_save wk_t_draw wk_t_fore wk_t_end wk_steps wk_frame wk_x wk_k"):gmatch("%S+") do
+for name in ("wk_t_seq wk_t_erase wk_t_save wk_t_draw wk_t_fore wk_t_end wk_steps wk_frame wk_x wk_k probe_status"):gmatch("%S+") do
     local v = os.getenv("S_" .. name)
     if not v then log("# missing S_" .. name); manager.machine:exit(); return end
     sym[name] = tonumber(v, 16)
@@ -48,7 +48,10 @@ _G._kc = emu.add_machine_frame_notifier(function()
         nk:post('EXEC\n'); state, t0 = "run", fn
         log("# step frame x k  seq erase save draw fore  total   (cycles)")
     elseif state == "run" then
-        local st = mem:read_u8(sym.wk_steps) * 256 + mem:read_u8(sym.wk_steps + 1)
+        -- ★ P5.31b: EXEC starts the LOADER, which reads the probe in over whatever RAM held; until
+        -- the probe has drawn its page (status 2), wk_steps is not the probe's counter at all.
+        if mem:read_u8(sym.probe_status) ~= 2 and mem:read_u8(sym.probe_status) ~= 4 then return end
+        local st =mem:read_u8(sym.wk_steps) * 256 + mem:read_u8(sym.wk_steps + 1)
         if st ~= last and st > 0 then
             last = st
             local t = {}

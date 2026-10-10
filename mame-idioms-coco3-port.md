@@ -1763,8 +1763,14 @@ The whole build at il=4 versus il=0 (`set DMK_IL=4` before build.bat), suites gr
 | driver drive-engaged total | 43.8 s | 61.3 s |
 | one-track driver read | 1.8 s | 2.6 s |
 
-**So no single interleave suits the disk.** DMK stores each track's order separately, so one
-disk could carry il=4 on the DECB-file tracks and il=0 on the raw driver tracks. Not built yet.
+**So no single interleave suits the disk — and the project's answer is not to choose one.** Keep
+every disk at il=0 and let Disk BASIC load only a SMALL file: a loader that reads the bulk off raw
+tracks with the driver. That is karateka's shape (`tools/make_decb_boot_disk.sh`: one small
+BOOT.BIN, game on FAT-reserved raw tracks) and the intro's (`src/boot/loader.s`). P5.31b moved the
+kid-run probe onto it (`src/boot/kidrun_boot.s`): `LOADM` typed → kid running went **23.8 s →
+16.1 s** — the loader's own LOADM (1,223 B) is 5.8 s, so a DECB file costs ~5 s however small.
+(A per-track mix — il=4 on DECB-file tracks, il=0 on raw ones — is possible in DMK but unbuilt
+and unneeded.)
 
 **Two free consequences:**
 - **`raw_tracks.py` can no longer compute byte offsets.** JVC is linear

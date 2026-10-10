@@ -39,6 +39,8 @@ src/harness/tone_probe.s
 $FFB0	src/boot/loader.s	PALETTE	cold	TWO OWNERS. the loading screen's palette, once at boot
 $FFD8	src/boot/loader.s	SAM_SLOW	cold	normal speed for the FDC (§2G disk rule), once
 $FFD9	src/boot/loader.s	SAM_FAST	cold	TWO OWNERS. back to double speed after the read
+$FFD8	src/boot/kidrun_boot.s	SAM_SLOW	cold	the kid-run probe's loader (P5.31b): normal speed for the FDC, per read (2 per boot)
+$FFD9	src/boot/kidrun_boot.s	SAM_FAST	cold	TWO OWNERS. loader.s's wrapper verbatim: double speed restored after each read
 $FFA6	src/engine/char_draw.s	CEL_MMU	cold	TWO OWNERS. cel_load_startup pins the resident page
 $FFA7	src/engine/char_draw.s	CEL_MMU+1	warm	TWO OWNERS. the beat's page map — 1.58x/s (§5.227)
 $FFB0	src/engine/char_draw.s	$FFB0	cold	TWO OWNERS. the flame bundle links apart from the HAL's palette

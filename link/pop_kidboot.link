@@ -1,0 +1,20 @@
+; link/pop_kidboot.link — the KID-RUN PROBE's LOADER (P5.31b). This file is KIDRUN.BIN.
+;
+; Disk BASIC LOADMs only this; it reads the probe off raw tracks (src/boot/kidrun_boot.s).
+;
+;   $0E00-$31FF   read A: the probe's prog + kd2 (2 tracks)
+;   $3200-$33FF   THIS LOADER -- between the two reads, so neither covers it
+;   $3400-$69FF   read B: the probe's xftab + kd1 (3 tracks), ending at the driver's block
+;   $6A00-$6A06   the disk driver's parameter block (DR_VARBASE)
+;   $7900-....    the kernel: the same hal_build.o at the same address as the probe's
+;                 (kernel_identical_check.py), so the probe finds it resident
+;
+; ★ $3200 IS ABOVE THE INTRO'S MEASURED "CEILING" ($2488..$2535, link/pop_engine.link), AND THAT IS
+; NOT A LIMIT HERE: P5.31's KIDRUN.BIN LOADM'd segments at $4200, $6000, $6B00 and $7900 and every
+; byte read back exact (disk_file_readback_check.py, and the 15360/15360 step captures). CLAUDE.md
+; §2L: the ceiling is a stage constraint of the intro's image, not of LOADM's address space.
+
+section prog load 3200
+section code load 7900
+
+entry kr_entry

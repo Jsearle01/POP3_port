@@ -36,6 +36,9 @@ local SETTLE   = tonumber(os.getenv("P_SETTLE") or "900")       -- frames from L
 -- P5.31: "ADDR=VAL" (hex address, decimal value) -- a 16-bit big-endian word written into the
 -- LOADed image just before EXEC (the walk probe's wk_stop: stop after step VAL). Unset = no poke.
 local POKE16   = os.getenv("P_POKE16")
+-- P5.31b: frames from EXEC to give up. The kid-run probe's loader reads five tracks AFTER EXEC,
+-- before the probe's own status byte moves, so it needs more than the tile probe's 600.
+local RUN_LIMIT = tonumber(os.getenv("P_RUN_LIMIT") or "600")
 
 local FB_BASE, FB_SIZE = 0x8000, 15360
 local PAGE_MAGIC = 0x7B1E           -- bake_screen.py's; NOT the cutscene's $C35A
@@ -140,7 +143,7 @@ local function tick()
     -- frame and the run gives up after 600 frames, which separates "it never ran"
     -- (status 0) from "it stopped part way" (status 1/2/3) -- two different bugs that
     -- both present as a black screen.
-    if st == 4 or fn > started + 600 then
+    if st == 4 or fn > started + RUN_LIMIT then
         log(string.format("# terminal: status=%d dskerr=%02X magic=%04X ents=%d at frame %d",
                           st, rd8(ENGINE + P_DSKERR), rd16(ENGINE + P_MAGIC),
                           rd8(ENGINE + P_ENTS), fn))

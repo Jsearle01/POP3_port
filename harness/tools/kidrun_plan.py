@@ -242,7 +242,11 @@ def main():
     L.append("* the frame table follows the code, in prog")
     L.append("                include \"content/chars/frame_table.s\"")
     # the 14 streams into the two spans, first fit in image order
-    caps = [("kd1", 0x6A00 - 0x6000), ("kd2", 0x7800 - 0x6B00)]
+    # P5.31b: kd2 moved $6B00 -> $2000. The probe is now read off raw tracks by its loader
+    # (src/boot/kidrun_boot.s), whole tracks only, and no track-sized read can cover $6B00-$77FF
+    # without covering the driver's block at $6A00 or the kernel at $7900. At $2000 it rides in
+    # read A with prog; $3000 is the staging area / peel, so the span ends there.
+    caps = [("kd1", 0x6A00 - 0x6000), ("kd2", 0x3000 - 0x2000)]
     used = {s: 0 for s, _ in caps}
     where = {}
     for n in range(1, 15):
