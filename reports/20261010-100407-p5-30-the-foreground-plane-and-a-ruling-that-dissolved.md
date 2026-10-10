@@ -373,4 +373,5 @@ None.
 
 ### 11 — Commit
 
-HASH_LINE
+**`00f588f`**. This hash line follows in its own commit. Pushed to `origin/wip`. `main` untouched at
+`32b5fe2`. Ruling 1's result, and Jay's direction on Ruling 2, will be recorded in a further commit.
