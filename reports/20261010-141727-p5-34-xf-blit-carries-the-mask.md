@@ -160,7 +160,20 @@ frames 600  cycles ... -> 14834 cycles per real frame   (1.79 MHz = 29,859; 0.89
 [suites] running: introseq integ tile char kidrun ... [suites] ALL PASS     128 KB: tile ... ALL PASS
 offline: cels 418, differing 0
 ```
-25.2: N/A. **25.3: pending Jay** — live-disk, 512 KB, RGB, motion (`run_kidrun_live.sh`): does the guard
+25.2: N/A. **25.3: OBSERVED BY JAY — SPEED PASSED; OCCLUSION NOT PASSED.** live-disk, 512 KB, RGB, motion.
+Jay, verbatim: *"speed is fine, but there are still inner areas of the guard that are tarnsparent"*.
+- **Where (measured after the gate, from the model, not the PNG):** enclosed transparent pixels inside the
+  silhouette — CHTAB4.GD #20 (the held `ready` frame) **14 px**, #8 **5**, #19 **8**; the kid's cels 0-1. They
+  are **one-pixel seams at the 7-px Apple SOURCE-BYTE boundaries** (#20: column 14 down rows 26-34, and 13/14
+  at rows 16-18) — white-0-white, the one case sprite_convert's colour fill leaves.
+- **Why the port does it:** it is the oracle's model exactly — MASKTAB is applied per source byte
+  (`lda MASKTAB-$80,x` on each byte alone, HIRES.S:954/1480), so a border never crosses a byte boundary. The
+  port is byte-exact against that model; the defect, if it is one, is in following the code rather than the look.
+- **Open, Jay's ruling:** (a) keep the byte-local rule (faithful to MLayMask; on the Apple's NTSC a 1-px gap
+  between white runs probably never read as a hole); (b) §2I — extend the border across source-byte boundaries
+  (a documented divergence from MASKTAB; bake + prediction only, no blitter change; fills every seam); or
+  first run the oracle on a screen where the kid and a guard overlap and compare.
+Original question put to Jay: does the guard
 occlude the kid now (the border and the interior gaps), and does the cadence still feel right (9.85 fps, an
 occasional seven-frame step — §top). PNGs from this build (surfaced, not read):
 `build/kidrun_step{6,12,13,15,16,17,19,21,22,24,26,40,46}.png`.
@@ -193,7 +206,8 @@ four DP bytes, not one. The dispatch's killed routes (§10) were not revisited; 
 3. Carried: the cutscene's model + `lz_unpack` together (§5.426); the disk map (§5.432).
 
 ### 9 — User interaction during task
-None before the gate.
+None before the gate. At the gate: "show me"; then *"speed is fine, but there are still inner areas of the
+guard that are tarnsparent"* (§5 25.3).
 
 ### 10 — Candidate(s) captured this task
 None.
