@@ -16,7 +16,7 @@
 -- LAUNCH: the delivery path (LOADM"KIDRUN" + EXEC off the gate disk), headless, -debug.
 local OUT = os.getenv("P_OUT") or "build/kidrun_cycles.log"
 local NSTEPS = tonumber(os.getenv("P_NSTEPS") or "50")
-local SETTLE = tonumber(os.getenv("P_SETTLE") or "3200")
+local SETTLE = tonumber(os.getenv("P_SETTLE") or "1500")   -- the load measures 1,210 frames
 local SLOTS = 0x3400                       -- scratch: inside the staging area, clear of the peel
 
 local cpu = manager.machine.devices[":maincpu"]

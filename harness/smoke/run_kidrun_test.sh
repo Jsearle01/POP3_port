@@ -46,9 +46,11 @@ export P_BLK_A=$(printf '0x%02X' $(( 0x$(sym GFX_DB_A_BLOCK) - 0x$CODEBASE )))
 export P_BLK_B=$(printf '0x%02X' $(( 0x$(sym GFX_DB_B_BLOCK) - 0x$CODEBASE )))
 export P_WANT_ENTS=$(python -c "print(open('build/assets/tile_page.raw','rb').read(4)[3])")
 export P_OUT="$LOG" P_DUMP="$GOT" P_FILE="KIDRUN" P_MARK="build/kidrun_test"
-# 18,460 B, nine granules: 1,800 frames (enough for the 14 KB character probe) left LOADM still
-# loading -- EXEC lost, BASIC's palette, status 0. 3,200 measured to pass.
-export P_SETTLE="${P_SETTLE:-3200}"
+# MEASURED: every byte of the 18,460 B image is in RAM 1,210 frames (20.2 s) after LOADM is posted
+# (a per-frame RAM-vs-file check). 1,500 leaves margin. ★ An earlier note here said 3,200 and "53 s":
+# that misread a CRASH (the lz_unpack overrun, palette 00 00 00 00) as a slow load. Jay: "it does
+# not take 53 sec to load."
+export P_SETTLE="${P_SETTLE:-1500}"
 export P_POKE16="$(sym wk_stop)=$N"
 SHOT="build/kidrun_step${N}.png"
 export P_PAL="build/kidrun_palette.bin"
