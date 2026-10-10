@@ -202,7 +202,19 @@ def baked_stream(table, idx):
     return fcb_values(BAKED / t / ("%s_%03d_p0.s" % (t, idx)))
 
 
-def cel_cases(table, idx, start_col, tag, baseline=True, baked=None, pl=None, draw="p520"):
+def expect_oracle(cel, clr, h, k):
+    """P5.33: the reference the ORACLE's way -- char_mask's composite (MLayMask: MASKTAB read
+    literally from HRTABLES.S) of the reference cel at row 1, pixel 4*C_REF+k, over the
+    background. No segment stream and no index-0 transparency are involved."""
+    import char_mask as CM
+    n = STRIDE * (h + 2)
+    fb = bytearray(bg(n))
+    CM.compose(fb, cel.pixels, clr, 1, 4 * C_REF + k)
+    return list(fb)
+
+
+def cel_cases(table, idx, start_col, tag, baseline=True, baked=None, pl=None, draw="p520",
+              mask="index0"):
     """All (facing, phase) cases for one cel. Returns (streams, cases, meta).
 
     baked (P5.27): None, or the registry from baked_registry(). When given, the stream the
@@ -263,10 +275,14 @@ def cel_cases(table, idx, start_col, tag, baseline=True, baked=None, pl=None, dr
     w0 = streams["%s_src" % tag][1]
     d = 4 * w0 - W
     cases = []
+    if mask == "oracle":
+        import char_mask as CM
+        clr = {0: CM.cleared(IMG / table, idx, False), 1: CM.cleared(IMG / table, idx, True)}
+        baseline = False        # blit_cel of an index-0 reference stream is not the oracle's model
     for f in (0, 1):
         for k in range(4):
             ref = stream(src if f == 0 else mir, k)
-            want = expect(ref, h)
+            want = expect(ref, h) if mask != "oracle" else expect_oracle(src if f == 0 else mir, clr[f], h, k)
             refname = "%s_r%d%d" % (tag, f, k)
             if baseline:
                 streams[refname] = ref
@@ -486,6 +502,11 @@ def main():
     ap.add_argument("--draw", choices=("oracle", "p520"), default="oracle",
                     help="P5.29: the swap flag the caller gives xf_blit. p520 = the UNCHANGED draw "
                          "(swap only with the mirror, iff 7*apple_w even); oracle = swap = PL")
+    ap.add_argument("--mask", choices=("index0", "oracle"), default="index0",
+                    help="P5.33: the REFERENCE's transparency. index0 = P5.20's (a pixel is "
+                         "transparent iff it is 0); oracle = MLayMask's (char_mask: MASKTAB's "
+                         "one-pixel border, read from HRTABLES.S). Baseline cases are dropped "
+                         "under oracle -- an index-0 stream drawn by blit_cel is not that model")
     ap.add_argument("--start-col", type=int, default=0)
     ap.add_argument("--cap", type=int, default=XP_BUF - XP_CASES - 64,
                     help="bytes of case records + streams per batch")
@@ -562,7 +583,7 @@ def main():
             if dual:
                 tag += "_pl%d" % pl
             streams, cases, meta = cel_cases(table, idx, sc, tag, baseline=not a.no_baseline,
-                                             baked=reg, pl=pl, draw=a.draw)
+                                             baked=reg, pl=pl, draw=a.draw, mask=a.mask)
         else:
             streams, cases, meta = shipped_cases(u)
         size = sum(len(v) for v in streams.values()) + REC * len(cases)

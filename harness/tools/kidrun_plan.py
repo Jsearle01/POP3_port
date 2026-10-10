@@ -22,6 +22,11 @@ their data EMITTED, their steps PREDICTED.
    page's foreground list replayed over both. Alongside each, kidrun_ref_N.json: both frames'
    rectangles and the bytes where BOTH draws are opaque -- P3.32's discriminating test is
    byte-exactness THERE (kidrun_overlap.py).
+   ★★★ P5.33: THE PREDICTION IS THE ORACLE'S MODEL, NOT THE BAKE'S. Each character is composited
+   pixel by pixel through char_mask (MLayMask: MASKTAB read literally from HRTABLES.S -- a one-pixel
+   black border inside each 7-px source byte), NOT replayed from a segment stream with index 0
+   transparent. P5.32's gate defect was invisible to 15360/15360 because the prediction shared the
+   bake's transparency model; this one does not.
 """
 import argparse
 import json
@@ -41,6 +46,7 @@ import bake_screen as BS                                    # noqa: E402
 import lz_pack as LZ                                        # noqa: E402
 import xf_tables as XT                                      # noqa: E402
 import bake_chars as B                                      # noqa: E402
+import char_mask as CM                                      # noqa: E402
 from celio import Cel                                       # noqa: E402
 
 STRIDE = 80
@@ -234,35 +240,36 @@ def lay(fb, h, w, segs, top, col):
 
 
 def kid_ref(st):
+    """The kid's REFERENCE: colour pixels (sprite_convert at the oracle's parity) and the cells the
+    oracle's MASK clears (char_mask: MASKTAB, literally). P5.33: no segment stream is involved."""
     path = WORK / ("kidrun_ref_img%d_pl%d.s" % (st["img"], st["pl"]))
     path.parent.mkdir(parents=True, exist_ok=True)
     SC.convert_one(B.IMG / "IMG.CHTAB1", st["img"], path, "r", st["pl"], False, False, trim=True, quiet=True)
-    return segs_of(path, st["rk"])
+    return Cel(str(path)).pixels, CM.cleared(B.IMG / "IMG.CHTAB1", st["img"], False)
 
 
 def gd_ref(g):
     """facing 1: mirrored at (1-PL) XOR (apple_w odd), flipped iff 7*apple_w is even --
-    char_probe_plan.ref_stream's oracle rule (xform_probe_gen.cel_cases, bake_scene's Jay-gated model)."""
+    char_probe_plan.ref_stream's oracle rule (xform_probe_gen.cel_cases, bake_scene's Jay-gated model);
+    and MLayMask's border: MASKTAB of the MIRRORED source byte (char_mask)."""
     aw, pl = g["aw"], g["pl"]
     path = WORK / ("kidrun_gd_img%d_pl%d.s" % (g["img"], pl))
     path.parent.mkdir(parents=True, exist_ok=True)
     SC.convert_one(B.IMG / GD_TABLE, g["img"], path, "g", (1 - pl) ^ (aw & 1), (7 * aw) % 2 == 0, True,
                    trim=True, quiet=True)
-    return segs_of(path, g["rk"])
+    return Cel(str(path)).pixels, CM.cleared(B.IMG / GD_TABLE, g["img"], True)
 
 
 def predict(kst, gst, tile, variants, fore):
-    """The step with no history: tile, kid, guard over him, fore. Plus both draws' opaque masks."""
-    kh, kw, ksegs = kid_ref(kst)
-    gh, gw, gsegs = gd_ref(gst)
-    assert kh == kst["h"] and gh == gst["h"]
-    fb = lay(tile, kh, kw, ksegs, kst["top"], kst["rcol"])
-    fb = lay(fb, gh, gw, gsegs, gst["top"], gst["rcol"])
-    zero = bytes(len(tile))
-    km = lay(zero, kh, kw, ksegs, kst["top"], kst["rcol"])
-    gm = lay(zero, gh, gw, gsegs, gst["top"], gst["rcol"])
-    both = [o for o in range(len(tile)) if km[o] and gm[o]]
-    return BS.replay_fore(fb, variants, fore), both
+    """The step with no history, the ORACLE's way (P5.33): tile, the kid through MLayMask's model, the
+    guard over him through the same, then fore. Plus the bytes BOTH made opaque."""
+    kp, kc = kid_ref(kst)
+    gp, gc = gd_ref(gst)
+    assert len(kp) == kst["h"] and len(gp) == gst["h"]
+    fb = bytearray(tile)
+    ko = CM.compose(fb, kp, kc, kst["top"], 4 * kst["rcol"] + kst["rk"])
+    go = CM.compose(fb, gp, gc, gst["top"], 4 * gst["rcol"] + gst["rk"])
+    return BS.replay_fore(bytes(fb), variants, fore), sorted(ko & go)
 
 
 def rect(s):

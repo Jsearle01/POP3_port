@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 r"""bake_scene.py — bake every cel the port's scene draws, at its phase AND its facing.
 
+★★★ P5.33 -- THIS BAKE'S TRANSPARENCY MODEL IS NOT GAMEPLAY'S. Here index 0 is transparent and
+nothing more (P3.18 §3B). The oracle draws characters with OPACITY = mask [DrawNormal,
+GAMEBG.S:432-437]: MASKTAB's one-pixel black border inside each 7-px source byte, small gaps filled
+[HRTABLES.S:219-234]. The GAMEPLAY bake (bake_chars.py, content/chars) bakes that border; this one
+does not, by Jay's ruling 2026-10-10 ("fix gameplay, leave the cutscene": gated, shipped, and the gap
+is invisible in its content). The same cel is NOT the same stream in the two bakes. When this bake is
+next touched, fix it here AND move the lz_unpack 256-count fix (§5.412) in the same change -- both
+move prod. char_mask.py is the oracle model to test it against.
+
 SUPERSEDES bake_walk.py, which baked the vizier's nine and knew nothing about facing or
 about the princess. P3.65 (piece G) needs both:
 

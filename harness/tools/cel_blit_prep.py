@@ -37,6 +37,14 @@ SEGMENT FORMAT (per row, terminated by SEG_END)
 Transparency is index 0 with NO opacity sidecar (P3.18 3B), so a pixel is
 transparent iff its 2-bit value is 0. MERGE mask bytes keep the destination where
 the cel is transparent: mask bit-pair = 11 to keep dest, 00 to take src.
+
+★★ P5.33: TWO CALLERS, TWO MODELS. The gameplay bake (bake_chars.py) hands encode_row rows that
+also carry the value 4 -- OPAQUE BLACK, the oracle's mask border (MLayMask/MASKTAB). Nothing here
+changed to allow it: classify() counts any non-zero pixel opaque, pack_row() masks with &3 (4 -> 0),
+and the merge mask keeps dest only where the pixel is 0 -- so a border pixel is mask 00, src 00.
+The CUTSCENE bake never passes a 4 and is unchanged. ★ A merge's mask byte is therefore NO LONGER
+derivable from its src byte in gameplay streams -- xf_blit's shifted paths, which rebuild it from
+src (M[out]), drop the border (P5.33 §3).
 """
 import argparse
 import pathlib

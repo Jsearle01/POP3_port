@@ -18,7 +18,7 @@ chtab1_aw
         fcb     2      ; #1   chtab1_001_p0.s  41x4  aw=2 d=+2
         fcb     3      ; #2   chtab1_002_p0.s  41x4  aw=3 d=-5
         fcb     3      ; #3   chtab1_003_p0.s  40x5  aw=3 d=-1
-        fcb     3      ; #4   chtab1_004_p0.s  39x5  aw=3 d=-1
+        fcb     3      ; #4   chtab1_004_p0.s  39x6  aw=3 d=+3
         fcb     4      ; #5   chtab1_005_p0.s  38x7  aw=4 d=+0
         fcb     4      ; #6   chtab1_006_p0.s  38x7  aw=4 d=+0
         fcb     4      ; #7   chtab1_007_p0.s  39x7  aw=4 d=+0
@@ -29,22 +29,22 @@ chtab1_aw
         fcb     5      ; #12  chtab1_012_p0.s  40x9  aw=5 d=+1
         fcb     5      ; #13  chtab1_013_p0.s  40x8  aw=5 d=-3
         fcb     3      ; #14  chtab1_014_p0.s  39x6  aw=3 d=+3
-        fcb     2      ; #15  chtab1_015_p0.s  41x3  aw=2 d=-2
+        fcb     2      ; #15  chtab1_015_p0.s  41x4  aw=2 d=+2
         fcb     2      ; #16  chtab1_016_p0.s  41x4  aw=2 d=+2
         fcb     2      ; #17  chtab1_017_p0.s  40x4  aw=2 d=+2
-        fcb     3      ; #18  chtab1_018_p0.s  39x5  aw=3 d=-1
+        fcb     3      ; #18  chtab1_018_p0.s  39x6  aw=3 d=+3
         fcb     4      ; #19  chtab1_019_p0.s  33x7  aw=4 d=+0
         fcb     4      ; #20  chtab1_020_p0.s  31x7  aw=4 d=+0
         fcb     4      ; #21  chtab1_021_p0.s  31x7  aw=4 d=+0
         fcb     4      ; #22  chtab1_022_p0.s  33x7  aw=4 d=+0
-        fcb     6      ; #23  chtab1_023_p0.s  34x10  aw=6 d=-2
+        fcb     6      ; #23  chtab1_023_p0.s  34x11  aw=6 d=+2
         fcb     8      ; #24  chtab1_024_p0.s  35x14  aw=8 d=+0
         fcb     8      ; #25  chtab1_025_p0.s  28x14  aw=8 d=+0
         fcb     6      ; #26  chtab1_026_p0.s  27x11  aw=6 d=+2
         fcb     5      ; #27  chtab1_027_p0.s  26x9  aw=5 d=+1
         fcb     3      ; #28  chtab1_028_p0.s  25x6  aw=3 d=+3
         fcb     4      ; #29  chtab1_029_p0.s  29x7  aw=4 d=+0
-        fcb     3      ; #30  chtab1_030_p0.s  34x5  aw=3 d=-1
+        fcb     3      ; #30  chtab1_030_p0.s  34x6  aw=3 d=+3
         fcb     3      ; #31  chtab1_031_p0.s  36x5  aw=3 d=-1
         fcb     3      ; #32  chtab1_032_p0.s  39x5  aw=3 d=-1
         fcb     2      ; #33  chtab1_033_p0.s  40x4  aw=2 d=+2
@@ -52,48 +52,48 @@ chtab1_aw
         fcb     4      ; #35  chtab1_035_p0.s  37x7  aw=4 d=+0
         fcb     5      ; #36  chtab1_036_p0.s  38x9  aw=5 d=+1
         fcb     6      ; #37  chtab1_037_p0.s  39x10  aw=6 d=-2
-        fcb     3      ; #38  chtab1_038_p0.s  41x5  aw=3 d=-1
+        fcb     3      ; #38  chtab1_038_p0.s  41x6  aw=3 d=+3
         fcb     5      ; #39  chtab1_039_p0.s  43x9  aw=5 d=+1
         fcb     7      ; #40  chtab1_040_p0.s  41x12  aw=7 d=-1
         fcb     8      ; #41  chtab1_041_p0.s  30x13  aw=8 d=-4
         fcb     6      ; #42  chtab1_042_p0.s  27x11  aw=6 d=+2
-        fcb     6      ; #43  chtab1_043_p0.s  35x10  aw=6 d=-2
+        fcb     6      ; #43  chtab1_043_p0.s  35x11  aw=6 d=+2
         fcb     5      ; #44  chtab1_044_p0.s  33x8  aw=5 d=-3
-        fcb     2      ; #45  chtab1_045_p0.s  39x3  aw=2 d=-2
+        fcb     2      ; #45  chtab1_045_p0.s  39x4  aw=2 d=+2
         fcb     2      ; #46  chtab1_046_p0.s  39x4  aw=2 d=+2
         fcb     3      ; #47  chtab1_047_p0.s  40x6  aw=3 d=+3
         fcb     3      ; #48  chtab1_048_p0.s  40x5  aw=3 d=-1
-        fcb     3      ; #49  chtab1_049_p0.s  39x5  aw=3 d=-1
-        fcb     3      ; #50  chtab1_050_p0.s  37x5  aw=3 d=-1
+        fcb     3      ; #49  chtab1_049_p0.s  39x6  aw=3 d=+3
+        fcb     3      ; #50  chtab1_050_p0.s  37x6  aw=3 d=+3
         fcb     3      ; #51  chtab1_051_p0.s  38x5  aw=3 d=-1
         fcb     2      ; #52  chtab1_052_p0.s  39x4  aw=2 d=+2
-        fcb     2      ; #53  chtab1_053_p0.s  39x3  aw=2 d=-2
+        fcb     2      ; #53  chtab1_053_p0.s  39x4  aw=2 d=+2
         fcb     2      ; #54  chtab1_054_p0.s  39x4  aw=2 d=+2
         fcb     3      ; #55  chtab1_055_p0.s  38x5  aw=3 d=-1
-        fcb     4      ; #56  chtab1_056_p0.s  37x6  aw=4 d=-4
-        fcb     3      ; #57  chtab1_057_p0.s  35x5  aw=3 d=-1
+        fcb     4      ; #56  chtab1_056_p0.s  37x7  aw=4 d=+0
+        fcb     3      ; #57  chtab1_057_p0.s  35x6  aw=3 d=+3
         fcb     3      ; #58  chtab1_058_p0.s  34x5  aw=3 d=-1
-        fcb     3      ; #59  chtab1_059_p0.s  35x5  aw=3 d=-1
-        fcb     3      ; #60  chtab1_060_p0.s  31x4  aw=3 d=-5
-        fcb     3      ; #61  chtab1_061_p0.s  33x4  aw=3 d=-5
+        fcb     3      ; #59  chtab1_059_p0.s  35x6  aw=3 d=+3
+        fcb     3      ; #60  chtab1_060_p0.s  31x5  aw=3 d=-1
+        fcb     3      ; #61  chtab1_061_p0.s  33x5  aw=3 d=-1
         fcb     2      ; #62  chtab1_062_p0.s  30x3  aw=2 d=-2
-        fcb     2      ; #63  chtab1_063_p0.s  24x2  aw=2 d=-6
+        fcb     2      ; #63  chtab1_063_p0.s  24x3  aw=2 d=-2
         fcb     1      ; #64  chtab1_064_p0.s  24x2  aw=1 d=+1
         fcb     4      ; #65  chtab1_065_p0.s  26x7  aw=4 d=+0
 
 chtab2_n           equ     70
 chtab2_aw
         fcb     5      ; #1   chtab2_001_p0.s  41x8  aw=5 d=-3
-        fcb     3      ; #2   chtab2_002_p0.s  39x5  aw=3 d=-1
+        fcb     3      ; #2   chtab2_002_p0.s  39x6  aw=3 d=+3
         fcb     6      ; #3   chtab2_003_p0.s  39x10  aw=6 d=-2
         fcb     4      ; #4   chtab2_004_p0.s  38x7  aw=4 d=+0
         fcb     4      ; #5   chtab2_005_p0.s  38x7  aw=4 d=+0
         fcb     5      ; #6   chtab2_006_p0.s  37x8  aw=5 d=-3
-        fcb     5      ; #7   chtab2_007_p0.s  36x8  aw=5 d=-3
+        fcb     5      ; #7   chtab2_007_p0.s  36x9  aw=5 d=+1
         fcb     4      ; #8   chtab2_008_p0.s  33x7  aw=4 d=+0
         fcb     5      ; #9   chtab2_009_p0.s  33x9  aw=5 d=+1
         fcb     5      ; #10  chtab2_010_p0.s  35x9  aw=5 d=+1
-        fcb     5      ; #11  chtab2_011_p0.s  36x8  aw=5 d=-3
+        fcb     5      ; #11  chtab2_011_p0.s  36x9  aw=5 d=+1
         fcb     4      ; #12  chtab2_012_p0.s  37x7  aw=4 d=+0
         fcb     4      ; #13  chtab2_013_p0.s  37x7  aw=4 d=+0
         fcb     7      ; #14  chtab2_014_p0.s  12x12  aw=7 d=-1
@@ -104,13 +104,13 @@ chtab2_aw
         fcb     2      ; #19  chtab2_019_p0.s  40x4  aw=2 d=+2
         fcb     2      ; #20  chtab2_020_p0.s  40x4  aw=2 d=+2
         fcb     3      ; #21  chtab2_021_p0.s  40x5  aw=3 d=-1
-        fcb     3      ; #22  chtab2_022_p0.s  40x5  aw=3 d=-1
-        fcb     4      ; #23  chtab2_023_p0.s  39x6  aw=4 d=-4
-        fcb     3      ; #24  chtab2_024_p0.s  38x5  aw=3 d=-1
+        fcb     3      ; #22  chtab2_022_p0.s  40x6  aw=3 d=+3
+        fcb     4      ; #23  chtab2_023_p0.s  39x7  aw=4 d=+0
+        fcb     3      ; #24  chtab2_024_p0.s  38x6  aw=3 d=+3
         fcb     3      ; #25  chtab2_025_p0.s  36x5  aw=3 d=-1
         fcb     3      ; #26  chtab2_026_p0.s  35x6  aw=3 d=+3
         fcb     3      ; #27  chtab2_027_p0.s  38x5  aw=3 d=-1
-        fcb     3      ; #28  chtab2_028_p0.s  47x4  aw=3 d=-5
+        fcb     3      ; #28  chtab2_028_p0.s  47x5  aw=3 d=-1
         fcb     3      ; #29  chtab2_029_p0.s  50x5  aw=3 d=-1
         fcb     2      ; #30  chtab2_030_p0.s  56x4  aw=2 d=+2
         fcb     2      ; #31  chtab2_031_p0.s  54x4  aw=2 d=+2
@@ -118,28 +118,28 @@ chtab2_aw
         fcb     2      ; #33  chtab2_033_p0.s  41x4  aw=2 d=+2
         fcb     2      ; #34  chtab2_034_p0.s  38x4  aw=2 d=+2
         fcb     2      ; #35  chtab2_035_p0.s  40x4  aw=2 d=+2
-        fcb     1      ; #36  chtab2_036_p0.s  1x2  aw=1 d=+1
+        fcb     1      ; #36  chtab2_036_p0.s  1x1  aw=1 d=-3
         fcb     3      ; #37  chtab2_037_p0.s  51x6  aw=3 d=+3
         fcb     3      ; #38  chtab2_038_p0.s  53x6  aw=3 d=+3
-        fcb     3      ; #39  chtab2_039_p0.s  53x4  aw=3 d=-5
+        fcb     3      ; #39  chtab2_039_p0.s  53x5  aw=3 d=-1
         fcb     2      ; #40  chtab2_040_p0.s  55x4  aw=2 d=+2
-        fcb     2      ; #41  chtab2_041_p0.s  57x3  aw=2 d=-2
+        fcb     2      ; #41  chtab2_041_p0.s  57x4  aw=2 d=+2
         fcb     2      ; #42  chtab2_042_p0.s  55x4  aw=2 d=+2
         fcb     3      ; #43  chtab2_043_p0.s  54x5  aw=3 d=-1
         fcb     3      ; #44  chtab2_044_p0.s  54x6  aw=3 d=+3
-        fcb     4      ; #45  chtab2_045_p0.s  51x6  aw=4 d=-4
+        fcb     4      ; #45  chtab2_045_p0.s  51x7  aw=4 d=+0
         fcb     4      ; #46  chtab2_046_p0.s  51x7  aw=4 d=+0
         fcb     4      ; #47  chtab2_047_p0.s  50x7  aw=4 d=+0
         fcb     4      ; #48  chtab2_048_p0.s  50x7  aw=4 d=+0
         fcb     4      ; #49  chtab2_049_p0.s  50x7  aw=4 d=+0
-        fcb     5      ; #50  chtab2_050_p0.s  35x8  aw=5 d=-3
+        fcb     5      ; #50  chtab2_050_p0.s  35x9  aw=5 d=+1
         fcb     4      ; #51  chtab2_051_p0.s  36x7  aw=4 d=+0
         fcb     4      ; #52  chtab2_052_p0.s  35x6  aw=4 d=-4
         fcb     4      ; #53  chtab2_053_p0.s  38x6  aw=4 d=-4
         fcb     3      ; #54  chtab2_054_p0.s  36x5  aw=3 d=-1
         fcb     3      ; #55  chtab2_055_p0.s  29x5  aw=3 d=-1
         fcb     3      ; #56  chtab2_056_p0.s  23x5  aw=3 d=-1
-        fcb     3      ; #57  chtab2_057_p0.s  19x5  aw=3 d=-1
+        fcb     3      ; #57  chtab2_057_p0.s  19x6  aw=3 d=+3
         fcb     3      ; #58  chtab2_058_p0.s  20x6  aw=3 d=+3
         fcb     3      ; #59  chtab2_059_p0.s  22x6  aw=3 d=+3
         fcb     4      ; #60  chtab2_060_p0.s  24x7  aw=4 d=+0
@@ -148,31 +148,31 @@ chtab2_aw
         fcb     4      ; #63  chtab2_063_p0.s  30x7  aw=4 d=+0
         fcb     4      ; #64  chtab2_064_p0.s  33x7  aw=4 d=+0
         fcb     3      ; #65  chtab2_065_p0.s  35x6  aw=3 d=+3
-        fcb     3      ; #66  chtab2_066_p0.s  38x4  aw=3 d=-5
+        fcb     3      ; #66  chtab2_066_p0.s  38x5  aw=3 d=-1
         fcb     2      ; #67  chtab2_067_p0.s  39x3  aw=2 d=-2
         fcb     3      ; #68  chtab2_068_p0.s  4x5  aw=3 d=-1
         fcb     3      ; #69  chtab2_069_p0.s  4x5  aw=3 d=-1
-        fcb     2      ; #70  chtab2_070_p0.s  10x3  aw=2 d=-2
+        fcb     2      ; #70  chtab2_070_p0.s  10x4  aw=2 d=+2
 
 chtab3_n           equ     78
 chtab3_aw
-        fcb     2      ; #1   chtab3_001_p0.s  40x3  aw=2 d=-2
+        fcb     2      ; #1   chtab3_001_p0.s  40x4  aw=2 d=+2
         fcb     2      ; #2   chtab3_002_p0.s  39x4  aw=2 d=+2
         fcb     2      ; #3   chtab3_003_p0.s  39x4  aw=2 d=+2
-        fcb     3      ; #4   chtab3_004_p0.s  39x5  aw=3 d=-1
+        fcb     3      ; #4   chtab3_004_p0.s  39x6  aw=3 d=+3
         fcb     4      ; #5   chtab3_005_p0.s  38x7  aw=4 d=+0
-        fcb     5      ; #6   chtab3_006_p0.s  38x8  aw=5 d=-3
+        fcb     5      ; #6   chtab3_006_p0.s  38x9  aw=5 d=+1
         fcb     4      ; #7   chtab3_007_p0.s  38x7  aw=4 d=+0
         fcb     4      ; #8   chtab3_008_p0.s  37x7  aw=4 d=+0
         fcb     4      ; #9   chtab3_009_p0.s  38x7  aw=4 d=+0
-        fcb     3      ; #10  chtab3_010_p0.s  39x5  aw=3 d=-1
+        fcb     3      ; #10  chtab3_010_p0.s  39x6  aw=3 d=+3
         fcb     2      ; #11  chtab3_011_p0.s  40x4  aw=2 d=+2
         fcb     2      ; #12  chtab3_012_p0.s  41x4  aw=2 d=+2
-        fcb     2      ; #13  chtab3_013_p0.s  53x3  aw=2 d=-2
-        fcb     2      ; #14  chtab3_014_p0.s  44x3  aw=2 d=-2
-        fcb     2      ; #15  chtab3_015_p0.s  44x3  aw=2 d=-2
+        fcb     2      ; #13  chtab3_013_p0.s  53x4  aw=2 d=+2
+        fcb     2      ; #14  chtab3_014_p0.s  44x4  aw=2 d=+2
+        fcb     2      ; #15  chtab3_015_p0.s  44x4  aw=2 d=+2
         fcb     3      ; #16  chtab3_016_p0.s  45x5  aw=3 d=-1
-        fcb     4      ; #17  chtab3_017_p0.s  39x6  aw=4 d=-4
+        fcb     4      ; #17  chtab3_017_p0.s  39x7  aw=4 d=+0
         fcb     4      ; #18  chtab3_018_p0.s  33x7  aw=4 d=+0
         fcb     4      ; #19  chtab3_019_p0.s  28x6  aw=4 d=-4
         fcb     5      ; #20  chtab3_020_p0.s  22x8  aw=5 d=-3
@@ -182,36 +182,36 @@ chtab3_aw
         fcb     4      ; #24  chtab3_024_p0.s  24x7  aw=4 d=+0
         fcb     4      ; #25  chtab3_025_p0.s  28x7  aw=4 d=+0
         fcb     4      ; #26  chtab3_026_p0.s  31x7  aw=4 d=+0
-        fcb     4      ; #27  chtab3_027_p0.s  34x6  aw=4 d=-4
-        fcb     2      ; #28  chtab3_028_p0.s  51x3  aw=2 d=-2
+        fcb     4      ; #27  chtab3_027_p0.s  34x7  aw=4 d=+0
+        fcb     2      ; #28  chtab3_028_p0.s  51x4  aw=2 d=+2
         fcb     1      ; #29  chtab3_029_p0.s  9x2  aw=1 d=+1
         fcb     2      ; #30  chtab3_030_p0.s  2x3  aw=2 d=-2
         fcb     3      ; #31  chtab3_031_p0.s  3x5  aw=3 d=-1
-        fcb     3      ; #32  chtab3_032_p0.s  4x5  aw=3 d=-1
+        fcb     3      ; #32  chtab3_032_p0.s  4x6  aw=3 d=+3
         fcb     3      ; #33  chtab3_033_p0.s  7x5  aw=3 d=-1
         fcb     1      ; #34  chtab3_034_p0.s  7x2  aw=1 d=+1
-        fcb     3      ; #35  chtab3_035_p0.s  5x5  aw=3 d=-1
+        fcb     3      ; #35  chtab3_035_p0.s  5x6  aw=3 d=+3
         fcb     2      ; #36  chtab3_036_p0.s  12x4  aw=2 d=+2
         fcb     3      ; #37  chtab3_037_p0.s  10x5  aw=3 d=-1
-        fcb     3      ; #38  chtab3_038_p0.s  16x4  aw=3 d=-5
+        fcb     3      ; #38  chtab3_038_p0.s  16x5  aw=3 d=-1
         fcb     3      ; #39  chtab3_039_p0.s  18x6  aw=3 d=+3
         fcb     3      ; #40  chtab3_040_p0.s  6x6  aw=3 d=+3
         fcb     3      ; #41  chtab3_041_p0.s  12x5  aw=3 d=-1
-        fcb     4      ; #42  chtab3_042_p0.s  4x6  aw=4 d=-4
+        fcb     4      ; #42  chtab3_042_p0.s  4x7  aw=4 d=+0
         fcb     4      ; #43  chtab3_043_p0.s  3x7  aw=4 d=+0
         fcb     3      ; #44  chtab3_044_p0.s  8x5  aw=3 d=-1
         fcb     2      ; #45  chtab3_045_p0.s  11x3  aw=2 d=-2
         fcb     2      ; #46  chtab3_046_p0.s  4x3  aw=2 d=-2
-        fcb     3      ; #47  chtab3_047_p0.s  4x5  aw=3 d=-1
+        fcb     3      ; #47  chtab3_047_p0.s  4x6  aw=3 d=+3
         fcb     2      ; #48  chtab3_048_p0.s  7x4  aw=2 d=+2
         fcb     3      ; #49  chtab3_049_p0.s  2x6  aw=3 d=+3
         fcb     3      ; #50  chtab3_050_p0.s  39x6  aw=3 d=+3
         fcb     3      ; #51  chtab3_051_p0.s  39x6  aw=3 d=+3
-        fcb     3      ; #52  chtab3_052_p0.s  40x5  aw=3 d=-1
+        fcb     3      ; #52  chtab3_052_p0.s  40x6  aw=3 d=+3
         fcb     3      ; #53  chtab3_053_p0.s  39x6  aw=3 d=+3
         fcb     3      ; #54  chtab3_054_p0.s  39x5  aw=3 d=-1
-        fcb     3      ; #55  chtab3_055_p0.s  39x5  aw=3 d=-1
-        fcb     3      ; #56  chtab3_056_p0.s  38x5  aw=3 d=-1
+        fcb     3      ; #55  chtab3_055_p0.s  39x6  aw=3 d=+3
+        fcb     3      ; #56  chtab3_056_p0.s  38x6  aw=3 d=+3
         fcb     3      ; #57  chtab3_057_p0.s  38x6  aw=3 d=+3
         fcb     4      ; #58  chtab3_058_p0.s  38x7  aw=4 d=+0
         fcb     4      ; #59  chtab3_059_p0.s  38x7  aw=4 d=+0
@@ -228,10 +228,10 @@ chtab3_aw
         fcb     3      ; #70  chtab3_070_p0.s  6x6  aw=3 d=+3
         fcb     2      ; #71  chtab3_071_p0.s  11x4  aw=2 d=+2
         fcb     2      ; #72  chtab3_072_p0.s  7x4  aw=2 d=+2
-        fcb     1      ; #73  chtab3_073_p0.s  1x2  aw=1 d=+1
+        fcb     1      ; #73  chtab3_073_p0.s  1x1  aw=1 d=-3
         fcb     2      ; #74  chtab3_074_p0.s  7x4  aw=2 d=+2
         fcb     3      ; #75  chtab3_075_p0.s  10x6  aw=3 d=+3
-        fcb     3      ; #76  chtab3_076_p0.s  7x5  aw=3 d=-1
+        fcb     3      ; #76  chtab3_076_p0.s  7x6  aw=3 d=+3
         fcb     2      ; #77  chtab3_077_p0.s  4x4  aw=2 d=+2
         fcb     2      ; #78  chtab3_078_p0.s  8x4  aw=2 d=+2
 
@@ -257,10 +257,10 @@ chtab4gd_aw
         fcb     5      ; #18  chtab4gd_018_p0.s  37x9  aw=5 d=+1
         fcb     4      ; #19  chtab4gd_019_p0.s  39x7  aw=4 d=+0
         fcb     4      ; #20  chtab4gd_020_p0.s  39x7  aw=4 d=+0
-        fcb     5      ; #21  chtab4gd_021_p0.s  36x8  aw=5 d=-3
+        fcb     5      ; #21  chtab4gd_021_p0.s  36x9  aw=5 d=+1
         fcb     4      ; #22  chtab4gd_022_p0.s  37x7  aw=4 d=+0
         fcb     4      ; #23  chtab4gd_023_p0.s  36x6  aw=4 d=-4
-        fcb     1      ; #24  chtab4gd_024_p0.s  1x2  aw=1 d=+1
+        fcb     1      ; #24  chtab4gd_024_p0.s  1x1  aw=1 d=-3
         fcb     6      ; #25  chtab4gd_025_p0.s  27x11  aw=6 d=+2
         fcb     8      ; #26  chtab4gd_026_p0.s  14x14  aw=8 d=+0
         fcb     2      ; #27  chtab4gd_027_p0.s  40x4  aw=2 d=+2
@@ -287,17 +287,17 @@ chtab5_aw
         fcb     5      ; #13  chtab5_013_p0.s  36x9  aw=5 d=+1
         fcb     6      ; #14  chtab5_014_p0.s  36x10  aw=6 d=-2
         fcb     6      ; #15  chtab5_015_p0.s  36x10  aw=6 d=-2
-        fcb     1      ; #16  chtab5_016_p0.s  1x2  aw=1 d=+1
+        fcb     1      ; #16  chtab5_016_p0.s  1x1  aw=1 d=-3
         fcb     6      ; #17  chtab5_017_p0.s  34x11  aw=6 d=+2
         fcb     4      ; #18  chtab5_018_p0.s  35x7  aw=4 d=+0
         fcb     4      ; #19  chtab5_019_p0.s  37x7  aw=4 d=+0
         fcb     4      ; #20  chtab5_020_p0.s  20x7  aw=4 d=+0
         fcb     4      ; #21  chtab5_021_p0.s  24x7  aw=4 d=+0
         fcb     4      ; #22  chtab5_022_p0.s  28x7  aw=4 d=+0
-        fcb     4      ; #23  chtab5_023_p0.s  32x6  aw=4 d=-4
+        fcb     4      ; #23  chtab5_023_p0.s  32x7  aw=4 d=+0
         fcb     3      ; #24  chtab5_024_p0.s  36x6  aw=3 d=+3
         fcb     3      ; #25  chtab5_025_p0.s  40x6  aw=3 d=+3
-        fcb     3      ; #26  chtab5_026_p0.s  41x5  aw=3 d=-1
+        fcb     3      ; #26  chtab5_026_p0.s  41x6  aw=3 d=+3
         fcb     2      ; #27  chtab5_027_p0.s  44x4  aw=2 d=+2
         fcb     2      ; #28  chtab5_028_p0.s  44x4  aw=2 d=+2
         fcb     3      ; #29  chtab5_029_p0.s  45x4  aw=3 d=-5
@@ -306,17 +306,17 @@ chtab5_aw
         fcb     3      ; #32  chtab5_032_p0.s  43x5  aw=3 d=-1
         fcb     3      ; #33  chtab5_033_p0.s  41x5  aw=3 d=-1
         fcb     3      ; #34  chtab5_034_p0.s  42x5  aw=3 d=-1
-        fcb     1      ; #35  chtab5_035_p0.s  1x2  aw=1 d=+1
-        fcb     3      ; #36  chtab5_036_p0.s  39x4  aw=3 d=-5
-        fcb     3      ; #37  chtab5_037_p0.s  38x4  aw=3 d=-5
+        fcb     1      ; #35  chtab5_035_p0.s  1x1  aw=1 d=-3
+        fcb     3      ; #36  chtab5_036_p0.s  39x5  aw=3 d=-1
+        fcb     3      ; #37  chtab5_037_p0.s  38x5  aw=3 d=-1
         fcb     4      ; #38  chtab5_038_p0.s  38x7  aw=4 d=+0
         fcb     4      ; #39  chtab5_039_p0.s  43x7  aw=4 d=+0
         fcb     2      ; #40  chtab5_040_p0.s  38x4  aw=2 d=+2
         fcb     2      ; #41  chtab5_041_p0.s  33x4  aw=2 d=+2
         fcb     3      ; #42  chtab5_042_p0.s  30x5  aw=3 d=-1
         fcb     3      ; #43  chtab5_043_p0.s  22x6  aw=3 d=+3
-        fcb     5      ; #44  chtab5_044_p0.s  17x8  aw=5 d=-3
-        fcb     6      ; #45  chtab5_045_p0.s  16x9  aw=6 d=-6
+        fcb     5      ; #44  chtab5_044_p0.s  17x9  aw=5 d=+1
+        fcb     6      ; #45  chtab5_045_p0.s  16x10  aw=6 d=-2
 
 chtab4fat_n           equ     32
 chtab4fat_aw
@@ -340,17 +340,17 @@ chtab4fat_aw
         fcb     5      ; #18  chtab4fat_018_p0.s  37x9  aw=5 d=+1
         fcb     4      ; #19  chtab4fat_019_p0.s  39x7  aw=4 d=+0
         fcb     4      ; #20  chtab4fat_020_p0.s  39x7  aw=4 d=+0
-        fcb     5      ; #21  chtab4fat_021_p0.s  38x8  aw=5 d=-3
+        fcb     5      ; #21  chtab4fat_021_p0.s  38x9  aw=5 d=+1
         fcb     4      ; #22  chtab4fat_022_p0.s  39x7  aw=4 d=+0
         fcb     4      ; #23  chtab4fat_023_p0.s  38x6  aw=4 d=-4
-        fcb     1      ; #24  chtab4fat_024_p0.s  1x2  aw=1 d=+1
+        fcb     1      ; #24  chtab4fat_024_p0.s  1x1  aw=1 d=-3
         fcb     6      ; #25  chtab4fat_025_p0.s  27x11  aw=6 d=+2
-        fcb     1      ; #26  chtab4fat_026_p0.s  1x2  aw=1 d=+1
+        fcb     1      ; #26  chtab4fat_026_p0.s  1x1  aw=1 d=-3
         fcb     3      ; #27  chtab4fat_027_p0.s  40x4  aw=3 d=-5
         fcb     3      ; #28  chtab4fat_028_p0.s  35x5  aw=3 d=-1
         fcb     4      ; #29  chtab4fat_029_p0.s  32x6  aw=4 d=-4
         fcb     3      ; #30  chtab4fat_030_p0.s  22x6  aw=3 d=+3
-        fcb     5      ; #31  chtab4fat_031_p0.s  17x8  aw=5 d=-3
+        fcb     5      ; #31  chtab4fat_031_p0.s  17x9  aw=5 d=+1
         fcb     5      ; #32  chtab4fat_032_p0.s  14x9  aw=5 d=+1
 
 chtab4shad_n           equ     32
@@ -370,12 +370,12 @@ chtab4shad_aw
         fcb     5      ; #13  chtab4shad_013_p0.s  38x9  aw=5 d=+1
         fcb     6      ; #14  chtab4shad_014_p0.s  36x11  aw=6 d=+2
         fcb     6      ; #15  chtab4shad_015_p0.s  37x11  aw=6 d=+2
-        fcb     1      ; #16  chtab4shad_016_p0.s  1x2  aw=1 d=+1
+        fcb     1      ; #16  chtab4shad_016_p0.s  1x1  aw=1 d=-3
         fcb     6      ; #17  chtab4shad_017_p0.s  35x11  aw=6 d=+2
         fcb     5      ; #18  chtab4shad_018_p0.s  35x9  aw=5 d=+1
         fcb     4      ; #19  chtab4shad_019_p0.s  37x7  aw=4 d=+0
         fcb     4      ; #20  chtab4shad_020_p0.s  37x7  aw=4 d=+0
-        fcb     5      ; #21  chtab4shad_021_p0.s  35x8  aw=5 d=-3
+        fcb     5      ; #21  chtab4shad_021_p0.s  35x9  aw=5 d=+1
         fcb     4      ; #22  chtab4shad_022_p0.s  36x7  aw=4 d=+0
         fcb     4      ; #23  chtab4shad_023_p0.s  35x6  aw=4 d=-4
         fcb     4      ; #24  chtab4shad_024_p0.s  38x6  aw=4 d=-4
@@ -413,14 +413,14 @@ chtab4skel_aw
         fcb     5      ; #21  chtab4skel_021_p0.s  35x8  aw=5 d=-3
         fcb     4      ; #22  chtab4skel_022_p0.s  36x7  aw=4 d=+0
         fcb     4      ; #23  chtab4skel_023_p0.s  36x6  aw=4 d=-4
-        fcb     1      ; #24  chtab4skel_024_p0.s  1x2  aw=1 d=+1
+        fcb     1      ; #24  chtab4skel_024_p0.s  1x1  aw=1 d=-3
         fcb     5      ; #25  chtab4skel_025_p0.s  24x8  aw=5 d=-3
         fcb     4      ; #26  chtab4skel_026_p0.s  34x7  aw=4 d=+0
-        fcb     1      ; #27  chtab4skel_027_p0.s  1x2  aw=1 d=+1
-        fcb     1      ; #28  chtab4skel_028_p0.s  1x2  aw=1 d=+1
-        fcb     1      ; #29  chtab4skel_029_p0.s  1x2  aw=1 d=+1
-        fcb     1      ; #30  chtab4skel_030_p0.s  1x2  aw=1 d=+1
-        fcb     1      ; #31  chtab4skel_031_p0.s  1x2  aw=1 d=+1
+        fcb     1      ; #27  chtab4skel_027_p0.s  1x1  aw=1 d=-3
+        fcb     1      ; #28  chtab4skel_028_p0.s  1x1  aw=1 d=-3
+        fcb     1      ; #29  chtab4skel_029_p0.s  1x1  aw=1 d=-3
+        fcb     1      ; #30  chtab4skel_030_p0.s  1x1  aw=1 d=-3
+        fcb     1      ; #31  chtab4skel_031_p0.s  1x1  aw=1 d=-3
         fcb     6      ; #32  chtab4skel_032_p0.s  10x11  aw=6 d=+2
 
 chtab4viz_n           equ     32
@@ -440,15 +440,15 @@ chtab4viz_aw
         fcb     5      ; #13  chtab4viz_013_p0.s  38x9  aw=5 d=+1
         fcb     6      ; #14  chtab4viz_014_p0.s  37x11  aw=6 d=+2
         fcb     6      ; #15  chtab4viz_015_p0.s  38x11  aw=6 d=+2
-        fcb     3      ; #16  chtab4viz_016_p0.s  46x5  aw=3 d=-1
+        fcb     3      ; #16  chtab4viz_016_p0.s  46x6  aw=3 d=+3
         fcb     6      ; #17  chtab4viz_017_p0.s  36x11  aw=6 d=+2
         fcb     5      ; #18  chtab4viz_018_p0.s  37x9  aw=5 d=+1
         fcb     4      ; #19  chtab4viz_019_p0.s  38x7  aw=4 d=+0
         fcb     4      ; #20  chtab4viz_020_p0.s  38x7  aw=4 d=+0
-        fcb     5      ; #21  chtab4viz_021_p0.s  34x8  aw=5 d=-3
+        fcb     5      ; #21  chtab4viz_021_p0.s  34x9  aw=5 d=+1
         fcb     4      ; #22  chtab4viz_022_p0.s  36x7  aw=4 d=+0
         fcb     4      ; #23  chtab4viz_023_p0.s  37x6  aw=4 d=-4
-        fcb     1      ; #24  chtab4viz_024_p0.s  1x2  aw=1 d=+1
+        fcb     1      ; #24  chtab4viz_024_p0.s  1x1  aw=1 d=-3
         fcb     6      ; #25  chtab4viz_025_p0.s  27x11  aw=6 d=+2
         fcb     8      ; #26  chtab4viz_026_p0.s  14x14  aw=8 d=+0
         fcb     2      ; #27  chtab4viz_027_p0.s  38x4  aw=2 d=+2

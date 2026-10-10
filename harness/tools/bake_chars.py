@@ -8,6 +8,19 @@ WHAT IT WRITES (content/chars/, every file GENERATED -- re-run this, do not hand
   <tab>/<tab>_<nnn>_p0.s    cel_blit_prep phase 0 of that file: the SEGMENT STREAM, facing 0,
                             phase 0. ★ THE SHIPPING ARTIFACT: the runtime transform (P5.20's
                             xf_blit) draws every phase and both facings from this one stream.
+                            ★ P5.33: WITH THE ORACLE'S MASK BORDER BAKED IN (border_rows): the
+                            pixels the oracle's MASKTAB clears are OPAQUE BLACK merge pairs. The
+                            _src.s pixel file is unchanged and carries no border; the border is a
+                            draw rule computed here from the Apple source bytes.
+
+★★★ TWO BAKES, TWO TRANSPARENCY MODELS -- READ THIS BEFORE ASSUMING THEY AGREE (P5.33, Jay's ruling
+2026-10-10: "fix gameplay, leave the cutscene"). THIS bake (gameplay, content/chars) draws a
+character the oracle's way: MLayMask, a one-pixel black border inside each 7-px source byte, small
+interior gaps filled. The CUTSCENE's bake (content/cutscene, bake_scene.py / bake_walk.py /
+cel_table.py) still treats index 0 as transparent with no border (P3.18 §3B) -- it is gated and
+shipped, and the gap is invisible in its content. The same cel baked by both is NOT the same
+stream. Revisit the cutscene when it is touched for another reason, and move the lz_unpack
+256-count fix (§5.412) in that same change: both move prod.
   char_cels.s               the REGISTRY: per table, one byte per image slot = apple_w, the
                             Apple width in 7-px bytes (0 = empty slot). See APPLE_W below.
 
@@ -73,15 +86,64 @@ def slots_of(table):
     return len(SC.load_chtable(IMG / table))
 
 
-def stream_bytes(cel):
-    """[h, w] + segments: cel_blit_prep's main(), phase 0, with its own replay as a gate."""
-    rows, w = P.shift_pixels(cel, 0)
+BORDER = 4      # P5.33: a pixel the oracle's MASK clears -- OPAQUE BLACK. Never stored in a cel file.
+
+
+def border_rows(raw, cel):
+    """P5.33 -- THE ORACLE'S CHARACTER MASK, BAKED. The oracle draws every character with
+    OPACITY = mask [DrawNormal, GAMEBG.S:432-437]: screen := (screen AND MASKTAB[byte]) OR image
+    [LayMask, HIRES.S:945-961], and MASKTAB clears each lit bit AND one either side, within the
+    character's own 7-pixel SOURCE byte [HRTABLES.S:219-234]. So a pixel the cel leaves at 0 but the
+    mask clears is OPAQUE BLACK, not transparent.
+
+    Computed here by ARITHMETIC -- (b | b<<1 | b>>1) per source byte -- not by reading MASKTAB:
+    the predictions (char_mask.py) read MASKTAB literally, so the two routes check each other.
+    The pixel grid is the Apple's 1:1 (sprite_convert: column byte*7+bit), bottom-up rows flipped.
+
+    Returns visual rows of pixel values: the cel's colour (1-3), BORDER (opaque black), or 0
+    (transparent), widened past the trailing trim where the border reaches beyond it."""
+    aw, h, data = raw["w"], raw["h"], raw["data"]
+    width = max(4 * cel.w, ((7 * aw + 3) // 4) * 4)
+    out = []
+    for vr in range(h):
+        d = h - 1 - vr
+        src = data[d * aw:(d + 1) * aw]
+        row = list(cel.pixels[vr]) + [0] * (width - len(cel.pixels[vr]))
+        for p in range(aw):
+            b = src[p] & 0x7F
+            dil = (b | (b << 1) | (b >> 1)) & 0x7F
+            for i in range(7):
+                c = 7 * p + i
+                if (dil >> i) & 1 and row[c] == 0:
+                    row[c] = BORDER
+        out.append(row)
+    # the stream's width: the rightmost byte holding anything opaque (trailing trim, as before)
+    used = max((c // 4 for r in out for c, v in enumerate(r) if v), default=0) + 1
+    return [r[:4 * used] for r in out], used
+
+
+def stream_bytes(cel, raw):
+    """[h, w] + segments: cel_blit_prep's encoder, phase 0, with a replay of its own as a gate.
+    P5.33: the rows carry BORDER pixels; encode_row needs no change -- classify() counts any
+    non-zero pixel as opaque, pack_row() masks it with &3 (BORDER -> 0, black), and a merge keeps
+    the destination only where the pixel is 0 -- so a border pixel is a merge pair's mask bits
+    CLEARED and src bits ZERO. Index 0 still means transparent to the blitter."""
+    rows, w = border_rows(raw, cel)
     segs = []
     for r in range(cel.h):
         segs += P.encode_row(rows[r], w)
-    bad = P.verify(cel, 0, segs)
-    if bad:
-        raise SystemExit("%s: stream failed its own replay (%d bytes)" % (cel.label, len(bad)))
+    # replay over a hostile background: colour -> colour, BORDER -> 0, 0 -> background
+    bg = {r * 80 + c: 0xB4 for r in range(cel.h) for c in range(w)}
+    fb = P.simulate(segs, cel.h, w, initial=bg)
+    for r in range(cel.h):
+        for c in range(w):
+            exp = 0
+            for k in range(4):
+                v = rows[r][c * 4 + k]
+                sh = 6 - 2 * k
+                exp |= ((v & 3) if v else ((0xB4 >> sh) & 3)) << sh
+            if fb.get(r * 80 + c, 0xB4) != exp:
+                raise SystemExit("%s: stream failed its own replay at row %d byte %d" % (cel.label, r, c))
     return cel, w, segs
 
 
@@ -110,7 +172,7 @@ def bake(tables):
             SC.convert_one(IMG / table, c["idx"], src, "%s_src" % stem, START_COL,
                            False, False, trim=True, quiet=True)
             cel = Cel(str(src))
-            cel_, w, segs = stream_bytes(cel)
+            cel_, w, segs = stream_bytes(cel, SC.get_cel(IMG / table, c["idx"]))
             p0 = d / ("%s_p0.s" % stem)
             # ★ encoding EXPLICIT: emit_asm's header carries an em dash, and write_text's
             # default is the locale's (cp1252 here: one byte 0x97, not UTF-8's three), so

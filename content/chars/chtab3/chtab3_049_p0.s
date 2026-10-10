@@ -4,5 +4,5 @@
 *
 chtab3_049_p0:
         fcb     2,6  ; height, width in bytes
-        fcb     $44,$C2,$FC,$03,$3F,$C0,$00,$C1,$F0,$0F,$84,$FF
+        fcb     $44,$C2,$F0,$03,$3F,$C0,$00,$C1,$C0,$0F,$84,$FF
         fcb     $FF,$FF,$FF,$C1,$3F,$C0,$00

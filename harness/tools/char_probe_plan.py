@@ -41,6 +41,7 @@ import cel_blit_prep as P                                   # noqa: E402
 import bake_chars as B                                      # noqa: E402
 import fore_plane as FP                                     # noqa: E402
 import bg_compose as BC                                     # noqa: E402
+import char_mask as CM                                      # noqa: E402
 from celio import Cel                                       # noqa: E402
 
 STRIDE = 80
@@ -81,11 +82,11 @@ def ref_stream(d, rule="oracle"):
     SC.convert_one(B.IMG / d["table"], d["image"], path, "%s_r" % stem, sc,
                    d["facing"] == 1 and (7 * aw) % 2 == 0, d["facing"] == 1, trim=True, quiet=True)
     cel = Cel(str(path))
-    rows, w = P.shift_pixels(cel, d["phase"])
-    segs = []
-    for r in range(cel.h):
-        segs += P.encode_row(rows[r], w)
-    return cel.h, w, segs
+    # ★ P5.33: the reference is the ORACLE's composite (char_mask: MLayMask's border, MASKTAB read
+    # literally), not a segment stream replayed with index 0 transparent. w is the frame's byte width
+    # at this phase, for the clearance checks; the border never reaches past the 7*apple_w grid.
+    w = max(cel.w + (1 if d["phase"] else 0), (d["phase"] + 7 * aw + 3) // 4)
+    return cel.h, w, cel.pixels, CM.cleared(B.IMG / d["table"], d["image"], d["facing"] == 1)
 
 
 def registry_aw(table, image):
@@ -148,7 +149,7 @@ def main():
         aw, w0, h, stem, p0 = registry_aw(d["table"], d["image"])
         yco = d["char_y"] + d["fdy"]
         top = yco - h + 1
-        hh, w, segs = ref_stream(d)
+        hh, w, rpix, rclr = ref_stream(d)
         assert hh == h
         # the routine's own frame, by the same arithmetic char_probe.s performs
         if d["facing"] == 0:
@@ -172,10 +173,14 @@ def main():
             hits = over(occ)
             fhits = []
         # the draws must not overlap EACH OTHER either: an overlap would make the picture
-        # depend on draw order, which is the question this probe stays out of
-        hits += ["draw '%s'" % n for n, rows, byts in drawn
-                 if not (rows[1] < top or rows[0] > yco or byts[1] < span[0] or byts[0] > span[1])]
-        drawn.append((d["name"], [top, yco], span))
+        # depend on draw order, which is the question this probe stays out of.
+        # ★ P5.33: tested on the bytes each draw makes OPAQUE (the oracle-model composite), not on
+        # frames. The mask border widened some streams by a byte of transparent PADDING (cel #15:
+        # w0 3 -> 4), so two frames can now share a byte neither draws in -- order-independent,
+        # which is what this check is for.
+        mine = CM.compose(bytearray(len(fb)), rpix, rclr, top, 4 * d["col"] + d["phase"])
+        hits += ["draw '%s'" % n for n, ops in drawn if ops & mine]
+        drawn.append((d["name"], mine))
         edge = top < 0 or yco > 191 or span[0] < 0 or span[1] > 79
         bad += bool(hits) + edge
         pl = oracle_pl(d)
@@ -185,11 +190,7 @@ def main():
                  "CLEAR" if not hits else "OVERLAPS " + ", ".join(hits),
                  ("  behind/over %d fore piece(s): %s" % (len(fhits), ", ".join(sorted(set(fhits)))))
                  if fhits else "", "  OFF-SCREEN" if edge else ""))
-        base = top * STRIDE + d["col"]
-        init = {o - base: v for o, v in enumerate(fb)}
-        out = P.simulate(segs, h, w, STRIDE, initial=init)
-        for o in range(len(fb)):
-            fb[o] = out[o - base]
+        CM.compose(fb, rpix, rclr, top, 4 * d["col"] + d["phase"])
         t = B.short(d["table"])
         incs.add(p0)
         asm.append("                fdb     %s_p0,%s_aw+%d,fdef_tab+(%d-fdef_tab_first)*FRAME_ENTSZ"
