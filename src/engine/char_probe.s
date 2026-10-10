@@ -51,20 +51,41 @@
                 section prog
                 export  char_probe_draw
                 import  xf_blit
+                import  fore_draw
                 endc
 
                 include "src/hal.inc"
 
-* entry: +0 stream, +2 &apple_w, +4 &frame row, +6 yco, +7 col, +8 phase, +9 facing
-CP_ENT          equ     10
+* entry: +0 stream, +2 &apple_w, +4 &frame row, +6 yco, +7 col, +8 phase, +9 facing,
+*        +10 plane: 0 = MID (drawn before the foreground pass, as DRAWMID is before DRAWFORE),
+*                   1 = FLAT (drawn after it -- P5.5's one undifferentiated pass, the CONTROL)
+CP_ENT          equ     11
 
+* ---------------------------------------------------------------
+* P5.30: THE PLANE ORDER. DRAWALL draws DRAWMID (the characters) sixth and DRAWFORE seventh
+* [GRAFIX.S:485-505; P5.8 §3C]. So: every MID draw, then the page's foreground list over them,
+* then the FLAT draws -- which land on top of the foreground, the way every character drew
+* before this dispatch, and are there only as the control beside the corrected draw.
+* ---------------------------------------------------------------
 char_probe_draw
+                clr     cp_pass
+                lbsr    cp_walk
+                jsr     fore_draw
+                lda     #1
+                sta     cp_pass
+                lbsr    cp_walk
+                rts
+
+cp_walk
                 ldu     #cp_list
                 stu     cp_cur
 cp_next
                 ldu     cp_cur
                 ldx     ,u                      ; the stream
                 lbeq    cp_done
+                lda     10,u
+                cmpa    cp_pass
+                lbne    cp_skip
                 lda     ,x                      ; rows
                 sta     cp_rows
                 lda     1,x                     ; w0
@@ -157,6 +178,7 @@ cp_call
                 ldu     ,u                      ; U = the stream
                 jsr     xf_blit
                 inc     char_probe_n
+cp_skip
                 ldu     cp_cur
                 leau    CP_ENT,u
                 stu     cp_cur
@@ -164,6 +186,7 @@ cp_call
 cp_done
                 rts
 
+cp_pass         rmb     1
 cp_cur          rmb     2
 cp_dst          rmb     2
 cp_p            rmb     2

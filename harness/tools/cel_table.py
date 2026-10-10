@@ -28,7 +28,7 @@ import pathlib
 import re
 import sys
 
-ROOT = pathlib.Path("C:/Projects/POP3_port")
+ROOT = pathlib.Path(__file__).resolve().parents[2]   # P5.30: was "C:/Projects/POP3_port" (a junction to this tree on Jay's machine, absent elsewhere)
 sys.path.insert(0, str(ROOT / "harness/tools"))
 import cel_pack as K                                           # noqa: E402
 

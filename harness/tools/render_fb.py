@@ -20,12 +20,30 @@ composite, which is what made orange read as yellow in P1.3.
 
 This renders what the FRAMEBUFFER BYTES plus the PALETTE mean. It is a decode, not
 a photograph of the screen — the on-screen truth is Jay's live MAME (idiom §11).
+
+★ P5.30: NO PIL. The PNG is written with the standard library (zlib + struct): this
+toolchain has never had PIL, so every runner's PNG step died on the import and no report
+since P5.5 has carried an image. And --palette-file now takes the 4 bytes a 2 bpp runner
+dumps ($FFB0-$FFB3); it used to demand 16 and would have refused them even with PIL.
 """
 import argparse
 import pathlib
+import struct
 import sys
+import zlib
 
-from PIL import Image
+
+def write_png(path, width, height, rows):
+    """rows: `height` byte strings of width*3 RGB bytes. Truecolour, 8 bit, no interlace."""
+    def chunk(tag, data):
+        return (struct.pack(">I", len(data)) + tag + data
+                + struct.pack(">I", zlib.crc32(tag + data) & 0xFFFFFFFF))
+    raw = b"".join(b"\x00" + r for r in rows)            # filter type 0 on every row
+    png = (b"\x89PNG\r\n\x1a\n"
+           + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+           + chunk(b"IDAT", zlib.compress(raw, 9))
+           + chunk(b"IEND", b""))
+    pathlib.Path(path).write_bytes(png)
 
 # The default test palettes HAL_gfx_set_mode loads (gfx.s gfx_pal4 / gfx_pal16).
 PAL4 = [0x00, 0x26, 0x19, 0x3F]
@@ -51,23 +69,19 @@ def decode(data, bpp):
     if len(data) < want:
         sys.exit(f"dump is {len(data)} B, need {want} B for {bpp} bpp "
                  f"({stride} B/row x {ROWS} rows)")
-    rgb = [gime_rgb(p) for p in pal]
-    img = Image.new('RGB', (WIDTH, ROWS))
-    px = img.load()
+    rgb = [bytes(gime_rgb(p)) for p in pal]
+    rows = []
     for y in range(ROWS):
         base = y * stride
-        x = 0
+        row = []
         for i in range(stride):
             byte = data[base + i]
             if bpp == 4:
-                px[x, y] = rgb[byte >> 4]          # high nibble = left pixel
-                px[x + 1, y] = rgb[byte & 0x0F]
-                x += 2
+                row += [rgb[byte >> 4], rgb[byte & 0x0F]]   # high nibble = left pixel
             else:
-                for sh in (6, 4, 2, 0):            # MSB pair = leftmost
-                    px[x, y] = rgb[(byte >> sh) & 3]
-                    x += 1
-    return img
+                row += [rgb[(byte >> sh) & 3] for sh in (6, 4, 2, 0)]   # MSB pair = leftmost
+        rows.append(row)
+    return rows
 
 
 def main():
@@ -92,18 +106,22 @@ def main():
 
     if a.palette_file:
         pf = pathlib.Path(a.palette_file).read_bytes()
-        if len(pf) < 16:
-            sys.exit(f"palette file has {len(pf)} bytes, need 16")
-        PAL16[:] = list(pf[:16])
-    img = decode(data, bpp)
-    if a.scale > 1:
-        img = img.resize((WIDTH * a.scale, ROWS * a.scale), Image.NEAREST)
+        need = 16 if bpp == 4 else 4
+        if len(pf) < need:
+            sys.exit(f"palette file has {len(pf)} bytes, need {need} for {bpp} bpp")
+        (PAL16 if bpp == 4 else PAL4)[:] = list(pf[:need])
+    rows = decode(data, bpp)
+    s = max(1, a.scale)                                   # integer NEAREST, never fractional
+    out_rows = []
+    for row in rows:
+        line = b"".join(p * s for p in row)
+        out_rows += [line] * s
 
     out = a.out or (str(pathlib.Path(a.dump).with_suffix('')) + '.png')
-    img.save(out)
+    write_png(out, WIDTH * s, ROWS * s, out_rows)
     colours = 16 if bpp == 4 else 4
     print(f"{a.dump}: {len(data)} B, {bpp} bpp, {colours} colours, "
-          f"{WIDTH * bpp // 8} B/row -> {out} ({img.width}x{img.height})")
+          f"{WIDTH * bpp // 8} B/row -> {out} ({WIDTH * s}x{ROWS * s})")
 
 
 if __name__ == '__main__':

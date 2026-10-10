@@ -130,7 +130,21 @@ def main():
     incs, bad, drawn = set(), 0, []
     print("char_probe_plan: %d draws on %s screen %d" % (len(place["draws"]), place["screen"]["level"],
                                                       place["screen"]["screen"]))
-    for d in place["draws"]:
+    # ★ P5.30: THE PLANE ORDER, predicted the way char_probe.s draws it -- every MID draw, then
+    # the page's FOREGROUND list (bake_screen.py's own, replayed through its own replay_fore),
+    # then every FLAT draw. The fore list's pixels are the finished page's; nothing here reads
+    # the 6809's walk of it.
+    import bake_screen as BS
+    _ref, fvariants, _order, _cl, fore = BS.bake(place["screen"]["level"], place["screen"]["screen"], "DUN")
+    mids = [d for d in place["draws"] if d.get("plane", "mid") == "mid"]
+    flats = [d for d in place["draws"] if d.get("plane", "mid") == "flat"]
+    fore_rects = [("fore $%02X" % f[8], [f[2], f[2] + f[4] - 1], [f[1], f[1] + f[3] - 1]) for f in fore]
+    fb = bytearray(TILE_REF.read_bytes())
+    for n_d, d in enumerate(mids + [None] + flats):
+        if d is None:
+            fb = bytearray(BS.replay_fore(fb, fvariants, fore))
+            print("  -- the foreground pass: %d entries replayed over the MID draws --" % len(fore))
+            continue
         aw, w0, h, stem, p0 = registry_aw(d["table"], d["image"])
         yco = d["char_y"] + d["fdy"]
         top = yco - h + 1
@@ -144,8 +158,19 @@ def main():
             rcol, rk = pp // 4, pp % 4
         rw = w0 + (1 if rk else 0)
         span = [min(d["col"], rcol), max(d["col"] + w - 1, rcol + rw - 1)]
-        hits = [n for n, rows, byts in occ
-                if not (rows[1] < top or rows[0] > yco or byts[1] < span[0] or byts[0] > span[1])]
+        def over(rects):
+            return [n for n, rows, byts in rects
+                    if not (rows[1] < top or rows[0] > yco or byts[1] < span[0] or byts[0] > span[1])]
+        if d.get("expect_fore"):
+            # P5.30: this draw is MEANT to stand behind a foreground piece -- it must overlap
+            # at least one fore rectangle, and nothing ELSE in the way (the omitted gate bars)
+            hits = [n for n in over(occ) if not n.startswith("fore ")]
+            fhits = over(fore_rects)
+            if not fhits:
+                hits.append("NO foreground piece (expect_fore)")
+        else:
+            hits = over(occ)
+            fhits = []
         # the draws must not overlap EACH OTHER either: an overlap would make the picture
         # depend on draw order, which is the question this probe stays out of
         hits += ["draw '%s'" % n for n, rows, byts in drawn
@@ -154,11 +179,12 @@ def main():
         edge = top < 0 or yco > 191 or span[0] < 0 or span[1] > 79
         bad += bool(hits) + edge
         pl = oracle_pl(d)
-        print("  %-9s frame %3d %s #%d aw %d PL %d  rows %d..%d  ref bytes %d..%d  routine %d..%d (phase %d)  %s%s"
-              % (d["name"], d["frame"], d["table"], d["image"], aw, pl, top, yco, d["col"],
-                 d["col"] + w - 1, rcol, rcol + rw - 1, rk,
+        print("  %-9s %-4s frame %3d %s #%d aw %d PL %d  rows %d..%d  ref bytes %d..%d  routine %d..%d (phase %d)  %s%s%s"
+              % (d["name"], d.get("plane", "mid"), d["frame"], d["table"], d["image"], aw, pl, top,
+                 yco, d["col"], d["col"] + w - 1, rcol, rcol + rw - 1, rk,
                  "CLEAR" if not hits else "OVERLAPS " + ", ".join(hits),
-                 "  OFF-SCREEN" if edge else ""))
+                 ("  behind/over %d fore piece(s): %s" % (len(fhits), ", ".join(sorted(set(fhits)))))
+                 if fhits else "", "  OFF-SCREEN" if edge else ""))
         base = top * STRIDE + d["col"]
         init = {o - base: v for o, v in enumerate(fb)}
         out = P.simulate(segs, h, w, STRIDE, initial=init)
@@ -168,8 +194,9 @@ def main():
         incs.add(p0)
         asm.append("                fdb     %s_p0,%s_aw+%d,fdef_tab+(%d-fdef_tab_first)*FRAME_ENTSZ"
                    % (stem, t, d["image"] - 1, d["frame"]))
-        asm.append("                fcb     %d,%d,%d,%d            ; %s"
-                   % (yco, d["col"], d["phase"], d["facing"], d["name"]))
+        asm.append("                fcb     %d,%d,%d,%d,%d          ; %s (%s)"
+                   % (yco, d["col"], d["phase"], d["facing"],
+                      0 if d.get("plane", "mid") == "mid" else 1, d["name"], d.get("plane", "mid")))
     asm.append("                fdb     0")
     asm.append("* the baked streams, the registry and the frame table, from content/chars as committed")
     asm.append("                ifdef   OBJTARGET")

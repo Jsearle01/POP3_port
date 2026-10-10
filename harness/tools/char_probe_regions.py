@@ -69,8 +69,11 @@ def main():
     pred = (ROOT / "build/assets/char_ref.bin").read_bytes()
     got = pathlib.Path(a.got).read_bytes()
     place = json.load(open(CP.PLACE))
-    print("%-9s %-5s %-4s %-4s %-14s %6s %8s %5s | controls: %5s %8s"
-          % ("draw", "frame", "aw", "PL", "frame bytes", "bytes", "changed", "port", "p528", "opposite"))
+    import bake_screen as BS
+    _r, fvariants, _o, _c, fore = BS.bake(place["screen"]["level"], place["screen"]["screen"], "DUN")
+    print("%-9s %-5s %-4s %-4s %-14s %6s %8s %5s | controls: %5s %8s %10s"
+          % ("draw", "frame", "aw", "PL", "frame bytes", "bytes", "changed", "port", "p528", "opposite",
+             "plane-swap"))
     allofs = set()
     for d in place["draws"]:
         aw, w0, h, stem, p0 = CP.registry_aw(d["table"], d["image"])
@@ -91,9 +94,20 @@ def main():
         _, w5, s5 = CP.ref_stream(d, rule="p528")
         c528 = draw_onto(tile, s5, h, w5, top, d["col"])
         copp = draw_onto(tile, swapped(segs, h, w), h, w, top, d["col"])
-        print("%-9s %5d %4d %4d %3d..%-2d r%d..%-3d %6d %8d %5d | %14d %8d"
+        # P5.30 plane-swap control, for a draw that overlaps a foreground piece: the OTHER plane
+        # order -- a MID draw redone on top of the finished picture (as if FLAT), a FLAT draw with
+        # the foreground pass run over it (as if MID) -- and the bytes of the capture it contradicts
+        swap = "-"
+        if d.get("expect_fore"):
+            if d.get("plane", "mid") == "mid":
+                alt = draw_onto(bytearray(pred), segs, h, w, top, d["col"])
+            else:
+                alt = BS.replay_fore(pred, fvariants, fore)
+            swap = str(sum(1 for o in offs if alt[o] != got[o]))
+        print("%-9s %5d %4d %4d %3d..%-2d r%d..%-3d %6d %8d %5d | %14d %8d %10s"
               % (d["name"], d["frame"], aw, CP.oracle_pl(d), c0, c1, top, yco, len(offs), ch, bad,
-                 sum(1 for o in offs if c528[o] != got[o]), sum(1 for o in offs if copp[o] != got[o])))
+                 sum(1 for o in offs if c528[o] != got[o]), sum(1 for o in offs if copp[o] != got[o]),
+                 swap))
     outside = set(range(len(tile))) - allofs
     print("outside every frame: %d B; port vs bare tile reference differ: %d"
           % (len(outside), sum(1 for o in outside if got[o] != tile[o])))

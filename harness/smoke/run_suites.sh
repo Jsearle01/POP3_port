@@ -42,7 +42,12 @@ cd "$(dirname "$0")/../.." || exit 1
 # gameplay background. It does NOT restore the rest of what went (no page-signature guard,
 # no phase-occupancy census, no two-run stability check, and nothing about the scene); it
 # restores the pixel comparison, on a different picture.
-SUITES="introseq integ tile"
+# ★ `char` JOINS AT P5.30 (P5.28 §8.2, P5.5's own argument for `tile`): the character probe off
+# its own gate disk -- the bake, the registry, the frame table, xf_blit's every path including the
+# colour swap, the placement arithmetic AND the foreground pass -- compared byte for byte with the
+# framebuffer char_probe_plan.py predicts. Without it, that composition is checked only when someone
+# remembers to. Not at 128 KB: CLAUDE.md §2K keeps the 128 KB run to `tile`.
+SUITES="introseq integ tile char"
 
 # ── RETIRED at P3.103, with what covers their ground now ─────────────────────────────
 #   probe     P1.1 loop probe        -> room/walk boot through the same HAL

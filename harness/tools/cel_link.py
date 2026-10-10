@@ -23,7 +23,7 @@ import pathlib
 import subprocess
 import sys
 
-ROOT = pathlib.Path("C:/Projects/POP3_port")
+ROOT = pathlib.Path(__file__).resolve().parents[2]   # P5.30: was "C:/Projects/POP3_port" (a junction to this tree on Jay's machine, absent elsewhere)
 TOOLS = ROOT / "harness/tools"
 
 

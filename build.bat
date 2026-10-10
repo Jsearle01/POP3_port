@@ -944,7 +944,11 @@ lwasm --obj -DOBJTARGET -I . -o build/obj/xf_tables.o build/gen/xf_tables.s
 if errorlevel 1 goto :error
 lwasm --obj -DOBJTARGET -I . -o build/obj/char_probe.o src/engine/char_probe.s
 if errorlevel 1 goto :error
-lwlink --decb --script=link/pop_charprobe.link --entry=tile_entry --map=build/obj/charprobe.map -o build/char_probe.bin build/obj/char_tile.o build/obj/char_probe.o build/obj/xf_blit.o build/obj/blit_core.o build/obj/xf_tables.o build/obj/lz_unpack.o build/obj/hal_build.o
+REM P5.30: the foreground pass. The tile page now carries a FOREGROUND list after its display
+REM list (bake_screen.py); tile_probe.s ignores it, the character probe draws it after its MID draws.
+lwasm --obj -DOBJTARGET -I . -o build/obj/fore_draw.o src/engine/fore_draw.s
+if errorlevel 1 goto :error
+lwlink --decb --script=link/pop_charprobe.link --entry=tile_entry --map=build/obj/charprobe.map -o build/char_probe.bin build/obj/char_tile.o build/obj/char_probe.o build/obj/fore_draw.o build/obj/xf_blit.o build/obj/blit_core.o build/obj/xf_tables.o build/obj/lz_unpack.o build/obj/hal_build.o
 if errorlevel 1 goto :error
 call :size build/char_probe.bin
 python harness\tools\map_overlap_check.py build/obj/charprobe.map
