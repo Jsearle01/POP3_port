@@ -22,6 +22,8 @@
 *   B  KR_TRK_B, 3 tracks -> $3400-$69FF   xftab ($4200-) and kd1 ($6000-$69FF); it ENDS at
 *                                         $69FF because $6A00 is the driver's own parameter
 *                                         block, which a read must never cover
+*   C  KR_TRK_C, 1 track  -> $3400 FIRST, then copied to $6B00-$77FF: kd3, the guard's streams
+*                                         (P5.32). Read before B, which then overwrites $3400.
 *   this loader sits between them, $3200-$33FF, and the kernel at $7900 is its own segment --
 *   the SAME hal_build.o the probe links at the same address (kernel_identical_check.py), so
 *   the probe's kernel segment is dropped from both images rather than read over the running
@@ -37,7 +39,7 @@
                 ifdef   OBJTARGET
                 section prog
                 export  kr_entry
-                export  kr_stop
+                export  kr_stop,kr_nact
                 import  disk_read_init
                 import  disk_read_range
                 import  disk_read_motor_off
@@ -71,12 +73,20 @@ KR_BASE_A       equ     $0E00
 KR_NTRK_A       equ     2
 KR_BASE_B       equ     $3400
 KR_NTRK_B       equ     3
+                ifndef  KR_TRK_C
+KR_TRK_C        equ     7
+                endc
+KR_KD3          equ     $6B00           ; P5.32: the guard's streams (link/pop_kidrun.link kd3)
+KR_KD3_END      equ     $7800
 * KR_GO, not KR_ENTRY: lwasm symbols are case-insensitive and kr_entry is this file's label
                 ifndef  KR_GO
 KR_GO           equ     $0E00
                 endc
                 ifndef  KR_WKSTOP
                 error   "KR_WKSTOP (wk_stop in build/obj/kidrun.map) must be passed in"
+                endc
+                ifndef  KR_WKNACT
+                error   "KR_WKNACT (wk_nact in build/obj/kidrun.map) must be passed in"
                 endc
 
 * ---------------------------------------------------------------
@@ -93,6 +103,20 @@ kr_entry
                 jsr     HAL_time_init
 
                 jsr     disk_read_init
+* --- P5.32: read C FIRST -- kd3, one track, into $3400 (where read B will land later), then up to
+* $6B00. No whole-track read can land at $6B00 itself: 4,608 B from there covers the kernel at $7900.
+* $3400-$45FF is overwritten by read B afterwards; this loader ($3200-$33FF) is never covered.
+                ldx     #KR_BASE_B
+                lda     #KR_TRK_C
+                ldb     #SECS_TRACK
+                bsr     load_tracks
+                bne     kr_dead
+                ldx     #KR_BASE_B
+                ldu     #KR_KD3
+kr_cp           ldd     ,x++
+                std     ,u++
+                cmpu    #KR_KD3_END
+                blo     kr_cp
                 ldx     #KR_BASE_A
                 lda     #KR_TRK_A
                 ldb     #KR_NTRK_A*SECS_TRACK
@@ -111,11 +135,14 @@ kr_entry
                 bne     kr_dead
                 ldd     kr_stop
                 std     KR_WKSTOP
+                lda     kr_nact
+                sta     KR_WKNACT
                 jmp     KR_GO
 
 kr_dead         bra     kr_dead
 
 kr_stop         fdb     0               ; the harness pokes this before EXEC
+kr_nact         fcb     2               ; P5.32: actors; the harness pokes 1 for the one-actor control
 
 * ---------------------------------------------------------------
 * load_tracks - A = first track, B = sector count, X = destination. Z set on success.

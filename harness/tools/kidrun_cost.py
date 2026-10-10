@@ -39,7 +39,8 @@ def oracle_durations():
 
 
 def main():
-    log = ROOT / "build/kidrun_cycles.log"
+    # P5.32: a log path may be given (the one-actor control and the two-actor run are two logs)
+    log = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "build/kidrun_cycles.log"
     rows = []
     for line in log.read_text().splitlines():
         if line.startswith("S "):

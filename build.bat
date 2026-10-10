@@ -980,7 +980,10 @@ REM parse of SEQTABLE.S walk to the same (frame, CharX) for 80 steps, and the fi
 REM oracle's own trace. It emits the run's data (14 baked cels split over two spans, the frame
 REM table) and predicts the framebuffer at the steps run_kidrun_test.sh checks. xf_blit.o and
 REM xf_tables.o are the character probe's own objects: the same table addresses ($4200).
-python harness/tools/kidrun_plan.py --asm build/gen/kidrun_gen.s --predict 6,11,14,24,26
+REM P5.32: the guard joins. Steps 13-21 of each 24-step lap overlap him (kidrun_plan prints the lap):
+REM before (6, 12), through (13, 15, 16, 17, 19, 21), just after (22 -- residue), the wrap (24, 26),
+REM and the second lap's pass (40, 46) -- history across a whole lap and two passes.
+python harness/tools/kidrun_plan.py --asm build/gen/kidrun_gen.s --predict 6,12,13,15,16,17,19,21,22,24,26,40,46
 if errorlevel 1 goto :error
 lwasm --obj -DOBJTARGET -DCHAR_PROBE -DWALK_PROBE -DDR_VARBASE=%DR_VARBASE% -DTILE_TRK=%TILE_TRK% -I . -o build/obj/kidrun_tile.o src/engine/tile_probe.s
 if errorlevel 1 goto :error
@@ -1006,14 +1009,20 @@ set KR_TRK_A=2
 set KR_TRK_B=4
 for /f "tokens=2 delims==" %%A in ('findstr /r /c:"^Symbol: wk_stop " build\obj\kidrun.map') do set KR_WKSTOP=%%A
 for /f "tokens=2 delims==" %%A in ('findstr /r /c:"^Symbol: tile_entry " build\obj\kidrun.map') do set KR_GO=%%A
+for /f "tokens=2 delims==" %%A in ('findstr /r /c:"^Symbol: wk_nact " build\obj\kidrun.map') do set KR_WKNACT=%%A
 set KR_WKSTOP=%KR_WKSTOP: =%
+set KR_WKNACT=%KR_WKNACT: =%
 set KR_GO=%KR_GO: =%
 python harness/tools/decb_to_raw.py --bin build/kidrun_probe.bin --out build/assets/kidrun_a.raw --base 0x0E00 --span-end 0x3000
 if errorlevel 1 goto :error
 python harness/tools/decb_to_raw.py --bin build/kidrun_probe.bin --out build/assets/kidrun_b.raw --base 0x3400 --allow-gap --span-start 0x3400 --span-end 0x6A00
 if errorlevel 1 goto :error
-lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DKR_TRK_A=%KR_TRK_A% -DKR_TRK_B=%KR_TRK_B% ^
-      -DKR_GO=0x%KR_GO% -DKR_WKSTOP=0x%KR_WKSTOP% -I . -o build/obj/kidrun_boot.o src/boot/kidrun_boot.s
+REM P5.32: C, kd3 at $6B00 (the guard's streams), one track the loader reads to $3400 and copies up
+set KR_TRK_C=7
+python harness/tools/decb_to_raw.py --bin build/kidrun_probe.bin --out build/assets/kidrun_c.raw --base 0x6B00 --span-start 0x6B00 --span-end 0x7900
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DKR_TRK_A=%KR_TRK_A% -DKR_TRK_B=%KR_TRK_B% -DKR_TRK_C=%KR_TRK_C% ^
+      -DKR_GO=0x%KR_GO% -DKR_WKSTOP=0x%KR_WKSTOP% -DKR_WKNACT=0x%KR_WKNACT% -I . -o build/obj/kidrun_boot.o src/boot/kidrun_boot.s
 if errorlevel 1 goto :error
 lwlink --decb --script=link/pop_kidboot.link --entry=kr_entry --map=build/obj/kidboot.map ^
        -o build/kidrun_boot.bin build/obj/kidrun_boot.o build/obj/hal_build.o
@@ -1034,6 +1043,8 @@ REM raw tracks FIRST, reserved, so the loader's file cannot be allocated over th
 python harness/tools/raw_tracks.py --dsk build/kidrun_gate.dmk --asset build/assets/kidrun_a.raw --track %KR_TRK_A% --tracks 2 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 python harness/tools/raw_tracks.py --dsk build/kidrun_gate.dmk --asset build/assets/kidrun_b.raw --track %KR_TRK_B% --tracks 3 --reserve --imgtool "%IMGTOOL%"
+if errorlevel 1 goto :error
+python harness/tools/raw_tracks.py --dsk build/kidrun_gate.dmk --asset build/assets/kidrun_c.raw --track %KR_TRK_C% --tracks 1 --reserve --imgtool "%IMGTOOL%"
 if errorlevel 1 goto :error
 "%IMGTOOL%" put coco_dmk_rsdos build\kidrun_gate.dmk build\kidrun_boot.bin KIDRUN.BIN --ftype=binary --ascii=binary
 if errorlevel 1 goto :error

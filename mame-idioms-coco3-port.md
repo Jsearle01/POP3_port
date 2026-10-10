@@ -2218,6 +2218,23 @@ ratchet's `$FF80-$FFDF` scope) and read `$FF00/02/20/22` to drop latched flags.
 Tool: `harness/tools/xform_probe.lua` + `harness/smoke/run_xform_probe.sh`.
 *Candidate:* `the-emulator-may-have-the-instrument-the-scripting-layer-lacks`.
 
+**★ P5.32 — MULTI-PHASE TIMING: SNAPSHOT IN ONE ACTION, OR THE ROWS TEAR.** P5.31's
+`kidrun_cycles.lua` had each phase boundary write `totalcycles` to its own RAM slot and Lua read
+the slots once per video frame. With one actor that happened to work; with two (a ~2.4-frame step)
+a read could land after the NEXT step's first phases had run, so one row mixed two steps — erase
+came out as `2^32 - x`, and the step's frame number was the next step's. Fix: boundaries set only
+debugger temps, and the LAST boundary's action writes every delta (and whatever per-step state the
+row needs) in one go — the debugger runs a bp action atomically with the CPU stopped:
+```lua
+cpu.debug:bpset(PHASE_i, "1", "temp<i>=totalcycles; go")                    -- each boundary
+cpu.debug:bpset(END, "1", "temp5=totalcycles; pd@0x4100=temp1-temp0; ...; " ..
+                "pb@0x4118=pb@0x<frame>; pw@0x411C=pw@0x<steps>+1; go")        -- one snapshot
+```
+**Multiple `;`-separated assignments, memory reads on the right (`pb@`/`pw@`) and `temp0-9` all
+work in a bp action.** Then accept a snapshot only when its step number agrees with the program's
+own counter: the snapshot area may hold stale bytes before the first write (here the tile page's
+staging bytes read as step 35,906). Tool: `harness/tools/kidrun_cycles.lua`.
+
 ---
 
 ## 42. Authoring a side: what is measured, and the two hazards that make it unreadable (P5.22)

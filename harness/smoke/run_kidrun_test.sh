@@ -3,7 +3,7 @@
 #
 # POP P5.31 — THE KID RUNS: one step of the run, captured and compared byte for byte.
 #
-#   harness/smoke/run_kidrun_test.sh N      (N = the step to stop after; default 14)
+#   harness/smoke/run_kidrun_test.sh N      (N = the step to stop after; default 16 -- P5.32)
 #
 # LOADM"KIDRUN" + EXEC off build/kidrun_gate.dmk (probe.dmk's tracks, KIDRUN.BIN in INTRO.BIN's
 # place), with the probe's wk_stop poked to N first: it runs N animation steps -- sequencer,
@@ -19,7 +19,9 @@
 set -u
 cd "$(dirname "$0")/../.." || exit 1
 
-N="${1:-14}"
+# P5.32: default step 16 -- the kid INSIDE the guard's frame (92 both-opaque cells), the step where the
+# per-actor interleave control got 73 bytes wrong. A suite run with no argument is the overlap test.
+N="${1:-16}"
 MAME="${MAME:-/c/mame/mame.exe}"
 MAME_ROMS="${MAME_ROMS:-C:/mame/roms}"
 SRC_DSK="${SRC_DSK:-build/kidrun_gate.dmk}"
@@ -70,6 +72,11 @@ grep -E "terminal|VERDICT|poked| FAIL" "$LOG" 2>/dev/null | sed 's/^/  /'
 [ -f build/kidrun_test_PASS ] || { echo "[run_kidrun_test] FAIL (in-emulator checks)"; exit 1; }
 python harness/tools/fb_compare.py --want "$WANT" --got "$GOT" --label "kid run, step $N, vs PREDICTED"
 rc=$?
+# P5.32: P3.32's discriminating test -- the guard's frame and the overlapped cells, byte by byte
+META="build/assets/kidrun_ref_${N}.json"
+if [ -f "$META" ]; then
+    python harness/tools/kidrun_overlap.py --want "$WANT" --got "$GOT" --meta "$META" || rc=1
+fi
 python harness/tools/render_fb.py "$GOT" -o "$SHOT" --bpp 2 --scale 3 --palette-file "$P_PAL" >/dev/null \
     && echo "[run_kidrun_test] PNG for Jay: $SHOT"
 [ $rc -eq 0 ] && echo "[run_kidrun_test] PASS" || echo "[run_kidrun_test] FAIL (framebuffer comparison)"

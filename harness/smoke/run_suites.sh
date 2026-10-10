@@ -47,7 +47,11 @@ cd "$(dirname "$0")/../.." || exit 1
 # colour swap, the placement arithmetic AND the foreground pass -- compared byte for byte with the
 # framebuffer char_probe_plan.py predicts. Without it, that composition is checked only when someone
 # remembers to. Not at 128 KB: CLAUDE.md §2K keeps the 128 KB run to `tile`.
-SUITES="introseq integ tile char"
+# ★ `kidrun` JOINS AT P5.32 (P5.31 §8.3; P5.32 AC14): the kid running through the standing guard, off its
+# own gate disk through its loader, step 16 -- inside the overlap -- byte for byte against the no-history
+# prediction, plus P3.32's discriminating test (the guard's frame and the both-opaque cells,
+# kidrun_overlap.py). It is the only suite that exercises the three-pass peel. Not at 128 KB (§2K).
+SUITES="introseq integ tile char kidrun"
 
 # ── RETIRED at P3.103, with what covers their ground now ─────────────────────────────
 #   probe     P1.1 loop probe        -> room/walk boot through the same HAL

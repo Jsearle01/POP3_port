@@ -12,10 +12,11 @@ cp -f build/kidrun_gate.dmk build/run_kidrun_cyc.dmk || exit 1
 for n in wk_t_seq wk_t_erase wk_t_save wk_t_draw wk_t_fore wk_t_end wk_steps wk_frame wk_x wk_k probe_status; do
     export "S_$n=$(grep -E "^Symbol: $n " "$MAP" | sed -E 's/.*= *//')"
 done
-export P_OUT="build/kidrun_cycles.log" P_NSTEPS="${P_NSTEPS:-50}"
+export "S_kr_nact=$(grep -E "^Symbol: kr_nact " build/obj/kidboot.map | sed -E 's/.*= *//')"
+export P_OUT="${P_OUT:-build/kidrun_cycles.log}" P_NSTEPS="${P_NSTEPS:-50}"
 . "$(dirname "$0")/ramsize.sh"
 . "$(dirname "$0")/cfgdir.sh"
 "$MAME" coco3 -rompath "$MAME_ROMS" $RAMOPT $CFGOPT -ext fdc -flop1 build/run_kidrun_cyc.dmk \
     -video none -sound none -nothrottle -debug -debugger none -seconds_to_run 600 \
     -autoboot_script harness/tools/kidrun_cycles.lua >/dev/null 2>&1
-tail -3 build/kidrun_cycles.log
+tail -3 "$P_OUT"
