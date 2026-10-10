@@ -222,6 +222,8 @@ guard is a bit too 'transparent' when the kid passes by him"*.
   index-0-transparent model** (it is exact against the port's model, not the oracle's). The same gap is
   present for every character against the background, and in the shipped cutscene (P3.18's choice) —
   any fix there moves prod bytes and is Jay's. Not fixed in this dispatch (hard stop at the gate); §8.5.
+- **Residue — none (Jay, asked directly): *"nothing left behind"*.** The three-pass peel holds on the live
+  machine through the overlap: the gate's peel question PASSES; the character-mask finding stands open.
 Original question put to Jay:
 does the pair look right in motion, and does either leave anything behind — especially where they overlap
 (steps 13-21 of each lap: from about 1.2 s into every 2.4 s pass, for about 0.9 s). Not asked: combat, collision, the guard's AI,
@@ -270,7 +272,8 @@ now worth ~2 spin-ups.
 
 ### 9 — User interaction during task
 None before the gate. At the gate: "yes" (launch it); then *"the guard doesn't animate is he supposed to?
-also it appears the guard is a bit too 'transparent' when the kid passes by him"* (§5 25.3).
+also it appears the guard is a bit too 'transparent' when the kid passes by him"* (§5 25.3); asked whether
+anything was left behind: *"nothing left behind"*.
 
 ### 10 — Candidate(s) captured this task
 None.
