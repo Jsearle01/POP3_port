@@ -252,4 +252,4 @@ None before the gate.
 None.
 
 ### 11 — Commit
-(the follow-up commit carries this line)
+`0eebcbe`  (pushed to origin/wip before the gate; this line in the follow-up commit). `main` untouched.
