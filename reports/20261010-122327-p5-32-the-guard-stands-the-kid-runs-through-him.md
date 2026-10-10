@@ -206,7 +206,23 @@ CONTROL (per-actor interleave, reverted):
 [suites] 128 KB: running: tile ... [suites] ALL PASS
 ```
 25.2: N/A — ROM build, no sibling-import artifact.
-**25.3: pending Jay** — live-disk, 512 KB, RGB, motion: `harness/smoke/run_kidrun_live.sh`. The question:
+**25.3: OBSERVED BY JAY — A DEFECT FOUND; NOT PASSED.** live-disk, 512 KB, RGB, motion
+(`run_kidrun_live.sh`). Jay, verbatim: *"the guard doesn't animate is he supposed to? also it appears the
+guard is a bit too 'transparent' when the kid passes by him"*.
+- **"doesn't animate" — by design here.** `ready` plays 158, 170, then holds 171 (`:loop db 171 / goto
+  :loop`); the oracle's guard leaves that stance only when AutoCtrl drives him (out of scope, §8).
+- **"too transparent" — a real fidelity gap, found in the source after the gate.** The oracle draws the
+  kid and the guard with **`OPACITY = mask`**: `DrawNormal` [GAMEBG.S:432-437] (DRAWGUARD → DrawNormal or
+  DrawShifted, both `lda #mask`). `MLayMask` ANDs the screen with `MASKTAB` [HRTABLES.S:219-234] before
+  ORing the image: MASKTAB[b] clears the bits of `b` AND one pixel either side of each (e.g. `$01 → $FC`,
+  `$02 → $F8`), so every character carries a one-pixel black border horizontally and gaps of 1-2 px inside
+  him are filled black — he OCCLUDES what is behind him. The port treats every index-0 pixel as
+  transparent (P3.18 §3B: "Transparency is index 0 with no sidecar"), so the kid shows through the
+  guard's border and small dark gaps. **The suite could not see it: the prediction uses the same
+  index-0-transparent model** (it is exact against the port's model, not the oracle's). The same gap is
+  present for every character against the background, and in the shipped cutscene (P3.18's choice) —
+  any fix there moves prod bytes and is Jay's. Not fixed in this dispatch (hard stop at the gate); §8.5.
+Original question put to Jay:
 does the pair look right in motion, and does either leave anything behind — especially where they overlap
 (steps 13-21 of each lap: from about 1.2 s into every 2.4 s pass, for about 0.9 s). Not asked: combat, collision, the guard's AI,
 the room boundary, single-frame pixels, the sword.
@@ -245,8 +261,16 @@ now worth ~2 spin-ups.
    karateka_dissasembly_claude, scummvm; all created 2026-09-05; `dir /AL C:\Projects`). The two paths
    name one tree on this machine. The edit is the Orchestrator's (§2D).
 
+5. **★ The character mask (Jay, 25.3).** Draw characters the oracle's way — MLayMask: the screen ANDed with
+   MASKTAB (a one-pixel horizontal border around every lit pixel cleared to black), then the image ORed.
+   Bake the border into the streams as OPAQUE black: the stream format already carries (mask, src) merge
+   bytes, so this is a bake change, not a blitter change, and costs bytes and cycles to be measured. The
+   prediction must move to the oracle's model in the same change, or the suite stays blind to it. Gameplay
+   first; the cutscene shares the model and moving it is a prod change for Jay.
+
 ### 9 — User interaction during task
-None before the gate.
+None before the gate. At the gate: "yes" (launch it); then *"the guard doesn't animate is he supposed to?
+also it appears the guard is a bit too 'transparent' when the kid passes by him"* (§5 25.3).
 
 ### 10 — Candidate(s) captured this task
 None.
