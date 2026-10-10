@@ -151,6 +151,21 @@ XD_R            macro
                 orb     <xf_o
                 stb     ,x
                 endm
+* --- the per-row IRQ/FIRQ window (P4.29), WITH DP = 0 FOR ITS DURATION (P5.31) ---
+* ★ The HAL's VBL handler increments its frame counter through the direct page and documents a
+* "DP=0 invariant" [irq_vbl.s:21-22, 79]. This routine runs with DP = XF_DPPAGE, so a VBL that
+* landed in the window used to increment XF_DPPAGE*256+$11 instead of $0011: the tick was LOST
+* (P5.31's running kid measured steps of 5-8 frames against a requested 6) and a byte outside
+* the routine's own 14 was written. Found by the first caller that paces itself on that counter.
+* A is free at every row end (each row reloads it), so it carries the DP value: +16 cy per row.
+XF_WINDOW       macro
+                clra
+                tfr     a,dp                    ; DP = 0: what an interrupt handler may assume
+                andcc   #$AF
+                orcc    #$50
+                lda     #XF_DPPAGE
+                tfr     a,dp                    ; and ours again
+                endm
 * mirror alone: no carry, no shift -- Y = T
 M0_D            macro
                 ldb     \1,u
@@ -341,8 +356,7 @@ xa_next         ldx     <xf_rowbase
                 leax    FB_STRIDE_XF,x
                 stx     <xf_rowbase
                 lds     <xf_ss                  ; the P4.29 window needs the real stack
-                andcc   #$AF
-                orcc    #$50
+                XF_WINDOW                       ; ... and DP = 0 (P5.31, see the macro)
                 lds     <xf_ctab
                 dec     <xf_rows
                 lbne    xa_row
@@ -447,8 +461,7 @@ xd_next         ldx     <xf_rowbase
                 leax    FB_STRIDE_XF,x
                 stx     <xf_rowbase
                 lds     <xf_ss
-                andcc   #$AF
-                orcc    #$50
+                XF_WINDOW
                 lds     <xf_ctab
                 dec     <xf_rows
                 lbne    xd_row
@@ -537,8 +550,7 @@ xm0_mlp         ldb     ,u                      ; mask
 xm0_next        ldx     <xf_rowbase
                 leax    FB_STRIDE_XF,x
                 stx     <xf_rowbase
-                andcc   #$AF
-                orcc    #$50
+                XF_WINDOW
                 dec     <xf_rows
                 lbne    xm0_row
 

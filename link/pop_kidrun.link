@@ -1,0 +1,29 @@
+; link/pop_kidrun.link — THE KID-RUN PROBE's memory map (P5.31).
+;
+; tile_probe.s -DCHAR_PROBE -DWALK_PROBE + kidrun_probe.s (in char_probe.s's place) + fore_draw,
+; xf_blit and xf_tables (the SAME objects the character probe links: same table addresses),
+; blit_core, lz_unpack, the kernel.
+;
+;   $0E00-....    the program (section `prog`): the renderer, the run, the frame table.
+;                 EXEC = tile_entry. $0E00 is the LOADM floor map_overlap_check enforces.
+;   $3000-$41FF   the packed tile page, staged by the track read and unpacked into $C000; after
+;                 that, the two PEEL BUFFERS (2 x 400 B, ONE PER PAGE) -- runtime only.
+;   $4200-$5EFF   xf_blit's tables, raw (section xftab), M page-aligned
+;   $5F00-$5F0D   xf_blit's direct page
+;   $6000-$69FF   section kd1: run cels' baked streams (first fit)
+;   $6A00-$6A06   the disk driver's parameter block
+;   $6B00-$77FF   section kd2: the rest of the streams
+;   $7900-....    KERNEL; $7F00 stack top; $8000- the back buffer; $C000 the tile page
+;
+; ★ WHY NOT PACKED TABLES. The first build packed them and expanded them with lz_unpack at $3000,
+; and the 6809 overran into its own blob: the shipped lz_unpack copies a count of 256*k as
+; 256*(k+1) (lz_pack.decompress_6809; every shipped asset is unaffected). Raw tables plus the two
+; spans fit without it.
+
+section prog load 0E00
+section xftab load 4200
+section kd1 load 6000
+section kd2 load 6B00
+section code load 7900
+
+entry tile_entry

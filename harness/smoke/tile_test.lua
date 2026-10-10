@@ -33,6 +33,9 @@ local WANT_ENTS = tonumber(os.getenv("P_WANT_ENTS") or "0")
 local FILE     = os.getenv("P_FILE") or "TILE"                  -- what LOADM types
 local MARK     = os.getenv("P_MARK") or "build/tile_test"       -- <MARK>_PASS / _FAIL
 local SETTLE   = tonumber(os.getenv("P_SETTLE") or "900")       -- frames from LOADM to EXEC
+-- P5.31: "ADDR=VAL" (hex address, decimal value) -- a 16-bit big-endian word written into the
+-- LOADed image just before EXEC (the walk probe's wk_stop: stop after step VAL). Unset = no poke.
+local POKE16   = os.getenv("P_POKE16")
 
 local FB_BASE, FB_SIZE = 0x8000, 15360
 local PAGE_MAGIC = 0x7B1E           -- bake_screen.py's; NOT the cutscene's $C35A
@@ -116,6 +119,13 @@ local function tick()
         if fn > t0 + SETTLE then
             log(string.format("# at EXEC: $2000=%02X %02X %02X, $7900=%02X",
                               rd8(0x2000), rd8(0x2001), rd8(0x2002), rd8(0x7900)))
+            if POKE16 and POKE16 ~= "" then
+                local a, v = POKE16:match("^0?x?(%x+)=(%d+)$")
+                a, v = tonumber(a, 16), tonumber(v)
+                mem:write_u8(a, (v >> 8) & 0xFF)
+                mem:write_u8(a + 1, v & 0xFF)
+                log(string.format("# poked $%04X = %d before EXEC", a, v))
+            end
             nk:post('EXEC\n')
             log("# posted EXEC at frame " .. fn)
             state, started = "running", fn

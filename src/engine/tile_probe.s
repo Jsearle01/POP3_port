@@ -69,6 +69,14 @@
                 ifdef   CHAR_PROBE
                 import  char_probe_draw
                 endc
+                ifdef   WALK_PROBE
+* P5.31: the walk runs its own loop inside the char_probe_draw hook. It needs the probe byte
+* (the live log watches it) and this file's own page mapping (HAL_gfx_mirror unmaps $FFA6, and
+* this file is $FFA6's registered owner -- register-owners.tsv -- so the walk calls it here
+* rather than writing the register itself).
+                export  probe_status
+                export  tile_bank_map
+                endc
                 endc
 
                 include "src/hal.inc"

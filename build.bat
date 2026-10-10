@@ -969,6 +969,39 @@ if errorlevel 1 (
     exit /b 1
 )
 
+echo --- P5.31: the kid-run probe (the kid runs `startrun` across LEVEL0 screen 1) ---
+REM kidrun_plan.py FAILS THE BUILD unless kidrun_probe.s's hand-transcribed `startrun` and seq_graph's
+REM parse of SEQTABLE.S walk to the same (frame, CharX) for 80 steps, and the first 11 match the
+REM oracle's own trace. It emits the run's data (14 baked cels split over two spans, the frame
+REM table) and predicts the framebuffer at the steps run_kidrun_test.sh checks. xf_blit.o and
+REM xf_tables.o are the character probe's own objects: the same table addresses ($4200).
+python harness/tools/kidrun_plan.py --asm build/gen/kidrun_gen.s --predict 6,11,14,24,26
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -DCHAR_PROBE -DWALK_PROBE -DDR_VARBASE=%DR_VARBASE% -DTILE_TRK=%TILE_TRK% -I . -o build/obj/kidrun_tile.o src/engine/tile_probe.s
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -I . -o build/obj/kidrun_probe.o src/engine/kidrun_probe.s
+if errorlevel 1 goto :error
+lwlink --decb --script=link/pop_kidrun.link --entry=tile_entry --map=build/obj/kidrun.map -o build/kidrun_probe.bin build/obj/kidrun_tile.o build/obj/kidrun_probe.o build/obj/fore_draw.o build/obj/xf_blit.o build/obj/xf_tables.o build/obj/blit_core.o build/obj/lz_unpack.o build/obj/hal_build.o
+if errorlevel 1 goto :error
+call :size build/kidrun_probe.bin
+python harness\tools\map_overlap_check.py build/obj/kidrun.map
+if errorlevel 1 (
+    echo *** BUILD BLOCKED: the walk probe's sections collide ***
+    exit /b 1
+)
+copy /y build\probe.dmk build\kidrun_gate.dmk >nul
+if errorlevel 1 goto :error
+"%IMGTOOL%" del coco_dmk_rsdos build\kidrun_gate.dmk INTRO.BIN
+if errorlevel 1 goto :error
+"%IMGTOOL%" put coco_dmk_rsdos build\kidrun_gate.dmk build\kidrun_probe.bin KIDRUN.BIN --ftype=binary --ascii=binary
+if errorlevel 1 goto :error
+python harness\tools\disk_file_readback_check.py --dsk build/kidrun_gate.dmk --imgtool "%IMGTOOL%" ^
+    KIDRUN.BIN=build/kidrun_probe.bin TILE.BIN=build/tile_probe.bin
+if errorlevel 1 (
+    echo *** BUILD BLOCKED: the walk gate disk is not what the build produced ***
+    exit /b 1
+)
+
 echo === BUILD COMPLETE ===
 exit /b 0
 

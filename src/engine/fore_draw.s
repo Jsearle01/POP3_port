@@ -27,6 +27,8 @@
                 ifdef   OBJTARGET
                 section prog
                 export  fore_draw
+                export  fore_draw_rect
+                export  fd_rx0,fd_rx1,fd_ry0,fd_ry1
                 endc
 
                 include "src/hal.inc"
@@ -35,7 +37,18 @@ FD_PAGE         equ     $C000
 FD_TAB          equ     FD_PAGE+4
 FD_STRIDE       equ     80
 
+* fore_draw       -- every entry (the whole screen)
+* fore_draw_rect  -- P5.31: only entries that intersect fd_rx0..fd_rx1 (bytes) x fd_ry0..fd_ry1
+*                    (rows), set by the caller: a moving character's own rectangle. Outside it
+*                    nothing changed this step, so redrawing there would rewrite identical bytes.
 fore_draw
+                clr     fd_rx0
+                lda     #FD_STRIDE-1
+                sta     fd_rx1
+                clr     fd_ry0
+                lda     #191
+                sta     fd_ry1
+fore_draw_rect
 * U = the fore section = FD_TAB + 4*n_variants + 3*n_entries
                 lda     FD_PAGE+2
                 ldb     #4
@@ -49,7 +62,7 @@ fore_draw
                 tfr     d,u
                 lda     ,u+                     ; n_fore
                 sta     fd_n
-                beq     fd_done
+                lbeq    fd_done
 fd_ent
 * --- the variant's row: X = data, fd_w / fd_h ---
                 lda     ,u
@@ -61,6 +74,21 @@ fd_ent
                 sta     fd_w
                 stb     fd_h
                 ldx     ,x
+* --- the cull: skip the entry unless it meets the rectangle ---
+                lda     1,u                     ; x0
+                cmpa    fd_rx1
+                bhi     fd_skip
+                adda    fd_w
+                deca                            ; x1
+                cmpa    fd_rx0
+                blo     fd_skip
+                lda     2,u                     ; y0
+                cmpa    fd_ry1
+                bhi     fd_skip
+                adda    fd_h
+                deca                            ; y1
+                cmpa    fd_ry0
+                blo     fd_skip
 * --- Y = draw base + y*80 + x ---
                 lda     2,u
                 ldb     #FD_STRIDE
@@ -111,11 +139,16 @@ fd_eol
                 leay    d,y
                 dec     fd_h
                 bne     fd_row
-                leau    6,u
+fd_skip         leau    6,u
                 dec     fd_n
-                bne     fd_ent
+                lbne    fd_ent
 fd_done
                 rts
+
+fd_rx0          rmb     1
+fd_rx1          rmb     1
+fd_ry0          rmb     1
+fd_ry1          rmb     1
 
 fd_t2           rmb     2
 fd_n            rmb     1

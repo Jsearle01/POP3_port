@@ -63,6 +63,9 @@ def probe_bytes():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", required=True)
+    ap.add_argument("--raw", default=None,
+                    help="P5.31: also write the 7,424 bytes raw (for lz_pack: the walk probe "
+                         "ships them packed and expands them with the shipped lz_unpack)")
     a = ap.parse_args()
     mine = table_bytes()
     ref = probe_bytes()
@@ -81,6 +84,8 @@ def main():
     L += ["xf_tables_end"]
     pathlib.Path(a.out).parent.mkdir(parents=True, exist_ok=True)
     pathlib.Path(a.out).write_text("\n".join(L) + "\n", encoding="utf-8", newline="\n")
+    if a.raw:
+        pathlib.Path(a.raw).write_bytes(bytes(mine))
     print("xf_tables: %d B, identical to the probe's tables_asm() -> %s" % (SIZE, a.out))
     return 0
 

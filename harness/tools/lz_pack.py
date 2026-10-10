@@ -162,6 +162,57 @@ def decompress(src, outlen):
     return bytes(out)
 
 
+def decompress_6809(src, outlen):
+    """P5.31: what src/engine/lz_unpack.s ACTUALLY produces, count handling included.
+
+    ★ A LATENT BUG IN THE SHIPPED EXPANDER, found when P5.31 packed xf_blit's tables (whose long
+    zero runs and incompressible 256-byte stretches produce such counts) and the 6809 overran its
+    output into its own blob. lz_unpack keeps a copy count as B (low byte) + lz_cnt (high byte);
+    when the low byte is 0 and the high byte >= 1, its first pass already copies 256 (B wraps) and
+    lz_cnt then adds 256 per unit -- so a count of 256 copies 512. Every compressed asset the port
+    ships decodes EXACT under this model (checked at P5.31); the bug is latent, not live. NOT fixed
+    here: lz_unpack is in the prod binaries. Check any NEW packed asset with this, not decompress().
+
+    A count n = 256*hi + lo copies (lo or 256) and then 256 more per unit of hi.
+    The literal path skips a zero count (`tstb / beq`); the match path's count is never zero.
+    Returns the output up to where the 6809's writer would stop (it may run PAST outlen, which is
+    the failure this exists to catch: the bytes past the end are returned so the caller sees them)."""
+    def copies(n):
+        hi, lo = n >> 8, n & 255
+        if n == 0:
+            return 0
+        return (lo or 256) + 256 * hi
+    out = bytearray()
+    i = 0
+    while len(out) < outlen:
+        if i >= len(src):
+            break                      # desynced past the stream's end: the result is wrong
+        tok = src[i]; i += 1
+        litlen = tok >> 4
+        if litlen == 15:
+            while i < len(src):
+                b = src[i]; i += 1; litlen += b
+                if b != 255:
+                    break
+        k = copies(litlen)
+        out += src[i:i + k]; i += k
+        if len(out) >= outlen or i + 2 > len(src):
+            break
+        off = struct.unpack('>H', src[i:i + 2])[0]; i += 2
+        mlen = (tok & 15) + MIN_MATCH
+        if (tok & 15) == 15:
+            while i < len(src):
+                b = src[i]; i += 1; mlen += b
+                if b != 255:
+                    break
+        p = len(out) - off
+        if p < 0:
+            break                      # a distance behind the output's start: desynced
+        for k in range(copies(mlen)):
+            out.append(out[p + k])
+    return bytes(out)
+
+
 def margin(src, outlen):
     """Peak of (bytes written - bytes consumed). The compressed data must start
     at least this far past the output start for in-place expansion to be safe."""
