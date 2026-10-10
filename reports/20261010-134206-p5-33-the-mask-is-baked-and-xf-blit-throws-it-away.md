@@ -214,4 +214,5 @@ None.
 None.
 
 ### 11 — Commit
-(the follow-up commit carries this line)
+`c72473e` (pushed to origin/wip; this line in the follow-up commit). **wip is knowingly RED on `char` and
+`kidrun`** — the instrument is honest and the draw is not finished; `main` untouched.
