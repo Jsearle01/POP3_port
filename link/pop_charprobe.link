@@ -12,7 +12,7 @@
 ;                 low byte is the index), T1 $4300, T2 $4400, the nine shift pairs $4500-$56FF,
 ;                 and P5.29's four SWAP-ONLY pairs $5700-$5EFF (k = 0..3; the colour phase
 ;                 without the mirror). build.bat passes -DXF_M/-DXF_T1/-DXF_T2/-DXF_TABS.
-;   $5F00-$5F0D   xf_blit's direct page (-DXF_DPPAGE=0x5F), fourteen bytes, nothing else
+;   $5F00-$5F11   xf_blit's direct page (-DXF_DPPAGE=0x5F), eighteen bytes (fourteen before P5.34), nothing else
 ;   $6A00-$6A06   the disk driver's parameter block (-DDR_VARBASE)
 ;   $6B00-....    section chdata: the baked streams, char_cels.s, frame_table.s
 ;   $7800-$78FF   trace ring buffer

@@ -202,6 +202,25 @@ def baked_stream(table, idx):
     return fcb_values(BAKED / t / ("%s_%03d_p0.s" % (t, idx)))
 
 
+def stream_oracle(cel, clr, phase):
+    """P5.34: a reference STREAM under the oracle's model -- the cel's pixels with every cell the
+    oracle's mask clears (char_mask.cleared, MASKTAB read literally) and the cel leaves at 0 set
+    OPAQUE BLACK (value 4: encode_row packs it 0 with a cleared mask), shifted right `phase` px."""
+    width = max([len(r) for r in cel.pixels] + [max(c) + 1 for c in clr if c])
+    rows = []
+    for r in range(cel.h):
+        row = list(cel.pixels[r]) + [0] * (width - len(cel.pixels[r]))
+        for c in clr[r]:
+            if row[c] == 0:
+                row[c] = 4
+        rows.append([0] * phase + row)
+    w = (max(len(r) for r in rows) + 3) // 4
+    segs = []
+    for r in rows:
+        segs += P.encode_row(r + [0] * (4 * w - len(r)), w)
+    return [cel.h, w] + segs
+
+
 def expect_oracle(cel, clr, h, k):
     """P5.33: the reference the ORACLE's way -- char_mask's composite (MLayMask: MASKTAB read
     literally from HRTABLES.S) of the reference cel at row 1, pixel 4*C_REF+k, over the
@@ -278,10 +297,14 @@ def cel_cases(table, idx, start_col, tag, baseline=True, baked=None, pl=None, dr
     if mask == "oracle":
         import char_mask as CM
         clr = {0: CM.cleared(IMG / table, idx, False), 1: CM.cleared(IMG / table, idx, True)}
-        baseline = False        # blit_cel of an index-0 reference stream is not the oracle's model
+        # P5.34: the BASELINE cases are restored under the oracle model -- the reference re-encoded
+        # at phase k with the oracle's border (char_mask's cleared cells) marked opaque black, drawn
+        # by blit_cel_full and held to the same oracle composite. P5.33 dropped them; with them the
+        # run is P5.29's 4,720 again: every (cel, PL) x facing x phase, for blit_cel AND xf_blit.
     for f in (0, 1):
         for k in range(4):
-            ref = stream(src if f == 0 else mir, k)
+            ref = stream(src if f == 0 else mir, k) if mask != "oracle" else \
+                stream_oracle(src if f == 0 else mir, clr[f], k)
             want = expect(ref, h) if mask != "oracle" else expect_oracle(src if f == 0 else mir, clr[f], h, k)
             refname = "%s_r%d%d" % (tag, f, k)
             if baseline:
@@ -505,8 +528,8 @@ def main():
     ap.add_argument("--mask", choices=("index0", "oracle"), default="index0",
                     help="P5.33: the REFERENCE's transparency. index0 = P5.20's (a pixel is "
                          "transparent iff it is 0); oracle = MLayMask's (char_mask: MASKTAB's "
-                         "one-pixel border, read from HRTABLES.S). Baseline cases are dropped "
-                         "under oracle -- an index-0 stream drawn by blit_cel is not that model")
+                         "one-pixel border, read from HRTABLES.S). P5.34: baseline cases are kept "
+                         "under oracle, their streams encoded with the border (stream_oracle)")
     ap.add_argument("--start-col", type=int, default=0)
     ap.add_argument("--cap", type=int, default=XP_BUF - XP_CASES - 64,
                     help="bytes of case records + streams per batch")

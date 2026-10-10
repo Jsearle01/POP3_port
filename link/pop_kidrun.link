@@ -13,7 +13,7 @@
 ;                 that, the two PEEL BUFFERS (2 x 400 B, ONE PER PAGE) -- runtime only.
 ;                 ($3200-$33FF holds the loader until it jumps here.)
 ;   $4200-$5EFF   xf_blit's tables, raw (section xftab), M page-aligned
-;   $5F00-$5F0D   xf_blit's direct page
+;   $5F00-$5F11   xf_blit's direct page (18 bytes since P5.34)
 ;   $6000-$69FF   section kd1: run cels' baked streams (first fit)
 ;                 -- the loader's READ B is 3 tracks $3400-$69FF, ending at the driver's block
 ;   $6A00-$6A06   the disk driver's parameter block

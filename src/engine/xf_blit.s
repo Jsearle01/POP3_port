@@ -15,7 +15,7 @@
 * WHAT THE INCLUDER OR THE BUILD MUST DEFINE (no defaults -- a wrong table address draws
 * plausible garbage, so a missing one must fail to assemble)
 * ---------------------------------------------------------------
-*   XF_DPPAGE   the direct page the routine owns while it runs (14 bytes from $xx00)
+*   XF_DPPAGE   the direct page the routine owns while it runs (18 bytes from $xx00; 14 before P5.34)
 *   XF_M        256 B, natural order, PAGE-ALIGNED: the patched operand's low byte IS the
 *               index, so the high byte must be the whole of the page
 *   XF_T1       256 B, mirror, permuted (index b^$80; the routine uses base+128)
@@ -70,13 +70,31 @@
 * ---------------------------------------------------------------
 * WHICH OUTPUT BYTES NEED A READ-MODIFY-WRITE
 * ---------------------------------------------------------------
-* Transparency is index 0 with no sidecar (P3.18 3B), so a merge's (mask,src) pair carries
-* nothing the src byte does not: the transparent pixels of src are already zero. An output
-* byte is therefore written as  dest = (dest AND M[out]) OR out,  M = "11 where the pixel
-* is 0". Only bytes that CAN be partial pay that: every merge byte, the FIRST byte of a
-* blast (its carry came from whatever preceded it), a skip's first byte when a carry is
-* pending, and the row's final carry. Interior blast bytes are opaque by construction and
-* are stored directly.
+* ★★★ P5.34: THE PREMISE THIS SECTION WAS BUILT ON IS FALSE FOR GAMEPLAY STREAMS, AND THE
+* ROUTINE NO LONGER USES IT. Until P5.34 it read: "Transparency is index 0 with no sidecar
+* (P3.18 3B), so a merge's (mask,src) pair carries nothing the src byte does not ... dest =
+* (dest AND M[out]) OR out, M = '11 where the pixel is 0'." True of the streams it was measured
+* on (P5.20/P5.27); false since P5.33 baked the oracle's mask border [DrawNormal, GAMEBG.S:432;
+* MASKTAB, HRTABLES.S:219] -- an OPAQUE BLACK pixel is src 00 with mask 00, and "the pixel is 0"
+* made it transparent again at every byte that went through M (P5.33: 64,584 residual pixels,
+* every one at one of the four sites below, none elsewhere).
+*
+* NOW: an OPACITY byte travels beside the colour byte. op = ~mask (11 where the cel is opaque,
+* 00 where transparent): a merge byte's op is the complement of its own mask byte; a blast
+* byte's op is $FF; a skip's is 0. It goes through the SAME F/C tables as the colour -- every
+* table maps a byte of 00/11 pixels to one (P5.34 AC1: xf_opacity_premise.py, 448/448 checks
+* over the tables as linked) -- and an output byte is written
+*     dest = (dest AND M[out_op]) OR out_colour          (M[v] == ~v on those bytes, 16/16)
+* so M is reached by the OPACITY, never by the colour. The four sites that write through M:
+*   - every merge byte                       op_out = op_carry | F[~mask];  op_carry' = C[~mask]
+*   - the FIRST output byte of a blast       op_out = op_carry | F[$FF];    after it: C[$FF]
+*   - a skip's first byte, flushing a carry  op_out = op_carry               (then 0)
+*   - the row's final carry                  op_out = op_carry
+* ★ The flush/row-end condition is the OPACITY carry, not the colour carry: a carried half-byte
+* of pure border is colour 0 and was skipped outright before P5.34.
+* Interior blast bytes are opaque by construction (their op is $FF on both halves: F[$FF] |
+* C[$FF] = $FF in every pair) and are stored directly, exactly as before -- the blast pays
+* nothing per byte; its opacity carry out is the per-pair CONSTANT C[$FF], set once at its end.
 *
 * M is reached by a SELF-MODIFIED extended operand (`andb >XF_M` with its low byte
 * patched), because the loop already holds all four pointers -- X dest, U source, Y and S
@@ -101,7 +119,9 @@
 
 FB_STRIDE_XF    equ     80
 
-* --- the direct page: fourteen bytes at XF_DPPAGE*256 -----------------------------
+* --- the direct page: EIGHTEEN bytes at XF_DPPAGE*256 (P5.34: +14..+17) ------------
+* ★ NONE of these is touched inside XF_WINDOW, where DP = 0 (P5.31): the window is clra / tfr /
+* andcc / orcc / lda / tfr and nothing else.
 xf_ss           equ     XF_DPPAGE*256+0         ; the real stack while S walks a table
 xf_rowbase      equ     XF_DPPAGE*256+2
 xf_ctab         equ     XF_DPPAGE*256+4
@@ -112,27 +132,57 @@ xf_t            equ     XF_DPPAGE*256+10
 xf_n            equ     XF_DPPAGE*256+11
 xf_g            equ     XF_DPPAGE*256+12
 xf_o            equ     XF_DPPAGE*256+13
+xf_oc           equ     XF_DPPAGE*256+14        ; P5.34: the OPACITY carry (op = 11 where opaque)
+xf_cc           equ     XF_DPPAGE*256+15        ; P5.34: the colour carry, parked while A does op
+xf_fff          equ     XF_DPPAGE*256+16        ; P5.34: F[$FF] of this call's pair -- a blast byte's op
+xf_cff          equ     XF_DPPAGE*256+17        ; P5.34: C[$FF] -- a blast's opacity carry out
 
 * --- the per-byte bodies. Y = F table, S = C table, A = carry, X = dest, U = segment ---
-* _D: an interior blast byte, opaque by construction -- stored directly.
-* _R: a byte that may be partial -- read-modify-write through M. \2 names the patched
-*     instruction; every instance needs its own, since each patches itself.
+* _D: an interior blast byte, opaque by construction -- stored directly. (Unchanged at P5.34.)
+* _B: a blast's FIRST output byte (its carry came from whatever preceded it): op_out =
+*     op_carry | F[$FF], read-modify-write through M[op_out]. \2 names the patched instruction.
+* _M: a merge byte: op = ~mask through the same F/C as the colour; M[op_out]; op_carry' = C[op].
+* The colour carry is parked in xf_cc while A computes the opacity, and restored at the end.
+* Every instance needs its own \label, since each patches its own operand.
 XA_D            macro
                 ldb     \1,u
                 ora     b,y
                 sta     ,x+
                 lda     b,s
                 endm
-XA_R            macro
+XA_B            macro
                 ldb     \1,u
-                ora     b,y
-                sta     \2+2
+                ora     b,y                     ; A = colour out
                 sta     <xf_o
                 lda     b,s
+                sta     <xf_cc                  ; the colour carry, parked
+                lda     <xf_oc
+                ora     <xf_fff                 ; op_out = op_carry | F[$FF]
+                sta     \2+2
                 ldb     ,x
-\2              andb    >XF_M
+\2              andb    >XF_M                   ; M[op_out] = ~op_out
                 orb     <xf_o
                 stb     ,x+
+                lda     <xf_cc
+                endm
+XA_M            macro
+                ldb     1,u                     ; src
+                ora     b,y                     ; A = colour out
+                sta     <xf_o
+                lda     b,s
+                sta     <xf_cc
+                ldb     ,u                      ; mask
+                comb                            ; op = ~mask: 11 where the cel is opaque
+                lda     b,y
+                ora     <xf_oc                  ; op_out = op_carry | F[op]
+                sta     \1+2
+                lda     b,s
+                sta     <xf_oc                  ; op_carry' = C[op]
+                ldb     ,x
+\1              andb    >XF_M
+                orb     <xf_o
+                stb     ,x+
+                lda     <xf_cc
                 endm
 XD_D            macro
                 ldb     \1,u
@@ -140,16 +190,39 @@ XD_D            macro
                 sta     ,-x
                 lda     b,s
                 endm
-XD_R            macro
+XD_B            macro
                 ldb     \1,u
                 ora     b,y
-                sta     \2+2
                 sta     <xf_o
                 lda     b,s
+                sta     <xf_cc
+                lda     <xf_oc
+                ora     <xf_fff
+                sta     \2+2
                 ldb     ,-x
 \2              andb    >XF_M
                 orb     <xf_o
                 stb     ,x
+                lda     <xf_cc
+                endm
+XD_M            macro
+                ldb     1,u
+                ora     b,y
+                sta     <xf_o
+                lda     b,s
+                sta     <xf_cc
+                ldb     ,u
+                comb
+                lda     b,y
+                ora     <xf_oc
+                sta     \1+2
+                lda     b,s
+                sta     <xf_oc
+                ldb     ,-x
+\1              andb    >XF_M
+                orb     <xf_o
+                stb     ,x
+                lda     <xf_cc
                 endm
 * --- the per-row IRQ/FIRQ window (P4.29), WITH DP = 0 FOR ITS DURATION (P5.31) ---
 * ★ The HAL's VBL handler increments its frame counter through the direct page and documents a
@@ -242,6 +315,7 @@ xf_t_ok         sta     <xf_t
                 tfr     y,d
                 adda    #1                      ; C = F + 256
                 std     <xf_ctab
+                bsr     xf_consts               ; P5.34: F[$FF], C[$FF] (S is still the real stack)
                 lda     <xf_t
                 lbne    xd_go                   ; mirrored -> descending writes
                 lds     <xf_ctab
@@ -259,8 +333,20 @@ xf_swap         lda     xf_k_x
                 tfr     y,d
                 adda    #1                      ; C = F + 256
                 std     <xf_ctab
+                bsr     xf_consts
                 lds     <xf_ctab
                 lbra    xa_row
+
+* --- P5.34: this call's pair's F[$FF] and C[$FF] -- a blast byte's opacity in and out. Y = F
+* base (+128 bias), xf_ctab = C base (same bias); B = $FF is index -1 through the bias. X is
+* free here (the frame base is already in xf_rowbase). Called before S becomes a table.
+xf_consts       ldb     #$FF
+                lda     b,y
+                sta     <xf_fff
+                ldx     <xf_ctab
+                lda     b,x
+                sta     <xf_cff
+                rts
 
 * ===============================================================
 * ASCENDING (shift, facing 0). X walks the output row upward.
@@ -268,17 +354,20 @@ xf_swap         lda     xf_k_x
 xa_row
                 ldx     <xf_rowbase
                 clra                            ; no carry into byte 0
+                clr     <xf_oc                  ; ... colour or opacity
 xa_seg
                 ldb     ,u+
                 lbeq    xa_end
                 cmpb    #$80
                 bhs     xa_bm
-* --- skip n: flush a pending carry into the first skipped byte, then step over the rest
+* --- skip n: flush a pending carry into the first skipped byte, then step over the rest.
+* P5.34: pending means the OPACITY carry is non-zero -- a carried half of pure border is colour 0.
                 subb    #$40                    ; n
-                tsta
+                tst     <xf_oc
                 beq     xa_sk0
                 stb     <xf_n
-                sta     xa_mpk+2
+                ldb     <xf_oc
+                stb     xa_mpk+2                ; M[op_carry]
                 sta     <xf_o
                 ldb     ,x
 xa_mpk          andb    >XF_M
@@ -287,6 +376,7 @@ xa_mpk          andb    >XF_M
                 ldb     <xf_n
 xa_sk0          abx                             ; unsigned
                 clra
+                clr     <xf_oc
                 bra     xa_seg
 xa_bm           cmpb    #$C0
                 lbhs    xa_merge
@@ -296,26 +386,26 @@ xa_bm           cmpb    #$C0
                 leau    b,u                     ; U = this segment's end (n <= 63, signed-safe)
                 stu     <xf_send
                 andb    #3
-                beq     xa_r0
+                lbeq    xa_r0                   ; P5.34: long -- the opacity macros grew the bodies
                 cmpb    #2
                 blo     xa_r1
                 beq     xa_r2
-xa_r3           XA_R    -1,xa_mp3               ; body0 is the tail's LAST byte: [1,2,0]
+xa_r3           XA_B    -1,xa_mp3               ; body0 is the tail's LAST byte: [1,2,0]
                 XA_D    -3
                 XA_D    -2
                 leau    -3,u
                 bra     xa_grps
-xa_r2           XA_R    -2,xa_mp2
+xa_r2           XA_B    -2,xa_mp2
                 XA_D    -1
                 leau    -2,u
                 bra     xa_grps
-xa_r1           XA_R    -1,xa_mp1
+xa_r1           XA_B    -1,xa_mp1
                 leau    -1,u
 xa_grps         ldb     <xf_n
                 lsrb
                 lsrb
                 bra     xa_g
-xa_r0           XA_R    -4,xa_mp0               ; no tail: body0 opens the last group
+xa_r0           XA_B    -4,xa_mp0               ; no tail: body0 opens the last group
                 XA_D    -3
                 XA_D    -2
                 XA_D    -1
@@ -334,19 +424,22 @@ xa_glp          leau    -4,u
                 dec     <xf_g
                 bne     xa_glp
 xa_bdone        ldu     <xf_send
+                ldb     <xf_cff                 ; P5.34: a blast's opacity carry out, a constant
+                stb     <xf_oc
                 lbra    xa_seg
 * --- merge n: every byte can be partial
 xa_merge        subb    #$C0
                 stb     <xf_n
-xa_mlp          XA_R    1,xa_mpm
+xa_mlp          XA_M    xa_mpm
                 leau    2,u
                 dec     <xf_n
                 bne     xa_mlp
                 lbra    xa_seg
-* --- end of row: the last carry is the frame's extra byte
-xa_end          tsta
+* --- end of row: the last carry is the frame's extra byte (P5.34: if any of it is OPAQUE)
+xa_end          tst     <xf_oc
                 beq     xa_next
-                sta     xa_mpe+2
+                ldb     <xf_oc
+                stb     xa_mpe+2
                 sta     <xf_o
                 ldb     ,x
 xa_mpe          andb    >XF_M
@@ -375,16 +468,18 @@ xd_go
 xd_row
                 ldx     <xf_rowbase
                 clra
+                clr     <xf_oc
 xd_seg
                 ldb     ,u+
                 lbeq    xd_end
                 cmpb    #$80
                 bhs     xd_bm
                 subb    #$40
-                tsta
+                tst     <xf_oc                  ; P5.34: the OPACITY carry decides the flush
                 beq     xd_sk0
                 stb     <xf_n
-                sta     xd_mpk+2
+                ldb     <xf_oc
+                stb     xd_mpk+2
                 sta     <xf_o
                 ldb     ,-x
 xd_mpk          andb    >XF_M
@@ -395,6 +490,7 @@ xd_mpk          andb    >XF_M
 xd_sk0          negb
                 leax    b,x                     ; n <= 63, so -n is a valid signed offset
                 clra
+                clr     <xf_oc
                 bra     xd_seg
 xd_bm           cmpb    #$C0
                 lbhs    xd_merge
@@ -403,26 +499,26 @@ xd_bm           cmpb    #$C0
                 leau    b,u
                 stu     <xf_send
                 andb    #3
-                beq     xd_r0
+                lbeq    xd_r0
                 cmpb    #2
                 blo     xd_r1
                 beq     xd_r2
-xd_r3           XD_R    -1,xd_mp3
+xd_r3           XD_B    -1,xd_mp3
                 XD_D    -3
                 XD_D    -2
                 leau    -3,u
                 bra     xd_grps
-xd_r2           XD_R    -2,xd_mp2
+xd_r2           XD_B    -2,xd_mp2
                 XD_D    -1
                 leau    -2,u
                 bra     xd_grps
-xd_r1           XD_R    -1,xd_mp1
+xd_r1           XD_B    -1,xd_mp1
                 leau    -1,u
 xd_grps         ldb     <xf_n
                 lsrb
                 lsrb
                 bra     xd_g
-xd_r0           XD_R    -4,xd_mp0
+xd_r0           XD_B    -4,xd_mp0
                 XD_D    -3
                 XD_D    -2
                 XD_D    -1
@@ -441,17 +537,20 @@ xd_glp          leau    -4,u
                 dec     <xf_g
                 bne     xd_glp
 xd_bdone        ldu     <xf_send
+                ldb     <xf_cff                 ; P5.34: the blast's opacity carry out
+                stb     <xf_oc
                 lbra    xd_seg
 xd_merge        subb    #$C0
                 stb     <xf_n
-xd_mlp          XD_R    1,xd_mpm
+xd_mlp          XD_M    xd_mpm
                 leau    2,u
                 dec     <xf_n
                 bne     xd_mlp
                 lbra    xd_seg
-xd_end          tsta
+xd_end          tst     <xf_oc
                 beq     xd_next
-                sta     xd_mpe+2
+                ldb     <xf_oc
+                stb     xd_mpe+2
                 sta     <xf_o
                 ldb     ,-x
 xd_mpe          andb    >XF_M
