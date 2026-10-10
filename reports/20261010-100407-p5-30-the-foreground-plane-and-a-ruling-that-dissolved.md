@@ -306,8 +306,13 @@ It remains untested for FAST's running assignment (§3A) and for keyed fore piec
 
 **RULING 2: no picture was put to Jay, and he said so:** *"not sure what im looking for ruling 2. I
 don't see a gate."* That is correct: the probe shows screen 1, and the gate is on screen 2. The gate-bar
-pair was dropped at §3D's finding (identical, 0 px). Ruling 2 is open pending his direction; the
-recommendation put to him is in §8.1.
+pair was dropped at §3D's finding (identical, 0 px).
+
+**RULING 2: CLOSED — Jay, 2026-10-10** (*"yes"*). The recommendation he accepted: close it now, because
+there is no artifact at any real static context and per-context costs +0 in the page bake. **Revisit it
+when gates are animated:** the gate's moving parts (the `drawgateb` B-section, and `$44`/`$37` from
+`drawgatebf`) must be built then anyway, and the lit-context case becomes a real picture at that point
+(§8.1).
 
 The request text as filed before the gate follows.
 
