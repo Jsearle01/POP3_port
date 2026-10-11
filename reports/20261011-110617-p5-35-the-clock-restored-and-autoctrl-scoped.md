@@ -142,7 +142,7 @@ kidrun_plan.py's comment); P5.3's "~23 s demo" is contradicted (AutoCtrl alone r
 - **AC10** — (a) half refuted, (b) refined (initialised to 0; never reset), (c) and (d) confirmed — §3E.
 - **AC11–AC16** — MET (§3E and the findings file). **AC17** — MET. **AC18** — MET: 512 KB introseq, integ, tile,
   char, kidrun ALL PASS; 128 KB tile PASS; 13 kid-run steps 15360/15360; `content/chars` 0 changes.
-- **AC19** — pending Jay. **AC20** — MET. **AC21/AC22** — §6.
+- **AC19** — MET: PASSED live-disk (Jay: "looks correct"). **AC20** — MET. **AC21/AC22** — §6.
 
 ### 5 — Verdict-time evidence
 ```
@@ -159,8 +159,8 @@ CONTROL: guard frame 48/52/43/34/5/52 wrong at 15/16/17/19/21/40; 12/22/46 EXACT
 [suites] running: introseq integ tile char kidrun ... [suites] ALL PASS      128 KB tile ... ALL PASS
 oracle_rnd_trace self-check: F-record check: old frames 320, new frames 320 common, identical K/S 320
 ```
-25.2: N/A. **25.3: pending Jay** — live-disk, 512 KB, RGB, motion: the same kid-and-guard run. Does it still look
-right at the restored clock, and does the cadence feel the same or better (the occasional long step should be gone).
+25.2: N/A. **25.3: PASSED — Jay, live-disk, 512 KB, RGB, live motion:** *"looks correct"* — the kid-and-guard run
+at the restored clock (6.00 display frames every step).
 
 ### 6 — Reactive deviations and route accounting
 - **Register-owner row not added** — the dispatch asked for it; the file is allowlisted, so a row would be redundant.
@@ -189,7 +189,7 @@ right at the restored clock, and does the cadence feel the same or better (the o
    the AI reads can be owned by the other character".
 
 ### 9 — User interaction during task
-None before the gate.
+None before the gate. At the gate: "yes" (launch it); "looks correct".
 
 ### 10 — Candidate(s) captured this task
 None.
