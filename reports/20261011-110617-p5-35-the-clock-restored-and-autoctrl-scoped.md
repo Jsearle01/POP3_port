@@ -195,4 +195,5 @@ None before the gate.
 None.
 
 ### 11 — Commit
-(the follow-up commit carries this line)
+`ba0fe43` (the clock, §1-§3) and `b7cf376` (this report, the findings, the instrument); pushed to origin/wip
+before the gate. `main` untouched.
