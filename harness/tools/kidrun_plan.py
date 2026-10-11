@@ -69,7 +69,9 @@ WORK = ROOT / "build/p531"
 # P5.21's oracle trace, the kid record's Posn and CharX at each game frame of this run:
 #   F 7949 K=01BF..  F 7953 K=02BF..  F 7957 K=03BF..  F 7961 K=04BF..  F 7965 K=05B7..
 #   F 7971 K=06B4..  F 7979 K=07B1..  F 7985 K=08AC..  F 7990 K=09AB..  F 7996 K=0AA9..
-#   F 8002 K=0BA5..  F 8008 K=35A5.. (runstop -- AutoCtrl, out of scope)
+#   F 8002 K=0BA5..  F 8008 K=35A5.. (runstop -- the demo's recorded SCRIPT, DemoProg1 `db 13,Ctr`
+#   [SUBS.S:1197], centring the stick; NOT AutoCtrl, as P5.31 said -- P5.35's oracle trace has no
+#   AutoCtrl call before display frame 8890)
 ORACLE = [(1, 191, 7949), (2, 191, 7953), (3, 191, 7957), (4, 191, 7961), (5, 183, 7965),
           (6, 180, 7971), (7, 177, 7979), (8, 172, 7985), (9, 171, 7990), (10, 169, 7996),
           (11, 165, 8002)]
