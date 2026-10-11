@@ -80,23 +80,68 @@ def mirror(b):
     return _table("MIRROR")[b & 0x7F]
 
 
-def cleared(table, idx, mirrored):
+def _pockets(rows, width):
+    """Transparent cells NOT reachable from the grid's edge, 4-connected, through transparent cells --
+    a breadth-first flood from every edge cell (the bake finds the same set by connected components)."""
+    h = len(rows)
+    seen = [[False] * width for _ in range(h)]
+    queue = [(r, c) for r in range(h) for c in (0, width - 1)] + \
+            [(r, c) for c in range(width) for r in (0, h - 1)]
+    i = 0
+    while i < len(queue):
+        r, c = queue[i]
+        i += 1
+        if 0 <= r < h and 0 <= c < width and not seen[r][c] and c not in rows[r]:
+            seen[r][c] = True
+            queue += [(r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)]
+    return [{c for c in range(width) if c not in rows[r] and not seen[r][c]} for r in range(h)]
+
+
+def cleared(table, idx, mirrored, cross_bytes=True, fill_pockets=True):
     """Per VISUAL row (top first, sprite_convert's order), the set of Apple pixel columns
-    0..7*aw-1 that MLayMask / LayMask clear for this cel -- the oracle's route, byte by byte."""
+    0..7*aw-1 that MLayMask / LayMask clear for this cel -- the oracle's route, byte by byte.
+
+    ★★ cross_bytes (P5.34b, Jay's ruling (b), 2026-10-10) -- A DELIBERATE §2I DIVERGENCE FROM THE
+    ORACLE. MASKTAB is applied to each 7-px source byte ALONE (HIRES.S:954/1480), so the border never
+    crosses a byte boundary: a lit bit 6 does not clear bit 0 of the next byte, nor the reverse. That
+    left one-pixel see-through seams inside the guard at every source-byte boundary (CHTAB4.GD #20:
+    14 px, a line down column 14), which Jay saw at P5.34's gate ("there are still inner areas of the
+    guard that are transparent") -- on the Apple's NTSC display a 1-px gap between white runs smears
+    and probably never read as a hole; on the CoCo3's RGB it does. With cross_bytes, after the
+    literal per-byte route, the boundary rule is applied to the laid-out row: a lit bit 6 also
+    clears the next byte's bit 0, and a lit bit 0 the previous byte's bit 6. cross_bytes=False is the
+    oracle exactly (MLayMask as written).
+
+    ★★ fill_pockets (P5.34b, Jay's ruling "2", 2026-10-10) -- A SECOND DELIBERATE §2I DIVERGENCE. The
+    mask works SIDEWAYS only, so a pocket closed off above and below but with no lit pixel beside it
+    stays see-through in the oracle too (CHTAB4.GD #20: 5 px, rows 26-28, after cross_bytes). With
+    fill_pockets, every transparent cell the silhouette ENCLOSES -- not reachable, 4-connected, from
+    the edge of the 7*aw x h grid -- is cleared as well (opaque black). The silhouette here is the
+    cleared set itself: every non-zero converted pixel lies in it (sprite_convert's chroma and fill
+    pixels always neighbour a lit bit), so the Apple bits alone decide it."""
     cel = SC.get_cel(table, idx)
     aw, h, data = cel["w"], cel["h"], cel["data"]
     rows = []
     for vr in range(h):
         d = h - 1 - vr                                   # cel rows are stored bottom-up
         src = data[d * aw:(d + 1) * aw]
+        laid = [mirror(src[aw - 1 - p]) if mirrored else src[p] for p in range(aw)]
         cols = set()
         for p in range(aw):
-            b = mirror(src[aw - 1 - p]) if mirrored else src[p]
-            m = masktab(b)
+            m = masktab(laid[p])
             for i in range(7):
                 if not (m >> i) & 1:
                     cols.add(7 * p + i)
+        if cross_bytes:
+            for p in range(aw - 1):
+                if laid[p] & 0x40:                       # bit 6 lit: the next byte's bit 0
+                    cols.add(7 * (p + 1))
+                if laid[p + 1] & 0x01:                   # bit 0 lit: the previous byte's bit 6
+                    cols.add(7 * p + 6)
         rows.append(cols)
+    if fill_pockets:
+        for r, extra in enumerate(_pockets(rows, 7 * aw)):
+            rows[r] |= extra
     return rows
 
 

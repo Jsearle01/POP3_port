@@ -96,7 +96,8 @@ def border_rows(raw, cel):
     character's own 7-pixel SOURCE byte [HRTABLES.S:219-234]. So a pixel the cel leaves at 0 but the
     mask clears is OPAQUE BLACK, not transparent.
 
-    Computed here by ARITHMETIC -- (b | b<<1 | b>>1) per source byte -- not by reading MASKTAB:
+    Computed here by ARITHMETIC -- a lit pixel and its row neighbours (P5.34b: ACROSS source-byte
+    boundaries, a §2I divergence by Jay's ruling; MASKTAB itself is byte-local) -- not by reading MASKTAB:
     the predictions (char_mask.py) read MASKTAB literally, so the two routes check each other.
     The pixel grid is the Apple's 1:1 (sprite_convert: column byte*7+bit), bottom-up rows flipped.
 
@@ -109,14 +110,37 @@ def border_rows(raw, cel):
         d = h - 1 - vr
         src = data[d * aw:(d + 1) * aw]
         row = list(cel.pixels[vr]) + [0] * (width - len(cel.pixels[vr]))
-        for p in range(aw):
-            b = src[p] & 0x7F
-            dil = (b | (b << 1) | (b >> 1)) & 0x7F
-            for i in range(7):
-                c = 7 * p + i
-                if (dil >> i) & 1 and row[c] == 0:
-                    row[c] = BORDER
+        # ★★ P5.34b, Jay's ruling (b): the dilation runs along the WHOLE row, across the 7-px source
+        # byte boundaries -- a deliberate §2I divergence from MASKTAB, which is byte-local and left
+        # one-pixel see-through seams inside the guard (char_mask.cleared's cross_bytes says why).
+        lit = [(src[c // 7] >> (c % 7)) & 1 for c in range(7 * aw)]
+        for c in range(7 * aw):
+            if row[c] == 0 and (lit[c] or (c > 0 and lit[c - 1]) or (c + 1 < 7 * aw and lit[c + 1])):
+                row[c] = BORDER
         out.append(row)
+    # ★★ P5.34b, Jay's ruling "2": ENCLOSED POCKETS become opaque black too -- a second §2I divergence
+    # (the mask works sideways only, so a pocket closed above and below stayed see-through). Found here
+    # by CONNECTED COMPONENTS of the transparent cells in the 7*aw x h grid (union-find); a component
+    # that touches no edge is enclosed. char_mask.cleared finds the same set by a flood from the edges.
+    W = 7 * aw
+    parent = {}
+
+    def find(a):
+        while parent[a] != a:
+            parent[a] = parent[parent[a]]
+            a = parent[a]
+        return a
+    for r in range(h):
+        for c in range(W):
+            if out[r][c] == 0:
+                parent[(r, c)] = (r, c)
+                for q in ((r - 1, c), (r, c - 1)):
+                    if q in parent:
+                        parent[find(q)] = find((r, c))
+    touches = {find(p) for p in parent if p[0] in (0, h - 1) or p[1] in (0, W - 1)}
+    for p in parent:
+        if find(p) not in touches:
+            out[p[0]][p[1]] = BORDER
     # the stream's width: the rightmost byte holding anything opaque (trailing trim, as before)
     used = max((c // 4 for r in out for c, v in enumerate(r) if v), default=0) + 1
     return [r[:4 * used] for r in out], used

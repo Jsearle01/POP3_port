@@ -4,20 +4,20 @@
 *
 chtab4shad_026_p0:
         fcb     12,14  ; height, width in bytes
-        fcb     $43,$C2,$F0,$0A,$0F,$80,$49,$00,$42,$C1,$F0,$03
+        fcb     $43,$C2,$C0,$0A,$0F,$80,$49,$00,$42,$C1,$F0,$03
         fcb     $81,$EA,$C1,$0F,$80,$49,$00,$42,$C1,$F0,$03,$82
         fcb     $FE,$A8,$42,$81,$3F,$C1,$3F,$00,$45,$00,$42,$C1
-        fcb     $C0,$0F,$82,$FF,$EA,$C1,$3F,$80,$41,$81,$3F,$C1
+        fcb     $C0,$0F,$82,$FF,$EA,$C1,$0F,$80,$41,$81,$3F,$C1
         fcb     $03,$F0,$45,$00,$C1,$F0,$03,$84,$FF,$FF,$FF,$EA
-        fcb     $C2,$3F,$80,$F0,$03,$82,$FF,$FF,$C1,$03,$F0,$44
-        fcb     $00,$C1,$C0,$0F,$84,$FE,$AF,$FF,$EA,$C2,$3F,$80
+        fcb     $C2,$0F,$80,$F0,$03,$82,$FF,$FF,$C1,$03,$F0,$44
+        fcb     $00,$C1,$C0,$0F,$84,$FE,$AF,$FF,$EA,$C2,$0F,$80
         fcb     $C0,$0F,$83,$FF,$FF,$FF,$C1,$3F,$00,$43,$00,$85
-        fcb     $FE,$AF,$FE,$AA,$FF,$C2,$3F,$80,$C0,$0F,$84,$FF
+        fcb     $FE,$AF,$FE,$AA,$FF,$C2,$0F,$80,$C0,$0F,$84,$FF
         fcb     $FF,$FF,$FF,$C1,$0F,$C0,$42,$00,$8D,$FF,$FF,$EA
         fcb     $FF,$AA,$AF,$FF,$FF,$EA,$AA,$FE,$AA,$FF,$C1,$3F
         fcb     $00,$00,$8D,$FF,$FF,$EA,$FF,$AA,$AF,$FF,$FF,$EA
         fcb     $AF,$FE,$AA,$FF,$C1,$3F,$00,$00,$8E,$FF,$FE,$AF
         fcb     $FC,$AF,$FF,$FF,$FF,$AF,$FE,$AA,$AA,$7F,$EA,$00
-        fcb     $43,$C1,$F0,$0A,$83,$FE,$A8,$AF,$C1,$FC,$00,$86
+        fcb     $43,$C1,$C0,$0A,$83,$FE,$A8,$AF,$C1,$FC,$00,$86
         fcb     $FF,$FE,$AF,$FC,$FF,$FF,$00,$42,$C1,$C0,$0A,$82
-        fcb     $AA,$AA,$C1,$3C,$80,$81,$AA,$C1,$0F,$80,$46,$00
+        fcb     $AA,$AA,$C1,$0C,$80,$81,$AA,$C1,$0F,$80,$46,$00
