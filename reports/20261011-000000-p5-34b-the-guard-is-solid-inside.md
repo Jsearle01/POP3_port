@@ -80,4 +80,4 @@ defect (P5.34 §top: tile_probe never restores $FFD9) is unchanged and still the
 None.
 
 ### 11 — Commit
-(the follow-up commit carries this line)
+`8430045` (pushed to origin/wip before the gate; this line in the follow-up commit). `main` untouched.
