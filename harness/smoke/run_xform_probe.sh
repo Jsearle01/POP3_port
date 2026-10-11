@@ -27,6 +27,10 @@ fi
 
 # XF_PREFIX keeps one run's batches from deleting another's: the census is `b`, the shipped
 # cross-check (`--shipped p11 --shipped v54`) is conventionally `s`.
+# ★★ P5.35: BUT TWO RUNS MUST NOT OVERLAP. Every batch is staged through ONE file, build/xform/xf_gen.s
+# (the `cp -f "$gen" build/xform/xf_gen.s` below), so a run started while another is still going can
+# assemble the OTHER run's batch. P5.34b did exactly that and the symptom looked like a code defect:
+# `ERROR : Undefined symbol c_chtab2_6_r00`. XF_PREFIX separates the outputs, not the staging file.
 XF_PREFIX="${XF_PREFIX:-b}"
 python harness/tools/xform_probe_gen.py --out-prefix "$XF_PREFIX" "$@" || exit 1
 

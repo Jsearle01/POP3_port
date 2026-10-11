@@ -41,6 +41,7 @@ end
 local PH = {"wk_t_seq", "wk_t_erase", "wk_t_save", "wk_t_draw", "wk_t_fore", "wk_t_end"}
 
 local state, t0, last = "boot", 0, -1
+local clk0, clk1 = nil, nil
 _G._kc = emu.add_machine_frame_notifier(function()
     local fn = scr:frame_number()
     if state == "boot" and fn >= 300 then
@@ -56,9 +57,9 @@ _G._kc = emu.add_machine_frame_notifier(function()
         cpu.debug:bpset(sym.wk_t_end, "1", string.format(
             "temp5=totalcycles; pd@0x%X=temp1-temp0; pd@0x%X=temp2-temp1; pd@0x%X=temp3-temp2; " ..
             "pd@0x%X=temp4-temp3; pd@0x%X=temp5-temp4; pd@0x%X=temp5-temp0; " ..
-            "pb@0x%X=pb@0x%X; pb@0x%X=pb@0x%X; pb@0x%X=pb@0x%X; pw@0x%X=pw@0x%X+1; go",
+            "pb@0x%X=pb@0x%X; pb@0x%X=pb@0x%X; pb@0x%X=pb@0x%X; pw@0x%X=pw@0x%X+1; pd@0x%X=temp0; go",
             S, S + 4, S + 8, S + 12, S + 16, S + 20,
-            S + 24, sym.wk_frame, S + 25, sym.wk_x, S + 26, sym.wk_k, S + 28, sym.wk_steps))
+            S + 24, sym.wk_frame, S + 25, sym.wk_x, S + 26, sym.wk_k, S + 28, sym.wk_steps, S + 32))
         nk:post('LOADM"KIDRUN"\n'); state, t0 = "load", fn
     elseif state == "load" and fn > t0 + SETTLE then
         if NACT and NACT ~= "" then
@@ -84,8 +85,19 @@ _G._kc = emu.add_machine_frame_notifier(function()
             -- between steps are the achieved cadence, measured rather than taken from WK_SPEED
             log(string.format("S %d %d %d %d  %d %d %d %d %d  %d %d", st, mem:read_u8(SLOTS + 24),
                 mem:read_u8(SLOTS + 25), mem:read_u8(SLOTS + 26), d[1], d[2], d[3], d[4], d[5], d[6], fn))
+            -- ★ P5.35: THE CLOCK, MEASURED. The absolute totalcycles at the start of each step's
+            -- sequencer (SLOTS+32) against the video frame it was seen on: over the run, CPU cycles per
+            -- real frame. P5.31-P5.34 divided by an ASSUMED 29,859 while tile_probe left the SAM slow.
+            local abs = mem:read_u32(SLOTS + 32)
+            if not clk0 then clk0 = {fn, abs} end
+            clk1 = {fn, abs}
         end
         if last >= NSTEPS or fn - t0 > 20000 then
+            if clk0 and clk1 and clk1[1] > clk0[1] then
+                log(string.format("# CLOCK %.1f cycles per real frame (%d cycles over %d frames, step starts)",
+                    ((clk1[2] - clk0[2]) & 0xFFFFFFFF) / (clk1[1] - clk0[1]),
+                    (clk1[2] - clk0[2]) & 0xFFFFFFFF, clk1[1] - clk0[1]))
+            end
             log(string.format("# DONE at step %d, frame +%d", last, fn - t0))
             manager.machine:exit()
         end

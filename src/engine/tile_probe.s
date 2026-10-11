@@ -106,6 +106,7 @@ dr_r_track      equ     DR_VARBASE+5
 dr_r_count      equ     DR_VARBASE+6
 
 SAM_SLOW        equ     $FFD8           ; the FDC needs normal speed (CLAUDE.md §2G)
+SAM_FAST        equ     $FFD9           ; P5.35: ... and double speed back after it
 STACK_TOP       equ     $7F00           ; below the $8000 draw window
 FB_STRIDE       equ     80
 
@@ -197,6 +198,11 @@ tile_bank_map
 * ---------------------------------------------------------------
 * load_track - A = track, B = sectors, X = destination.
 * Normal SAM speed for the whole transfer: double speed breaks the FDC (CLAUDE.md §2G).
+* ★ P5.35: AND DOUBLE SPEED BACK AFTER IT, on both paths. Until P5.35 this was the one disk read in
+* the tree that did not bracket the transfer -- loader.s, kidrun_boot.s, cutscene_room.s and
+* intro_seq.s all restore $FFD9 -- so every program EXECing tile_entry (the tile, character and
+* kid-run probes) ran everything after its page read at 0.89 MHz: P5.34 measured 14,834 CPU
+* cycles per real frame in the kid run against the 29,859 every budget since P5.31 assumed.
 * ---------------------------------------------------------------
 load_track
                 pshs    cc
@@ -209,6 +215,7 @@ load_track
                 bcc     lt_ok
                 com     probe_dskerr
 lt_ok
+                sta     SAM_FAST        ; both paths: a failed read must not leave the machine slow
                 puls    cc
                 rts
 

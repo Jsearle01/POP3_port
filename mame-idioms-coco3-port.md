@@ -2235,6 +2235,20 @@ work in a bp action.** Then accept a snapshot only when its step number agrees w
 own counter: the snapshot area may hold stale bytes before the first write (here the tile page's
 staging bytes read as step 35,906). Tool: `harness/tools/kidrun_cycles.lua`.
 
+**★★★ P5.35 — MEASURE THE CLOCK; NEVER DIVIDE BY AN ASSUMED ONE.** `totalcycles` counts CPU cycles
+at whatever speed the SAM is in. Four dispatches (P5.31-P5.34) divided measured counts by 29,859
+cy/frame while the kid-run probe ran at 0.894 MHz (`tile_probe.s` left the SAM slow after its disk
+read) — every share and budget 2× optimistic. Measure it: absolute `totalcycles` at a recurring
+breakpoint against `scr:frame_number()` over hundreds of frames. Measured: **14,902** before the fix,
+**29,855** after (1.79 MHz = 29,859; 0.89 = 14,930). `kidrun_cost.py` now refuses to compute a share
+without the log's `# CLOCK` line. ★ In POP, double speed comes from `HAL_gfx_set_mode` (gfx.s:502), NOT
+from `HAL_sys_init` (its `$FFD9` is under `ifdef HAL_SYS_FAST_CLOCK`, which POP does not define).
+
+**★ P5.35 — THE TRANSFORM PROBE IS NOT SAFE FOR CONCURRENT RUNS.** `run_xform_probe.sh` stages every
+batch through one file, `build/xform/xf_gen.s`; a second run started while one is still going can
+assemble the other's batch, and the error reads like a code defect (`Undefined symbol
+c_chtab2_6_r00`). `XF_PREFIX` separates outputs, not the staging file. One run at a time.
+
 ---
 
 ## 42. Authoring a side: what is measured, and the two hazards that make it unreadable (P5.22)

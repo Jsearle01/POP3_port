@@ -9,8 +9,15 @@ THREE DENOMINATORS, kept apart (§5.324 is the entry for confusing them):
   * the ORACLE's duration for the FRAME that step drew, in display frames, from P5.21's trace
     (build/tmp/oracle_step_trace.txt): frames 1..11 from the demo's own start of this run
     (display frames 7949..8008), frames 12..14 from every run cycle elsewhere in the trace --
-    converted to port cycles at 1,789,772 Hz / 59.94 Hz = 29,859 per display frame;
+    converted to port cycles at the port's MEASURED cycles per display frame (P5.35, below);
   * the CADENCE, in fps: the port's fixed WK_SPEED against the oracle's per-frame durations.
+
+★★★ P5.35: THE CLOCK IS READ, NOT ASSUMED. P5.31-P5.34 converted at 1,789,772 / 59.94 = 29,859 cycles
+per display frame. The kid-run probe was running at 0.894 MHz the whole time (tile_probe.s left the SAM
+slow after its disk read), so every share and budget this tool printed was 2x optimistic -- the
+numerators were measured every time, the denominator assumed every time. The log now carries
+`# CLOCK <cycles per real frame>` (kidrun_cycles.lua: absolute totalcycles at step starts against MAME's
+frame number), and this tool REFUSES to compute a share or a budget without it.
 """
 import collections
 import pathlib
@@ -19,8 +26,9 @@ import statistics
 import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-CY_PER_DISPLAY_FRAME = 1789772 / 59.94      # the port's clock over one NTSC field
+CY_PER_DISPLAY_FRAME = None                 # P5.35: MEASURED, from the log's `# CLOCK` line -- never assumed
 SPEED = 6                                   # kidrun_plan.SPEED
+CLOCKS = {"1.79 MHz (double speed, $FFD9)": 1789772 / 59.94, "0.89 MHz (normal speed)": 894886 / 59.94}
 
 
 def oracle_durations():
@@ -40,7 +48,20 @@ def oracle_durations():
 
 def main():
     # P5.32: a log path may be given (the one-actor control and the two-actor run are two logs)
+    global CY_PER_DISPLAY_FRAME
     log = pathlib.Path(sys.argv[1]) if len(sys.argv) > 1 else ROOT / "build/kidrun_cycles.log"
+    m = re.search(r"^# CLOCK ([\d.]+) cycles per real frame", log.read_text(), re.M)
+    if not m:
+        raise SystemExit("kidrun_cost: NO `# CLOCK` LINE in %s -- the clock was not measured, and this tool "
+                         "will not assume one (P5.35: an assumed 29,859 hid a 2x error for four dispatches). "
+                         "Re-run harness/smoke/run_kidrun_cycles.sh." % log)
+    CY_PER_DISPLAY_FRAME = float(m.group(1))
+    near = min(CLOCKS, key=lambda k: abs(CLOCKS[k] - CY_PER_DISPLAY_FRAME))
+    print("kidrun_cost: CLOCK MEASURED %.0f cycles per real frame -- %s (%.0f)"
+          % (CY_PER_DISPLAY_FRAME, near, CLOCKS[near]))
+    if abs(CLOCKS[near] - CY_PER_DISPLAY_FRAME) / CLOCKS[near] > 0.02:
+        raise SystemExit("kidrun_cost: the measured clock is within 2%% of neither known SAM speed -- stop and "
+                         "find out why before quoting a share")
     rows = []
     for line in log.read_text().splitlines():
         if line.startswith("S "):
