@@ -55,7 +55,8 @@ fills turn merge runs into blasts); guard sets one run — **22,974 B → 5 trac
 actors **78,471 (88%, worst 90,664 = 101%)**; cadence **9.85 fps** two actors (oracle 9.65), 9.99 one. The clock
 defect (P5.34 §top: tile_probe never restores $FFD9) is unchanged and still the follow-up that halves this.
 
-**25.3: pending Jay** — live-disk, 512 KB, RGB, motion: does the guard look solid as the kid passes behind him.
+**25.3: PASSED — Jay, live-disk, 512 KB, RGB, live motion:** *"yes it looks correct now."* With P5.34's
+*"speed is fine"*, both halves of the re-gate (occlusion and cadence) are passed.
 
 ### 6 — Deviations and route accounting
 - **An instrument collision, mine:** a superseded probe run (the cross_bytes-only bake) was still running when
@@ -74,7 +75,7 @@ defect (P5.34 §top: tile_probe never restores $FFD9) is unchanged and still the
 1. Restore `$FFD9` after tile_probe's disk read (P5.34 §8.1).
 
 ### 9 — User interaction
-"b" (cross the byte boundaries); "2." (also fill enclosed pockets).
+"b" (cross the byte boundaries); "2." (also fill enclosed pockets); at the gate: "yes it looks correct now."
 
 ### 10 — Candidate(s) captured
 None.
