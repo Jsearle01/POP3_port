@@ -91,17 +91,35 @@ def main():
     for fr in (7900, 8882, 9254):
         for n in BAKED:
             if which[fr][home][n]:
-                stop = True
+                stop = stop or fr == 7900           # at load = the parser is wrong; later = the game mutated it
                 o = (D / ("blueprint_%s_%d.bin" % (home, fr))).read_bytes()
                 ex = [(i - dict((s[0], s[1]) for s in SECTIONS)[n], port[i], o[i]) for i in which[fr][home][n][:8]]
-                print("  ★ BAKED SECTION %s DIFFERS at frame %d: %d bytes, first (offset, port, oracle) %r"
-                      % (n, fr, len(which[fr][home][n]), ex))
+                print("  %s %s at frame %d: %d bytes, (offset, port, oracle) %r"
+                      % ("★ BAKED SECTION DIFFERS AT LOAD:" if fr == 7900 else "(runtime: the game changed it since load)",
+                         n, fr, len(which[fr][home][n]), ex))
     for n, a, b in SECTIONS:
         if n not in BAKED:
             dd = which[7900][home][n]
             print("  (not baked) %-8s at load: %s" % (n, "==" if not dd else "%d B differ" % len(dd)))
 
     # ---------------------------------------------------------------- NARROW + EDGES + BLUESPEC
+    calls, base, bluespec = trace_calls()
+    ctrl = [c for c in calls if c["ext"][0].endswith("-ctrl") and 180 <= c["gf"] <= 217]
+    allw = [c for c in calls if 180 <= c["gf"] <= 217]
+    bad, edges = [], []
+    for c in allw:
+        want, home_blk = ref_rdblock(bp, c["scrn"], c["x"], c["y"], block)
+        if c.get("ret") != want:
+            bad.append((c, want))
+        xs = c["x"] - 256 if c["x"] >= 128 else c["x"]
+        ys = c["y"] - 256 if c["y"] >= 128 else c["y"]
+        if not (0 <= xs < 10 and 0 <= ys < 3):
+            edges.append((c, home_blk))
+    return report(bp, block, stop, ctrl, allw, bad, edges, bluespec)
+
+
+def trace_calls():
+    """Every RDBLOCK in oracle_bp.tr: dict(gf, scrn, x, y, ret, ext); game frame 180 = the first AUTOCTRL."""
     calls, frame, first_auto, open_ext = [], -1, None, {}
     pending = []                         # RDBLOCK entries awaiting their rts
     prev = None
@@ -135,18 +153,12 @@ def main():
         if open_ext and re.search(r"\(\$26\),y", ins):
             bluespec[tuple(sorted(open_ext))] += 1
     base = 180 - first_auto
-    ctrl = [c for c in calls if c["ext"][0].endswith("-ctrl") and 180 <= c["frame"] + base <= 217]
-    allw = [c for c in calls if 180 <= c["frame"] + base <= 217]
-    bad, edges = [], []
-    for c in allw:
-        want, home_blk = ref_rdblock(bp, c["scrn"], c["x"], c["y"], block)
+    for c in calls:
         c["gf"] = c["frame"] + base
-        if c.get("ret") != want:
-            bad.append((c, want))
-        xs = c["x"] - 256 if c["x"] >= 128 else c["x"]
-        ys = c["y"] - 256 if c["y"] >= 128 else c["y"]
-        if not (0 <= xs < 10 and 0 <= ys < 3):
-            edges.append((c, home_blk))
+    return calls, base, bluespec
+
+
+def report(bp, block, stop, ctrl, allw, bad, edges, bluespec):
     byc = collections.Counter(c["ext"][0] for c in ctrl)
     print("\nNARROW -- RDBLOCK in game frames 180-217: %d in all (%d inside a controller: %s)"
           % (len(allw), len(ctrl), dict(byc)))
@@ -176,8 +188,9 @@ def main():
     for k, v in sorted(mut.items()):
         print("  runtime map change seen by RDBLOCK: screen %d block (%d,%d) -- from game frame %d (%d reads)"
               % (k[0], k[1], k[2], min(v), len(v)))
-    if stop or bad:
-        print("\noracle_blueprint: FAIL -- %s" % ("a baked section differs from the oracle" if stop else "RDBLOCK mismatch"))
+    if stop or cbad:
+        print("\noracle_blueprint: FAIL -- %s" % ("a baked section differs from the oracle AT LOAD" if stop
+                                                 else "a CONTROLLER's RDBLOCK differs from the static table"))
         return 1
     print("\noracle_blueprint: PASS")
     return 0
