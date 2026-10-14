@@ -12,7 +12,7 @@
 #   map   the MAP NEGATIVE CONTROL: screen 4 block (3,0) reads as space -- EnGarde must take DoRetreat
 #         and the check FAIL. Both controls run the logic only (the retreat's cels are not linked).
 #
-# LOADM"GUARD" + EXEC off build/engarde_gate.dmk; the loader's kr_stop = 38 (stop after the 38th game
+# LOADM"GUARD" + EXEC off build/engarde_gate.dmk; the loader's kr_stop = 39 (the seed, then stop after the 38th game
 # frame) and kr_nact = the run mode (kidrun_probe.s -DGA_WINDOW). At the terminal status tile_test.lua
 # dumps the AI's logs (P_DUMPMEM). ★ This is not the gate: run_engarde_live.sh is what Jay watches.
 set -u
@@ -52,7 +52,7 @@ export P_WANT_ENTS=$(python -c "print(open('build/assets/tile_page4.raw','rb').r
 export P_OUT="$LOG" P_DUMP="build/engarde_front.bin" P_FILE="GUARD" P_MARK="build/engarde_test"
 export P_SETTLE="${P_SETTLE:-600}"
 export P_RUN_LIMIT="${P_RUN_LIMIT:-1500}"
-export P_POKE16="$(ksym kr_stop)=38"
+export P_POKE16="$(ksym kr_stop)=39"   # step 1 is the seed; 2-39 are game frames 180-217
 export P_POKE8="$(ksym kr_nact)=$NACT"
 export P_DUMPMEM="$(python harness/tools/engarde_test.py --dumpspec)"
 export P_PAL="build/engarde_palette.bin"

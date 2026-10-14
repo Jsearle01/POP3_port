@@ -97,6 +97,8 @@ gi_nodraw       cmpa    #GA_CTL_MAP
 gi_nomap
                 clr     ga_gf
                 clr     ga_nrl
+                lda     #1                      ; kidrun_probe.s draws the seed (frame 166) first
+                sta     ga_seedshow
                 clr     ga_rlon                 ; the self-test's reads are not the window's
                 ldd     #0
                 std     ga_rnd_calls
@@ -913,3 +915,5 @@ ga_err          rmb     1
 ga_draw         fcb     1               ; 1 in the gate's mode; 0 for the controls (logic only)
 ga_mode         fcb     2               ; the run mode, from the loader's actor byte (kidrun_probe.s)
 ga_t0           rmb     1
+ga_seedshow     rmb     1               ; 1: the next step draws the seed instead of running a game frame
+ga_seedheld     rmb     1               ; 1: the step just shown was the seed -- hold it

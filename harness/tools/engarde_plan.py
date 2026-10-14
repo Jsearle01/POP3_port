@@ -36,6 +36,9 @@ GF0, GF1 = 180, 217
 SPEED = 9                       # display frames per game frame: the oracle's own mean over this window
 #                                 (F8890..F9234 = 344 display frames / 38 game frames = 9.05) -- a pace, not a model
 HOLD = 90                       # display frames the last game frame is held before the window restarts
+SEEDHOLD = 45                   # ... and the seed (the guard standing at game frame 179) before frame 180 --
+#                                 the first step of every lap draws it (Jay, the P5.37 gate)
+#                                 ★ so a lap is 39 STEPS: step 1 the seed, steps 2-39 game frames 180-217
 GD_TABLE = "chtab4gd"
 PEELSZ = 768                    # per page: $3000-$35FF is two of these (guard_ai.s's logs start at $3600)
 VECTORS = ROOT / "harness/data/p537_rdblock_vectors.json"
@@ -156,6 +159,7 @@ def main():
          "GA_GF0          equ     %d" % GF0,
          "GA_NFR          equ     %d" % (GF1 - GF0 + 1),
          "GA_HOLD         equ     %d" % HOLD,
+         "GA_SEEDHOLD     equ     %d              ; the seed (standing, game frame 179) held this long" % SEEDHOLD,
          "GA_PEELSZ       equ     %d              ; per page; the window's largest frame needs %d (image %d)"
          % (PEELSZ, max(peel.values()), max(peel, key=peel.get))]
     L.append("* --- the oracle's assembled equates (AUTO/CTRL/CTRLSUBS/SEQTABLE.LST), not retyped ---")

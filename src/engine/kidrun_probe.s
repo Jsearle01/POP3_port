@@ -168,7 +168,14 @@ wk_loop
 wk_t_seq
                 ifdef   GA_WINDOW
 * --- one GAME FRAME of the oracle's logic, then the guard's record decides what is drawn ---
-wk_t_ai         lbsr    ga_frame
+* ★ the first step of every lap shows the SEED -- the guard as he stood at game frame 179 (frame 166),
+* before the AI runs (Jay, P5.37 gate: "he doesn't look to start standing"). It is drawn, not computed.
+wk_t_ai         tst     ga_seedshow
+                bne     wk_t_seed
+                lbsr    ga_frame
+                bra     wk_t_aiend
+wk_t_seed       clr     ga_seedshow
+                inc     ga_seedheld             ; wk_wrap holds it GA_SEEDHOLD display frames
 wk_t_aiend      ldu     #kid_rec
                 lda     ga_shad+C_X
                 sta     A_X,u
@@ -290,8 +297,18 @@ wk_pace         jsr     HAL_time_frame_count
                 sta     probe_status
 wk_wrap
                 ifdef   GA_WINDOW
-* --- the window: 38 game frames, the last held GA_HOLD display frames, then again from the seed ---
-                lda     ga_gf
+* --- the window: the seed held, 38 game frames, the last held GA_HOLD display frames, again from the seed ---
+                tst     ga_seedheld
+                beq     ga_run
+                clr     ga_seedheld
+ga_shold        jsr     HAL_time_frame_count
+                subd    wk_last
+                cmpd    #GA_SEEDHOLD
+                blo     ga_shold
+                jsr     HAL_time_frame_count
+                std     wk_last
+                lbra    wk_loop
+ga_run          lda     ga_gf
                 cmpa    #GA_NFR
                 lblo    wk_loop
 ga_hold         jsr     HAL_time_frame_count

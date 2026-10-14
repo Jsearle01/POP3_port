@@ -43,7 +43,10 @@ def main():
             v = [int(x) for x in l.split()[1:]]
             rows.append(dict(step=v[0], frame=v[1], x=v[2], k=v[3], **dict(zip(PH, v[4:10])), total=v[10],
                              seen=v[11]))
-    rows = [r for r in rows if 1 <= r["step"] <= EP.GF1 - EP.GF0 + 1]
+    # step 1 of a lap draws the SEED (no game frame runs); steps 2..39 are game frames 180..217
+    rows = [r for r in rows if 2 <= r["step"] <= EP.GF1 - EP.GF0 + 2]
+    for r in rows:
+        r["step"] -= 1
     if not rows:
         print("engarde_cost: no game frames in %s" % log)
         return 1

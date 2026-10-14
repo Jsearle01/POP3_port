@@ -15,7 +15,7 @@ for n in $P_PH wk_steps wk_frame wk_x wk_k probe_status; do
     export "S_$n=$(grep -E "^Symbol: $n " "$MAP" | sed -E 's/.*= *//')"
 done
 export "S_kr_nact=$(grep -E "^Symbol: kr_nact " build/obj/engardeboot.map | sed -E 's/.*= *//')"
-export P_FILE="GUARD" P_OUT="${P_OUT:-build/engarde_cycles.log}" P_NSTEPS="${P_NSTEPS:-38}"
+export P_FILE="GUARD" P_OUT="${P_OUT:-build/engarde_cycles.log}" P_NSTEPS="${P_NSTEPS:-39}"
 . "$(dirname "$0")/ramsize.sh"
 . "$(dirname "$0")/cfgdir.sh"
 "$MAME" coco3 -rompath "$MAME_ROMS" $RAMOPT $CFGOPT -ext fdc -flop1 build/run_engarde_cyc.dmk \
