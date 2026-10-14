@@ -291,4 +291,4 @@ advance 3 times. never draws his sword."* Fixed in `04cb189`: every lap now draw
 `seeds/POP/live/2026-10-14-a-capacity-check-covers-only-the-inputs-it-was-run-over.md` (pushed).
 
 ### 11 — Commit
-(this line in the follow-up commit)
+`933f1a0` (report); build `c7458d8`, gate fix `04cb189`, instruments `b937338` `5746a96` `ce7cd95` -- pushed to origin/wip. `main` untouched.
