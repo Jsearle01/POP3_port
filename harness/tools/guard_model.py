@@ -8,16 +8,19 @@ constants) are taken from the oracle's assembled listings, not retyped; the yard
 per game frame (tier 2). Any branch the window is not measured to take raises `Unmodelled(<label>)` instead of
 guessing -- a raise is a finding, not a crash.
 
-Order per game frame = DoShad [TOPCTRL.S:701-740]:
-  LoadShadwOp, rereadblocks, unholy, ShadCtrl (SHADCTRL -> AutoCtrl -> GenCtrl), animchar (CharScrn = VisScrn),
-  then if onscreen: gravity, addfall, setupchar, rereadblocks, getedges, enemycoll, checkfloor, checkpress,
-  checkspikes, checkimpale, checkslice2; SaveShad.
+Order per game frame = MainLoop's DoKid THEN DoShad [TOPCTRL.S:512-514]:
+  DoKid  [:637-692]  LoadKidwOp, rereadblocks, the kid's controller ONLY on DemoCtrl's en-garde branch
+                     (guardprog := 10, AutoCtrl, guardprog := 11, GenCtrl) -- then his REPLAYED record.
+  DoShad [:701-740]  LoadShadwOp, rereadblocks, ShadCtrl (SHADCTRL -> AutoCtrl -> GenCtrl), animchar
+                     (CharScrn = VisScrn), rereadblocks; SaveShad. The physics between them is NOT BUILT.
 
-Replayed inputs (the §2I test-bed divergences, stated): the kid's record per frame (Op = Kid after DoKid,
-LoadShadwOp), EnemyAlert per frame. Seeded: the guard record and the map at game frame 179.
+★ THREE §2I TEST-BED DIVERGENCES (P5.37 §2.5-7) -- a test bed, not a start-up path:
+  1. the kid is REPLAYED from the oracle's K= record each game frame, not simulated;
+  2. the scene is SEEDED from the oracle's game-frame-179 state (records, globals, the map dump);
+  3. EnemyAlert is REPLAYED per game frame (CHECKALERT reads the map and is not ported).
 
-  python harness/tools/guard_model.py            # model vs oracle, frame by frame
-  python harness/tools/guard_model.py --control enemyalert|map   # negative controls (must diverge)
+  python harness/tools/guard_model.py [--quiet] [--xref]          # model vs oracle; --xref: each map read
+  python harness/tools/guard_model.py --control enemyalert|map    # negative controls (must diverge)
 """
 import pathlib
 import re
@@ -115,12 +118,15 @@ def to_rec(c):
 class Guard:
     def __init__(self, bluetype, bmap):
         self.type, self.map = bytearray(bluetype), bmap
-        self.C, self.O = St(), St()
+        self.K, self.Sh = St(), St()                # Kid, Shad
+        self.C, self.O = self.Sh, self.K
         self.z = St()                # globals: clr*, JSTK*, btn, timers, Fdx/Fcheck, tempblock*
         for n in ("clrF clrB clrU clrD clrbtn JSTKX JSTKY btn justblocked gdtimer refract alertguard "
-                  "droppedout EnemyAlert Fdx Fdy Fcheck Fimage Fsword tempblockx tempblocky tempscrn").split():
+                  "droppedout offguard heroic EnemyAlert guardprog milestone Fdx Fdy Fcheck Fimage Fsword tempblockx "
+                  "tempblocky tempscrn").split():
             setattr(self.z, n, 0)
-        self.calls = []              # (routine, args, result) -- the map reads, for the control and the 6809 compare
+        self.calls = []              # (gf, routine, scrn, x, y, answer) -- every map read
+        self.who = ""
 
     # -------------------------------------------------------------- map [CTRLSUBS.S:136-275]
     def adj(self, scrn, which):
@@ -143,9 +149,7 @@ class Guard:
         z = self.z
         z.tempscrn, z.tempblockx, z.tempblocky = scrn, x, y
         r = S["block"] if scrn == 0 else self.type[(scrn - 1) * 30 + y * 10 + x] & S["idmask"]
-        if self.override and who in self.override.get(self.gf, ()):
-            r = self.override[self.gf][who]
-        self.calls.append((self.gf, who) + arg + (r,))
+        self.calls.append((self.gf, self.who + who) + arg + (r,))
         return r
 
     def getunderft(self, who="getunderft"):
@@ -237,8 +241,8 @@ class Guard:
     def AUTOCTRL(self):                             # :160-193
         z = self.z
         self.DoRelease()
-        if self.C.ID == 0:
-            raise Unmodelled("AUTOCTRL:KidProg")
+        if self.C.ID == 0:                          # :164 `beq :5` -- the kid SKIPS the three decrements
+            return self.GuardProg()                 # :192 KidProg = `jmp GuardProg` [:449-450]
         for t in ("justblocked", "gdtimer", "refract"):
             if getattr(z, t):
                 setattr(z, t, getattr(z, t) - 1)
@@ -357,13 +361,13 @@ class Guard:
             return
         if self.getunderft() != S["loose"] and z.EnemyAlert < 2:
             if C.ID < 2:
-                raise Unmodelled("FightCtrl:dropgd-kid/shad")
+                return self._dropgd()
         else:
             a = self.getopdist()
             if a >= S["swordthres"]:
                 if a < 128:
                     if C.ID < 2:
-                        raise Unmodelled("FightCtrl:dropgd-kid/shad")
+                        return self._dropgd()
                 elif a < 0xFC:
                     raise Unmodelled("FightCtrl:DoTurnEng")
         # :onalert
@@ -379,6 +383,14 @@ class Guard:
             return self.C_DoAdvance()
         if z.clrB & 0x80:
             return self.C_DoRetreat()
+
+    def _dropgd(self):                              # :788-803, kid & shadman only (a guard stays on alert)
+        C = self.C
+        if C.ID == 0:
+            self.z.heroic = 0
+        if C.Posn != 171:
+            return
+        raise Unmodelled("FightCtrl:resheathe")
 
     def SHADCTRL(self):                             # :509-534
         C = self.C
@@ -418,51 +430,40 @@ class Guard:
                 C.Posn = a
                 return
 
-    # -------------------------------------------------------------- the physics that runs on an onscreen guard
-    def gravity(self):                              # SUBS.S:1618
-        if self.C.Action == 4:
-            raise Unmodelled("gravity:freefall")
-
-    def addfall(self):                              # SUBS.S:1651
-        C = self.C
-        C.Y = (C.Y + C.YVel) & 0xFF
-        if C.Action == 4:
-            raise Unmodelled("addfall:freefall")
-
-    def enemycoll(self):                            # COLL.S:1389-1424 (AMtimer 0 on level 0)
-        C = self.C
-        if C.Action != 1 or not (C.Life & 0x80) or C.Sword < 2:
-            return
-        a = self.getunderft("enemycoll")
-        if a in (S["block"], S["panelwif"], S["gate"]):
-            raise Unmodelled("enemycoll:collide-under")
-        if C.Face & 0x80:
-            return
-        z = self.z
-        a = self.rdblock(z.tempscrn, z.tempblockx - 1, z.tempblocky, "enemycoll-behind")   # rdblock1
-        if a in (S["panelwif"], S["gate"]):
-            raise Unmodelled("enemycoll:collide-behind")
-
-    def checkfloor(self):                           # CTRL.S:106-133, onground :313-324
-        C = self.C
-        if C.Action in (6, 2):
-            return
-        if C.Action in (5, 4, 3):
-            raise Unmodelled("checkfloor:action%d" % C.Action)
-        if not (self.z.Fcheck & S["fcheckmark"]):
-            return
-        a = self.getunderft("checkfloor")
-        if a == S["block"]:
-            raise Unmodelled("checkfloor:InsideBlock")
-        if self.cmpspace(a) == 0:
-            raise Unmodelled("checkfloor:startfall")
+    # -------------------------------------------------------------- TOPCTRL.S DoKid :637-692 -- TEST BED
+    def DoKid(self, kid_after):
+        """LoadKidwOp, rereadblocks, the controller -- ONLY on its fight path -- then the REPLAY.
+        ★ §2I divergence: the kid is not simulated. His controller runs only when DemoCtrl [CTRL.S:587-598]
+        takes its en-garde branch (CharSword != 0): guardprog := 10, AutoCtrl, guardprog := 11, GenCtrl.
+        With CharSword = 0 it would `jmp demo` (AUTOPLAYBACK, the recorded walk) and GENCTRL's non-fight
+        path -- out of scope; the replayed record IS that walk. Either way his record is then replaced by
+        the oracle's for this frame (animchar and his physics are the replay)."""
+        self.C, self.O = self.K, self.Sh             # LoadKidwOp: Char := Kid, Op := Shad
+        try:
+            self.rereadblocks()
+            # unholy: level 0 -> rts.  PLAYERCTRL [:554-569]: alive, KidStrength 4, stunned 0, level 0
+            if self.z.milestone == 0 and self.C.Sword != 0:
+                self.z.guardprog = 10
+                self.who = "kid:"
+                self.AUTOCTRL()
+                self.z.guardprog = 11
+                self.GENCTRL()
+        finally:
+            self.who = ""
+            self.C, self.O = self.Sh, self.K
+        rec_to(self.K, kid_after)                   # the REPLAY: SaveKid of the oracle's record
 
     # -------------------------------------------------------------- TOPCTRL.S DoShad :701-740
-    def DoShad(self, kid, vis_scrn):
-        C, O = self.C, self.O
+    def DoShad(self, vis_scrn):
+        """★ The physics after animchar is OUT OF SCOPE (P5.37 §1, §6) and not built: gravity, addfall,
+        setupchar's drawing half, getedges, enemycoll, checkfloor, checkpress, checkspikes, checkimpale,
+        checkslice2. Measured inert on the guard's record in this window (commit 5746a96 transcribed
+        enemycoll and checkfloor, 38/38 identical, no branch taken). The second rereadblocks
+        [:729] IS built: it is how the record's BlockX is made, and §3.1 compares BlockX."""
+        C = self.C = self.Sh
+        self.O = self.K                             # LoadShadwOp: Op := Kid (upcoming -- DoKid ran first)
         if C.Face == 86:
             return
-        rec_to(O, kid)                              # LoadShadwOp: Op := Kid
         self.rereadblocks()
         # unholy: level 0 -> rts
         self.SHADCTRL()
@@ -471,79 +472,106 @@ class Guard:
         self.animchar()
         if C.X < S["ScrnLeft"] - 14 or C.X >= S["ScrnRight"] + 14:
             return
-        self.gravity()
-        self.addfall()
-        self.getframeinfo()                         # setupchar: only its GETFRAMEINFO touches state read later
         self.rereadblocks()
-        # getedges: writes edge temps only
-        self.enemycoll()
-        self.checkfloor()
-        # checkpress / checkspikes / checkimpale / checkslice2: not transcribed -- see the report
+
+
+MAP_CONTROL = (4, 3, 0)      # screen 4 block (3,0): the guard's get2infront at 208 (BlockX 1, facing right)
+
+
+def seed(control=None):
+    """★ §2I TEST BED, NOT A START-UP PATH: the scene SEEDED from the oracle's game-frame-179 state (its
+    records and globals from oracle_path.txt; its map from oracle_blueprint.lua's aux dump at F8882)."""
+    R = records()
+    bp = bytearray(MAPDUMP.read_bytes())
+    if control == "map":         # the MAP control: a WRONG answer for a block in front of the guard
+        sc, x, y = MAP_CONTROL
+        bp[(sc - 1) * 30 + y * 10 + x] = S["space"]
+    g = Guard(bp[0:720], bp[1952:2048])
+    rec_to(g.Sh, R[GF0 - 1][1])
+    rec_to(g.K, R[GF0 - 1][0])
+    v = R[GF0 - 1][2]
+    for n in ("justblocked", "gdtimer", "refract", "alertguard", "droppedout", "offguard", "guardprog",
+              "milestone"):
+        setattr(g.z, n, v[n])
+    return R, g
 
 
 def run(control=None, quiet=False):
-    R = records()
-    bp = MAPDUMP.read_bytes()
-    g = Guard(bp[0:720], bp[1952:2048])
-    g.override = {}
-    rec_to(g.C, R[GF0 - 1][1])
-    v = R[GF0 - 1][2]
-    for n in ("justblocked", "gdtimer", "refract", "alertguard", "droppedout"):
-        setattr(g.z, n, v[n])
-    if control == "map":
-        # the map control: the block two in front reads as a gap in 208-217 -> EnGarde must retreat, not advance
-        g.override = {gf: {"get2infront": S["space"]} for gf in range(208, GF1 + 1)}
-    bad, first = 0, None
+    R, g = seed(control)
+    out = []
     for gf in range(GF0, GF1 + 1):
         kid, srec, v, F = R[gf]
         g.gf = gf
+        # ★ §2I REPLAY: EnemyAlert per game frame, as the oracle measured it (CHECKALERT is not ported)
         g.z.EnemyAlert = v["EnemyAlert"] if control != "enemyalert" else 1
-        g.DoShad(kid, vis_scrn=kid[11])            # VisScrn = the kid's screen in this window
-        got = to_rec(g.C)
-        if got != srec:
-            bad += 1
-            first = first or gf
+        g.DoKid(kid)                               # DoKid BEFORE DoShad [TOPCTRL.S:512-514]
+        g.DoShad(vis_scrn=g.K.Scrn)                # VisScrn = the kid's screen
+        got = to_rec(g.Sh)
+        out.append((gf, F, got, srec, g.z.guardprog, v["guardprog"]))
         if not quiet:
             diff = [FIELDS[i] for i in range(16) if got[i] != srec[i]]
             print("gf %d F%d  model %s  oracle %s  %s" % (gf, F, got.hex().upper(), srec.hex().upper(),
                                                            "==" if not diff else "DIFF " + ",".join(diff)))
-    return bad, first, g
+    return out, g
+
+
+def margin(out):
+    """A control's margin: frames that differ, and the FEWEST differing bytes in any differing frame."""
+    per = [sum(1 for a, b in zip(got, srec) if a != b) for _gf, _F, got, srec, _p, _o in out]
+    diff = [n for n in per if n]
+    first = next((o[0] for o, n in zip(out, per) if n), None)
+    return len(diff), (min(diff) if diff else 0), first
 
 
 def main():
     control = sys.argv[sys.argv.index("--control") + 1] if "--control" in sys.argv else None
     try:
-        bad, first, g = run(control)
+        out, g = run(control, quiet="--quiet" in sys.argv)
     except Unmodelled as e:
         print("guard_model: UNMODELLED branch reached: %s" % e)
         return 2
     n = GF1 - GF0 + 1
+    nbad, minb, first = margin(out)
+    bad = nbad
+    gp = [(gf, p, o) for gf, _F, _g, _s, p, o in out if p != o]
+    print("guardprog: model vs oracle per game frame -- %s; 5 -> 11 at gf %s"
+          % ("IDENTICAL" if not gp else "DIFFER %r" % gp[:3],
+             next((gf for gf, _F, _g, _s, p, _o in out if p == 11), None)))
     reads = {}
     for gf, who, sc, x, y, r in g.calls:
         reads[who] = reads.get(who, 0) + 1
-    print("\nmap reads by the model: %s" % reads)
+    print("map reads by the model: %s" % reads)
     if "--xref" in sys.argv:
         # every controller-extent map read, against the oracle's traced RDBLOCK: same (gf, scrn, x, y, answer), same order
         import oracle_blueprint as OB
         calls, _base, _bs = OB.trace_calls()
-        orc = [(c["gf"], c["scrn"], s8(c["x"]), s8(c["y"]), c.get("ret")) for c in calls
-               if c["ext"][0] == "guard-ctrl" and GF0 <= c["gf"] <= GF1]
-        mod = [(gf, sc, x, y, r) for gf, who, sc, x, y, r in g.calls
-               if who in ("getunderft", "getinfront", "get2infront")]
-        same = orc == mod
-        print("xref: guard-controller map reads -- oracle %d, model %d: %s"
-              % (len(orc), len(mod), "IDENTICAL (coordinates, answers, order)" if same else "DIFFER"))
-        if not same:
-            for i, (a, b) in enumerate(zip(orc, mod)):
-                if a != b:
-                    print("  first difference #%d: oracle %r model %r" % (i, a, b)); break
-            bad += 1
+        kidfight = {gf for gf, who, *_ in g.calls if who.startswith("kid:")}
+        demo = [(c["gf"], c["scrn"], s8(c["x"]), s8(c["y"]), c.get("ret")) for c in calls
+                if c["ext"][0] == "kid-ctrl" and GF0 <= c["gf"] <= GF1 and c["gf"] not in kidfight]
+        print("xref: kid-ctrl map reads OUTSIDE his fight path (DemoCtrl -> demo -> AUTOPLAYBACK, the replayed "
+              "walk -- not built): %r" % demo)
+        for ext, pre in (("guard-ctrl", ""), ("kid-ctrl", "kid:")):
+            orc = [(c["gf"], c["scrn"], s8(c["x"]), s8(c["y"]), c.get("ret")) for c in calls
+                   if c["ext"][0] == ext and GF0 <= c["gf"] <= GF1 and (ext == "guard-ctrl" or c["gf"] in kidfight)]
+            mod = [(gf, sc, x, y, r) for gf, who, sc, x, y, r in g.calls
+                   if who.startswith(pre) and who[len(pre):] in ("getunderft", "getinfront", "get2infront")
+                   and (pre or not who.startswith("kid:"))]
+            same = orc == mod
+            print("xref: %s map reads, game frames %d-%d -- oracle %d, model %d: %s"
+                  % (ext, GF0, GF1, len(orc), len(mod), "IDENTICAL (coordinates, answers, order)" if same
+                     else "DIFFER"))
+            if not same:
+                for i, (a, b) in enumerate(zip(orc, mod)):
+                    if a != b:
+                        print("  first difference #%d: oracle %r model %r" % (i, a, b)); break
+                bad += 1
     if control:
-        print("guard_model: CONTROL %s -> %d of %d frames differ (first at gf %s) -- %s"
-              % (control, bad, n, first, "DISCRIMINATES" if bad else "★ DOES NOT DISCRIMINATE"))
-        return 0 if bad else 1
+        print("guard_model: CONTROL %s -> %d of %d game frames differ (first at gf %s); fewest differing "
+              "bytes in a differing frame %d -- %s" % (control, nbad, n, first, minb,
+                                                       "DISCRIMINATES" if nbad else "★ DOES NOT DISCRIMINATE"))
+        return 0 if nbad else 1
     print("guard_model: %d of %d game frames byte-identical to the oracle's S= record%s"
-          % (n - bad, n, "" if not bad else " (first difference gf %d)" % first))
+          % (n - nbad, n, "" if not nbad else " (first difference gf %d)" % first))
     return 0 if not bad else 1
 
 
