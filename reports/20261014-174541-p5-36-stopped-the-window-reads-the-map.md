@@ -122,4 +122,4 @@ untouched — nothing here bears on it beyond confirming the window is RNG-free.
 None.
 
 ### 11 — Commit
-(the follow-up commit carries this line)
+`4a0e030` (pushed to origin/wip; this line in the follow-up commit). `main` untouched.
