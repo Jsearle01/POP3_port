@@ -39,6 +39,12 @@ local POKE16   = os.getenv("P_POKE16")
 -- P5.31b: frames from EXEC to give up. The kid-run probe's loader reads five tracks AFTER EXEC,
 -- before the probe's own status byte moves, so it needs more than the tile probe's 600.
 local RUN_LIMIT = tonumber(os.getenv("P_RUN_LIMIT") or "600")
+-- P5.37: "ADDR=VAL" (hex address, decimal value), ONE byte poked before EXEC alongside POKE16 (the
+-- en-garde probe's run mode, through its loader's kr_nact). Unset = no poke.
+local POKE8    = os.getenv("P_POKE8")
+-- P5.37: "ADDR:LEN:path[;...]" (hex, decimal) -- CPU-space RAM written to files at the terminal status,
+-- for a harness that compares what the 6809 COMPUTED rather than what it drew. Unset = nothing dumped.
+local DUMPMEM  = os.getenv("P_DUMPMEM")
 
 local FB_BASE, FB_SIZE = 0x8000, 15360
 local PAGE_MAGIC = 0x7B1E           -- bake_screen.py's; NOT the cutscene's $C35A
@@ -129,6 +135,12 @@ local function tick()
                 mem:write_u8(a + 1, v & 0xFF)
                 log(string.format("# poked $%04X = %d before EXEC", a, v))
             end
+            if POKE8 and POKE8 ~= "" then
+                local a, v = POKE8:match("^0?x?(%x+)=(%d+)$")
+                a, v = tonumber(a, 16), tonumber(v)
+                mem:write_u8(a, v & 0xFF)
+                log(string.format("# poked byte $%04X = %d before EXEC", a, v))
+            end
             nk:post('EXEC\n')
             log("# posted EXEC at frame " .. fn)
             state, started = "running", fn
@@ -159,6 +171,17 @@ local function tick()
         check("mode is 320x192x4", rd8(CURMODE) == MODE_4COL,
               string.format("cur_mode=%d", rd8(CURMODE)))
         check("framebuffer captured", dump_front(DUMP), DUMP)
+        if DUMPMEM and DUMPMEM ~= "" then
+            for spec in DUMPMEM:gmatch("[^;]+") do
+                local a, n, p = spec:match("^0?x?(%x+):(%d+):(.+)$")
+                a, n = tonumber(a, 16), tonumber(n)
+                local t = {}
+                for i = 0, n - 1 do t[#t + 1] = string.char(rd8(a + i)) end
+                local o = io.open(p, "wb")
+                if o then o:write(table.concat(t)); o:close() end
+                log(string.format("# dumped $%04X+%d -> %s", a, n, p))
+            end
+        end
         -- THE PALETTE, OUT OF THE MACHINE. render_fb.py decodes framebuffer BYTES, and a
         -- byte is only a colour once a palette says so; without this the PNG shows the
         -- tool's default palette rather than the port's ($00/$26/$1B/$3F, gfx.s descriptor

@@ -123,12 +123,33 @@ char_probe_draw
 * --- both buffers hold the background; the mirror unmaps the page, so map it back ---
                 jsr     HAL_gfx_mirror
                 jsr     tile_bank_map
+                ifdef   GA_WINDOW
+* P5.37: ONE actor, and it is the GUARD -- driven by his AI (guard_ai.s), not a sequence of our own.
+* The kid is REPLAYED into the AI's records and NOT drawn in this build.
+                ldx     #gd_tmpl
+                ldy     #kid_rec
+                bsr     wk_copy
+* the loader's actor byte (kr_nact -> wk_nact) is this build's RUN MODE: 2 (its default) = the gate,
+* drawn; $10 / $20 = the EnemyAlert / map NEGATIVE CONTROL, logic only (P5.37 §3.4; guard_ai.s)
+                lda     wk_nact
+                sta     ga_mode
+                lda     #1
+                sta     wk_nact
+* ★ his peel: ALL of $3000-$35FF, GA_PEELSZ per page -- GD_PEEL's 320 B fits `ready`'s frames, not the
+* advance's (the first run overran page B's into $3600; engarde_plan.py now fails the build first)
+                ldd     #GA_PEEL0
+                std     kid_rec+A_PBUF
+                ldd     #GA_PEEL1
+                std     kid_rec+A_PBUF+2
+                lbsr    ga_init
+                else
                 ldx     #kid_tmpl
                 ldy     #kid_rec
                 bsr     wk_copy
                 ldx     #gd_tmpl
                 ldy     #gd_rec
                 bsr     wk_copy
+                endc
                 clr     wk_steps
                 clr     wk_steps+1
                 jsr     HAL_time_frame_count
@@ -145,6 +166,24 @@ wc_lp           lda     ,x+
 * ===============================================================
 wk_loop
 wk_t_seq
+                ifdef   GA_WINDOW
+* --- one GAME FRAME of the oracle's logic, then the guard's record decides what is drawn ---
+wk_t_ai         lbsr    ga_frame
+wk_t_aiend      ldu     #kid_rec
+                lda     ga_shad+C_X
+                sta     A_X,u
+                lda     ga_shad+C_FACE
+                sta     A_FACE,u
+                coma                            ; xf_blit's mirror bit: 1 facing right (CharFace 0)
+                anda    #1
+                sta     A_MIR,u
+                tst     ga_draw                 ; the controls run the logic only
+                lbeq    wk_t_end
+                ldb     ga_shad+C_POSN
+                stb     A_FRAME,u
+                lbsr    ws_place
+                bra     wk_t_erase
+                endc
                 ldu     #kid_rec
                 lbsr    wk_seq_one
                 lda     wk_nact
@@ -250,6 +289,20 @@ wk_pace         jsr     HAL_time_frame_count
                 lda     #4
                 sta     probe_status
 wk_wrap
+                ifdef   GA_WINDOW
+* --- the window: 38 game frames, the last held GA_HOLD display frames, then again from the seed ---
+                lda     ga_gf
+                cmpa    #GA_NFR
+                lblo    wk_loop
+ga_hold         jsr     HAL_time_frame_count
+                subd    wk_last
+                cmpd    #GA_HOLD
+                blo     ga_hold
+                lbsr    ga_init
+                jsr     HAL_time_frame_count
+                std     wk_last
+                lbra    wk_loop
+                endc
 * --- the kid wraps at the pit's edge; the guard holds ---
                 lda     wk_x
                 cmpa    #WK_XMIN
@@ -293,7 +346,8 @@ ws_skip1        leay    1,y
 ws_frame        sty     A_SEQ,u
                 stb     A_FRAME,u
 * --- the frame's row: usealtsets, then image, Fdx, Fdy, Fcheck, slot ---
-                tst     A_ALT,u
+* (ws_place: B = the frame -- P5.37's entry, where the AI, not this sequencer, chose it)
+ws_place        tst     A_ALT,u
                 beq     ws_main
                 cmpb    #150
                 blo     ws_main
@@ -571,5 +625,14 @@ WK_PEEL0        equ     $3000
 WK_PEEL1        equ     WK_PEEL0+WK_PEEL
 GD_PEEL0        equ     WK_PEEL1+WK_PEEL
 GD_PEEL1        equ     GD_PEEL0+GD_PEEL
+                ifdef   GA_WINDOW
+GA_PEEL0        equ     WK_PEEL0
+GA_PEEL1        equ     GA_PEEL0+GA_PEELSZ
+                endc
 
+                ifdef   GA_WINDOW
+                include "src/engine/guard_ai.s"
+                include "build/gen/engarde_gen.s"
+                else
                 include "build/gen/kidrun_gen.s"
+                endc

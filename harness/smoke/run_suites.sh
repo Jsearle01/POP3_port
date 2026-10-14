@@ -51,7 +51,11 @@ cd "$(dirname "$0")/../.." || exit 1
 # own gate disk through its loader, step 16 -- inside the overlap -- byte for byte against the no-history
 # prediction, plus P3.32's discriminating test (the guard's frame and the both-opaque cells,
 # kidrun_overlap.py). It is the only suite that exercises the three-pass peel. Not at 128 KB (§2K).
-SUITES="introseq integ tile char kidrun"
+# * `engarde` JOINS AT P5.37: the guard's AI over the oracle's game frames 180-217, off its own gate disk --
+# his record byte for byte against the oracle's after every game frame, every map read his controller (and the
+# kid's) made, the 26 distinct queries the oracle made, zero RND. The only suite that runs LOGIC. Its two
+# negative controls are `run_engarde_test.sh ea|map` (they must FAIL the check; not in this list). Not at 128 KB.
+SUITES="introseq integ tile char kidrun engarde"
 
 # ── RETIRED at P3.103, with what covers their ground now ─────────────────────────────
 #   probe     P1.1 loop probe        -> room/walk boot through the same HAL

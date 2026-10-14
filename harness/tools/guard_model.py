@@ -68,7 +68,7 @@ SEQ = lst_bytes("SEQTABLE.LST")
 FRM = lst_bytes("FRAMEDEF.LST")
 SEQTAB, FDEF, ALTSET1 = 0x3000, 0x2800, 0x2CB0          # SEQTABLE org; FRAMEDEF `Fdef`, `altset1`
 S = {n: lst_sym(n) for n in (
-    "guardengarde", "advance", "retreat", "readyblock", "alertturn", "turnengarde", "goalertstand",
+    "guardengarde", "advance", "fastadvance", "retreat", "readyblock", "alertturn", "turnengarde", "goalertstand",
     "resheathe", "bumpengback", "space", "floor", "spikes", "pillartop", "gate", "panelwif", "loose",
     "panelwof", "mirror", "slicer", "block", "archtop1", "swordthres", "toofar", "tooclose",
     "offguardthres", "jumpthres", "runthres", "ScrnLeft", "ScrnRight", "chx", "chy", "aboutface", "goto",
@@ -323,12 +323,14 @@ class Guard:
         a = self.clrall()
         z.clrF = z.clrbtn = a
         self.C.Sword = 2
+        if self.C.ID < 2:
+            raise Unmodelled("DoEngarde:kid/shad (`engarde`, offguard)")
         self.jumpseq(S["guardengarde"])
 
     def C_DoAdvance(self):                          # :1007-1024
         if self.C.Posn in (158, 170, 171):
             self.z.clrF = 1
-            self.jumpseq(S["advance"])
+            self.jumpseq(S["fastadvance"] if self.C.ID == 0 else S["advance"])   # "kid is faster"
 
     def C_DoRetreat(self):                          # :991-1004
         if self.C.Posn in (158, 170, 171):
@@ -421,7 +423,7 @@ class Guard:
                 C.XVel = self.getseq(); C.YVel = self.getseq()
             elif a == S["tap"] & 0xFF:
                 t = self.getseq()
-                if t in (0, 1):
+                if t in (0, 1, 2):                 # 1 and 2 add a sound, then fall into `:0` [COLL.S:1115-1134]
                     z.alertguard = 1
             elif a in (S[k] & 0xFF for k in ("up", "down", "ifwtless", "die", "jaru", "jard", "nextlevel",
                                               "effect")):

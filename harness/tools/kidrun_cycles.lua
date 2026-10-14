@@ -32,13 +32,24 @@ local f = io.open(OUT, "w")
 local function log(s) f:write(s .. "\n"); f:flush() end
 pcall(function() manager.machine.debugger.execution_state = "run" end)
 
+-- P5.37: the phase boundaries (P_PH, space-separated, last = the end) and the file LOADM types (P_FILE).
+-- Unset = the kid-run probe's six and KIDRUN -- the log is then byte-for-byte the format kidrun_cost.py reads.
+local PH = {}
+for n in (os.getenv("P_PH") or "wk_t_seq wk_t_erase wk_t_save wk_t_draw wk_t_fore wk_t_end"):gmatch("%S+") do
+    PH[#PH + 1] = n
+end
+local FILE = os.getenv("P_FILE") or "KIDRUN"
 local sym = {}
-for name in ("wk_t_seq wk_t_erase wk_t_save wk_t_draw wk_t_fore wk_t_end wk_steps wk_frame wk_x wk_k probe_status"):gmatch("%S+") do
+local need = {"wk_steps", "wk_frame", "wk_x", "wk_k", "probe_status"}
+for _, n in ipairs(PH) do need[#need + 1] = n end
+for _, name in ipairs(need) do
     local v = os.getenv("S_" .. name)
     if not v then log("# missing S_" .. name); manager.machine:exit(); return end
     sym[name] = tonumber(v, 16)
 end
-local PH = {"wk_t_seq", "wk_t_erase", "wk_t_save", "wk_t_draw", "wk_t_fore", "wk_t_end"}
+-- the snapshot's layout: N-1 phase deltas, the total, then frame / x / k, the step word, the absolute clock
+local ND = #PH - 1
+local O_TOT, O_META, O_STEP, O_ABS = 4 * ND, 4 * ND + 4, 4 * ND + 8, 4 * ND + 12
 
 local state, t0, last = "boot", 0, -1
 local clk0, clk1 = nil, nil
@@ -54,13 +65,16 @@ _G._kc = emu.add_machine_frame_notifier(function()
             cpu.debug:bpset(sym[PH[i]], "1", string.format("temp%d=totalcycles; go", i - 1))
         end
         local S = SLOTS
-        cpu.debug:bpset(sym.wk_t_end, "1", string.format(
-            "temp5=totalcycles; pd@0x%X=temp1-temp0; pd@0x%X=temp2-temp1; pd@0x%X=temp3-temp2; " ..
-            "pd@0x%X=temp4-temp3; pd@0x%X=temp5-temp4; pd@0x%X=temp5-temp0; " ..
-            "pb@0x%X=pb@0x%X; pb@0x%X=pb@0x%X; pb@0x%X=pb@0x%X; pw@0x%X=pw@0x%X+1; pd@0x%X=temp0; go",
-            S, S + 4, S + 8, S + 12, S + 16, S + 20,
-            S + 24, sym.wk_frame, S + 25, sym.wk_x, S + 26, sym.wk_k, S + 28, sym.wk_steps, S + 32))
-        nk:post('LOADM"KIDRUN"\n'); state, t0 = "load", fn
+        local act = {string.format("temp%d=totalcycles", ND)}
+        for i = 0, ND - 1 do
+            act[#act + 1] = string.format("pd@0x%X=temp%d-temp%d", S + 4 * i, i + 1, i)
+        end
+        act[#act + 1] = string.format("pd@0x%X=temp%d-temp0", S + O_TOT, ND)
+        act[#act + 1] = string.format("pb@0x%X=pb@0x%X; pb@0x%X=pb@0x%X; pb@0x%X=pb@0x%X; pw@0x%X=pw@0x%X+1; " ..
+            "pd@0x%X=temp0; go", S + O_META, sym.wk_frame, S + O_META + 1, sym.wk_x, S + O_META + 2, sym.wk_k,
+            S + O_STEP, sym.wk_steps, S + O_ABS)
+        cpu.debug:bpset(sym[PH[#PH]], "1", table.concat(act, "; "))
+        nk:post('LOADM"' .. FILE .. '"\n'); state, t0 = "load", fn
     elseif state == "load" and fn > t0 + SETTLE then
         if NACT and NACT ~= "" then
             mem:write_u8(tonumber(os.getenv("S_kr_nact"), 16), tonumber(NACT))
@@ -72,7 +86,7 @@ _G._kc = emu.add_machine_frame_notifier(function()
         -- ★ P5.31b: EXEC starts the LOADER, which reads the probe in over whatever RAM held; until
         -- the probe has drawn its page (status 2), wk_steps is not the probe's counter at all.
         if mem:read_u8(sym.probe_status) ~= 2 and mem:read_u8(sym.probe_status) ~= 4 then return end
-        local st = mem:read_u8(SLOTS + 28) * 256 + mem:read_u8(SLOTS + 29)    -- the snapshot's step
+        local st = mem:read_u8(SLOTS + O_STEP) * 256 + mem:read_u8(SLOTS + O_STEP + 1)  -- the snapshot's step
         -- the snapshot area holds the tile page's staging bytes until the first step writes it, so a
         -- snapshot counts only when its step agrees with the probe's own counter (equal, or one
         -- ahead in the instructions between the snapshot and the increment)
@@ -80,15 +94,16 @@ _G._kc = emu.add_machine_frame_notifier(function()
         if live >= 1 and (st == live or st == live + 1) and st ~= last then
             last = st
             local d = {}
-            for i = 1, 6 do d[i] = mem:read_u32(SLOTS + 4 * (i - 1)) end
+            for i = 0, ND - 1 do d[#d + 1] = string.format("%d", mem:read_u32(SLOTS + 4 * i)) end
             -- the trailing field is the video frame the step was SEEN complete on: the gaps
             -- between steps are the achieved cadence, measured rather than taken from WK_SPEED
-            log(string.format("S %d %d %d %d  %d %d %d %d %d  %d %d", st, mem:read_u8(SLOTS + 24),
-                mem:read_u8(SLOTS + 25), mem:read_u8(SLOTS + 26), d[1], d[2], d[3], d[4], d[5], d[6], fn))
+            log(string.format("S %d %d %d %d  %s  %d %d", st, mem:read_u8(SLOTS + O_META),
+                mem:read_u8(SLOTS + O_META + 1), mem:read_u8(SLOTS + O_META + 2), table.concat(d, " "),
+                mem:read_u32(SLOTS + O_TOT), fn))
             -- ★ P5.35: THE CLOCK, MEASURED. The absolute totalcycles at the start of each step's
             -- sequencer (SLOTS+32) against the video frame it was seen on: over the run, CPU cycles per
             -- real frame. P5.31-P5.34 divided by an ASSUMED 29,859 while tile_probe left the SAM slow.
-            local abs = mem:read_u32(SLOTS + 32)
+            local abs = mem:read_u32(SLOTS + O_ABS)
             if not clk0 then clk0 = {fn, abs} end
             clk1 = {fn, abs}
         end

@@ -1055,6 +1055,79 @@ if errorlevel 1 (
     exit /b 1
 )
 
+echo --- P5.37: the guard goes en garde (kidrun_probe.s -DGA_WINDOW, a TEST BED) ---
+REM The oracle's game frames 180-217 on the 6809: the guard's AI (src/engine/guard_ai.s) reading a block
+REM map in the port, the kid REPLAYED into its records and not drawn. engarde_plan.py emits the window's
+REM data -- the map from bg_compose.Blueprint, the oracle's assembled sequences, the replays and the
+REM game-frame-179 seed -- and the oracle's records, which engarde_test.py compares. The same loader as
+REM KIDRUN.BIN (kidrun_boot.s, three whole-track reads) on its own disk, build/engarde_gate.dmk, with
+REM LEVEL0 SCREEN 4's page on the tile track: the room the window happens in, baked by the same path
+REM (bake_screen.py verifies it EXACT before it emits).
+python harness/tools/engarde_plan.py --asm build/gen/engarde_gen.s --kd2 0x2A00
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -DGA_WINDOW -I . -o build/obj/engarde_probe.o src/engine/kidrun_probe.s
+if errorlevel 1 goto :error
+lwlink --decb --script=link/pop_engarde.link --entry=tile_entry --map=build/obj/engarde.map -o build/engarde_probe.bin build/obj/kidrun_tile.o build/obj/engarde_probe.o build/obj/fore_draw.o build/obj/xf_blit.o build/obj/xf_tables.o build/obj/blit_core.o build/obj/lz_unpack.o build/obj/hal_build.o
+if errorlevel 1 goto :error
+call :size build/engarde_probe.bin
+python harness\tools\map_overlap_check.py build/obj/engarde.map
+if errorlevel 1 (
+    echo *** BUILD BLOCKED: the en-garde probe's sections collide ***
+    exit /b 1
+)
+for /f "tokens=2 delims==" %%A in ('findstr /r /c:"^Symbol: wk_stop " build\obj\engarde.map') do set EG_WKSTOP=%%A
+for /f "tokens=2 delims==" %%A in ('findstr /r /c:"^Symbol: tile_entry " build\obj\engarde.map') do set EG_GO=%%A
+for /f "tokens=2 delims==" %%A in ('findstr /r /c:"^Symbol: wk_nact " build\obj\engarde.map') do set EG_WKNACT=%%A
+set EG_WKSTOP=%EG_WKSTOP: =%
+set EG_WKNACT=%EG_WKNACT: =%
+set EG_GO=%EG_GO: =%
+python harness/tools/decb_to_raw.py --bin build/engarde_probe.bin --out build/assets/engarde_a.raw --base 0x0E00 --span-end 0x3000
+if errorlevel 1 goto :error
+python harness/tools/decb_to_raw.py --bin build/engarde_probe.bin --out build/assets/engarde_b.raw --base 0x3400 --allow-gap --span-start 0x3400 --span-end 0x6A00
+if errorlevel 1 goto :error
+python harness/tools/decb_to_raw.py --bin build/engarde_probe.bin --out build/assets/engarde_c.raw --base 0x6B00 --span-start 0x6B00 --span-end 0x7900
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -DDR_VARBASE=%DR_VARBASE% -DKR_TRK_A=%KR_TRK_A% -DKR_TRK_B=%KR_TRK_B% -DKR_TRK_C=%KR_TRK_C% ^
+      -DKR_GO=0x%EG_GO% -DKR_WKSTOP=0x%EG_WKSTOP% -DKR_WKNACT=0x%EG_WKNACT% -I . -o build/obj/engarde_boot.o src/boot/kidrun_boot.s
+if errorlevel 1 goto :error
+lwlink --decb --script=link/pop_kidboot.link --entry=kr_entry --map=build/obj/engardeboot.map ^
+       -o build/engarde_boot.bin build/obj/engarde_boot.o build/obj/hal_build.o
+if errorlevel 1 goto :error
+call :size build/engarde_boot.bin
+python harness/tools/kernel_identical_check.py --resident build/engarde_boot.bin --staged build/engarde_probe.bin
+if errorlevel 1 goto :error
+REM screen 4's page, by tile_screen1's own path
+python harness/tools/bake_screen.py --level LEVEL0 --screen 4 --out build/gen/tile_screen4.s --out-ref build/assets/tile_screen4_ref.bin
+if errorlevel 1 goto :error
+lwasm --obj -DOBJTARGET -I . -o build/obj/tile_screen4.o build/gen/tile_screen4.s
+if errorlevel 1 goto :error
+lwlink --decb --script=link/pop_tiles.link --map=build/obj/tile_page4.map -o build/tile_page4.bin build/obj/tile_screen4.o
+if errorlevel 1 goto :error
+python harness/tools/decb_to_raw.py --bin build/tile_page4.bin --out build/assets/tile_page4.raw --base 0xc000
+if errorlevel 1 goto :error
+python harness/tools/lz_pack.py build/assets/tile_page4.raw --out-dir build/assets
+if errorlevel 1 goto :error
+copy /y build\probe.dmk build\engarde_gate.dmk >nul
+if errorlevel 1 goto :error
+"%IMGTOOL%" del coco_dmk_rsdos build\engarde_gate.dmk INTRO.BIN
+if errorlevel 1 goto :error
+python harness/tools/raw_tracks.py --dsk build/engarde_gate.dmk --asset build/assets/engarde_a.raw --track %KR_TRK_A% --tracks 2 --reserve --imgtool "%IMGTOOL%"
+if errorlevel 1 goto :error
+python harness/tools/raw_tracks.py --dsk build/engarde_gate.dmk --asset build/assets/engarde_b.raw --track %KR_TRK_B% --tracks 3 --reserve --imgtool "%IMGTOOL%"
+if errorlevel 1 goto :error
+python harness/tools/raw_tracks.py --dsk build/engarde_gate.dmk --asset build/assets/engarde_c.raw --track %KR_TRK_C% --tracks 1 --reserve --imgtool "%IMGTOOL%"
+if errorlevel 1 goto :error
+python harness/tools/raw_tracks.py --dsk build/engarde_gate.dmk --asset build/assets/tile_page4.lz --track %TILE_TRK% --tracks 1 --reserve --imgtool "%IMGTOOL%"
+if errorlevel 1 goto :error
+"%IMGTOOL%" put coco_dmk_rsdos build\engarde_gate.dmk build\engarde_boot.bin GUARD.BIN --ftype=binary --ascii=binary
+if errorlevel 1 goto :error
+python harness\tools\disk_file_readback_check.py --dsk build/engarde_gate.dmk --imgtool "%IMGTOOL%" ^
+    GUARD.BIN=build/engarde_boot.bin TILE.BIN=build/tile_probe.bin
+if errorlevel 1 (
+    echo *** BUILD BLOCKED: the en-garde gate disk is not what the build produced ***
+    exit /b 1
+)
+
 echo === BUILD COMPLETE ===
 exit /b 0
 

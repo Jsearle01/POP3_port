@@ -1,0 +1,22 @@
+; link/pop_engarde.link — THE GUARD'S EN-GARDE WINDOW (P5.37): kidrun_probe.s -DGA_WINDOW, a TEST BED.
+;
+; pop_kidrun.link's map, with prog grown by the guard's AI (src/engine/guard_ai.s) and kd2 moved up to
+; make room. The loader (src/boot/kidrun_boot.s) and its three whole-track reads are unchanged:
+;
+;   $0E00-$29FF   prog: the renderer, the step, THE AI, the frame table
+;   $2A00-$2FFF   kd2: guard streams (first fit, engarde_plan.py)  -- prog + kd2 = READ A, $0E00-$31FF
+;   $3000-$41FF   staging, then runtime only: the peels ($3000-$359F), the AC1 self-test's answers
+;                 ($3600), the guard's record per game frame ($3800), every map read ($3A80)
+;   $4200-$5EFF   xf_blit's tables; $5F00 its direct page
+;   $6000-$69FF   kd1: THE WINDOW'S DATA (the map, the sequences, the replays, the seed) + streams
+;   $6B00-$77FF   kd3: guard streams
+;   $7900-....    KERNEL
+
+section prog load 0E00
+section kd2 load 2A00
+section xftab load 4200
+section kd1 load 6000
+section kd3 load 6B00
+section code load 7900
+
+entry tile_entry

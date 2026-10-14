@@ -1,0 +1,990 @@
+{
+ "source": "build/p537/oracle_bp.tr (oracle_blueprint.lua, one boot, display frames 8840-9260)",
+ "game_frames": [
+  180,
+  217
+ ],
+ "controller_calls": [
+  {
+   "gf": 181,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 182,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 183,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 184,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 185,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 186,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 187,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 188,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 189,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 190,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 191,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 192,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 193,
+   "who": "kid-ctrl",
+   "scrn": 4,
+   "x": 9,
+   "y": 0,
+   "ret": 4
+  },
+  {
+   "gf": 193,
+   "who": "kid-ctrl",
+   "scrn": 4,
+   "x": 8,
+   "y": 0,
+   "ret": 11
+  },
+  {
+   "gf": 193,
+   "who": "kid-ctrl",
+   "scrn": 4,
+   "x": 8,
+   "y": 0,
+   "ret": 11
+  },
+  {
+   "gf": 193,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 194,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 195,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 196,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 197,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 198,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 199,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 200,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 201,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 202,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 203,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 204,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 205,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 206,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 207,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 208,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 2,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 208,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 3,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 208,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 209,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 3,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 209,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 4,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 209,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 2,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 210,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 3,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 210,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 4,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 210,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 2,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 211,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 3,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 211,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 4,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 211,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 2,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 212,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 3,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 212,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 4,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 212,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 2,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 213,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 4,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 213,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 5,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 213,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 3,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 214,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 4,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 214,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 5,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 214,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 3,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 215,
+   "who": "kid-ctrl",
+   "scrn": 4,
+   "x": 4,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 215,
+   "who": "kid-ctrl",
+   "scrn": 4,
+   "x": 3,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 215,
+   "who": "kid-ctrl",
+   "scrn": 4,
+   "x": 5,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 215,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 4,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 215,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 5,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 215,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 3,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 216,
+   "who": "kid-ctrl",
+   "scrn": 4,
+   "x": 4,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 216,
+   "who": "kid-ctrl",
+   "scrn": 4,
+   "x": 3,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 216,
+   "who": "kid-ctrl",
+   "scrn": 4,
+   "x": 5,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 216,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 3,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 216,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 4,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 216,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 2,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 217,
+   "who": "kid-ctrl",
+   "scrn": 4,
+   "x": 4,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 217,
+   "who": "kid-ctrl",
+   "scrn": 4,
+   "x": 3,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 217,
+   "who": "kid-ctrl",
+   "scrn": 4,
+   "x": 5,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 217,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 4,
+   "y": 0,
+   "ret": 1
+  },
+  {
+   "gf": 217,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 5,
+   "y": 0,
+   "ret": 19
+  },
+  {
+   "gf": 217,
+   "who": "guard-ctrl",
+   "scrn": 4,
+   "x": 3,
+   "y": 0,
+   "ret": 19
+  }
+ ],
+ "queries": [
+  {
+   "scrn": 4,
+   "x": 255,
+   "y": 0,
+   "answers": {
+    "3": [
+     180,
+     180,
+     2
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 2,
+   "y": 0,
+   "answers": {
+    "1": [
+     180,
+     217,
+     144
+    ]
+   },
+   "who": [
+    "(physics/other)",
+    "guard-ctrl"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 0,
+   "y": 0,
+   "answers": {
+    "3": [
+     180,
+     180,
+     1
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 1,
+   "y": 0,
+   "answers": {
+    "1": [
+     180,
+     209,
+     257
+    ]
+   },
+   "who": [
+    "(physics/other)",
+    "guard-ctrl"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 8,
+   "y": 0,
+   "answers": {
+    "11": [
+     180,
+     205,
+     129
+    ],
+    "0": [
+     206,
+     210,
+     10
+    ]
+   },
+   "who": [
+    "(physics/other)",
+    "kid-ctrl"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 9,
+   "y": 0,
+   "answers": {
+    "4": [
+     180,
+     205,
+     196
+    ]
+   },
+   "who": [
+    "(physics/other)",
+    "kid-ctrl"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 10,
+   "y": 0,
+   "answers": {
+    "19": [
+     180,
+     200,
+     77
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 8,
+   "y": 1,
+   "answers": {
+    "0": [
+     180,
+     210,
+     60
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 9,
+   "y": 1,
+   "answers": {
+    "20": [
+     180,
+     205,
+     52
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 10,
+   "y": 1,
+   "answers": {
+    "20": [
+     180,
+     200,
+     42
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 8,
+   "y": 255,
+   "answers": {
+    "20": [
+     180,
+     210,
+     60
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 9,
+   "y": 255,
+   "answers": {
+    "20": [
+     180,
+     205,
+     52
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 10,
+   "y": 255,
+   "answers": {
+    "20": [
+     180,
+     200,
+     42
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 4,
+   "y": 0,
+   "answers": {
+    "1": [
+     180,
+     217,
+     107
+    ]
+   },
+   "who": [
+    "(physics/other)",
+    "guard-ctrl",
+    "kid-ctrl"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 3,
+   "y": 0,
+   "answers": {
+    "19": [
+     180,
+     217,
+     111
+    ]
+   },
+   "who": [
+    "(physics/other)",
+    "guard-ctrl",
+    "kid-ctrl"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 5,
+   "y": 0,
+   "answers": {
+    "19": [
+     181,
+     217,
+     126
+    ]
+   },
+   "who": [
+    "(physics/other)",
+    "guard-ctrl",
+    "kid-ctrl"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 6,
+   "y": 0,
+   "answers": {
+    "1": [
+     181,
+     217,
+     114
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 7,
+   "y": 0,
+   "answers": {
+    "11": [
+     181,
+     209,
+     102
+    ],
+    "0": [
+     210,
+     217,
+     18
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 7,
+   "y": 1,
+   "answers": {
+    "0": [
+     183,
+     217,
+     58
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 7,
+   "y": 255,
+   "answers": {
+    "20": [
+     183,
+     217,
+     58
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 6,
+   "y": 1,
+   "answers": {
+    "20": [
+     200,
+     217,
+     36
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 6,
+   "y": 255,
+   "answers": {
+    "20": [
+     200,
+     217,
+     36
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 5,
+   "y": 1,
+   "answers": {
+    "20": [
+     204,
+     217,
+     28
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 5,
+   "y": 255,
+   "answers": {
+    "20": [
+     204,
+     217,
+     28
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 4,
+   "y": 1,
+   "answers": {
+    "20": [
+     210,
+     217,
+     16
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  },
+  {
+   "scrn": 4,
+   "x": 4,
+   "y": 255,
+   "answers": {
+    "20": [
+     210,
+     217,
+     16
+    ]
+   },
+   "who": [
+    "(physics/other)"
+   ]
+  }
+ ],
+ "cmpbarr": [
+  {
+   "gf": 193,
+   "a_in": 4,
+   "a_out": 1
+  },
+  {
+   "gf": 193,
+   "a_in": 4,
+   "a_out": 1
+  },
+  {
+   "gf": 193,
+   "a_in": 11,
+   "a_out": 0
+  }
+ ]
+}
